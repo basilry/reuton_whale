@@ -1,0 +1,7 @@
+anthropic
+gspread
+google-auth
+python-telegram-bot==21.*
+requests
+python-dotenv
+streamlit
