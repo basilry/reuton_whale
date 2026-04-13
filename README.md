@@ -40,7 +40,8 @@ CoinGecko API ------+      ClaudeAnalyzer          Telegram Bot
 ## 모듈 구조
 
 ```
-whalescope/
+reuton_whale/
+├── docs/                        # 기획 문서
 ├── src/
 │   ├── config.py                # 환경변수 로드
 │   ├── main.py                  # 10단계 파이프라인 오케스트레이터
@@ -100,7 +101,6 @@ whalescope/
 ### 1. 의존성 설치
 
 ```bash
-cd whalescope
 pip install -r requirements.txt
 ```
 
