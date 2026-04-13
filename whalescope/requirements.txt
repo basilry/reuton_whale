@@ -1,7 +1,8 @@
-anthropic
-gspread
-google-auth
-python-telegram-bot==21.*
-requests
-python-dotenv
-streamlit
+anthropic>=0.94.0,<1.0
+gspread>=6.2,<7.0
+google-auth>=2.35,<3.0
+python-telegram-bot>=22.0,<23.0
+requests>=2.32,<3.0
+python-dotenv>=1.0,<2.0
+streamlit>=1.54,<2.0
+pytest>=8.0,<9.0

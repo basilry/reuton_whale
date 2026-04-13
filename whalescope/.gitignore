@@ -10,3 +10,4 @@ venv/
 dist/
 *.egg-info/
 .streamlit/secrets.toml
+.pytest_cache/
