@@ -1,1 +1,81 @@
 address,chain,category,label,source,confidence,enabled,added_at,notes
+0xF977814e90dA44bFA03b6295A0616a897441aceC,ETH,cex,Binance 8,arkham,high,true,2025-01-01,Binance cold wallet
+0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8,ETH,cex,Binance 7,arkham,high,true,2025-01-01,Binance cold wallet
+0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE,ETH,cex,Binance 1,arkham,high,true,2025-01-01,Binance hot wallet
+0xD551234Ae421e3BCBA99A0Da6d736074f22192FF,ETH,cex,Binance 2,arkham,high,true,2025-01-01,Binance hot wallet
+0x564286362092D8e7936f0549571a803B203aAceD,ETH,cex,Binance 3,arkham,high,true,2025-01-01,Binance hot wallet
+0x0681d8Db095565FE8A346fA0277bFfd65d1B8965,ETH,cex,Binance 4,arkham,high,true,2025-01-01,Binance hot wallet
+0xfe9e8709d3215310075d67E3ed32A380CCf451C8,ETH,cex,Binance 5,arkham,high,true,2025-01-01,Binance hot wallet
+0x2910543Af39abA0Cd09dBb2D50200b3E800A63D2,ETH,cex,Kraken 1,arkham,high,true,2025-01-01,Kraken exchange wallet
+0x0A869d79a7052C7f1b55a8EbAbbEa3420F0D1E13,ETH,cex,Kraken 2,arkham,high,true,2025-01-01,Kraken exchange wallet
+0xDA9dfA130Df4dE4673b89022EE50ff26f6EA73Cf,ETH,cex,Kraken 4,arkham,high,true,2025-01-01,Kraken exchange wallet
+0x1151314c646Ce4E0eFD76d1aF4760aE66a9Fe30F,ETH,cex,Bitfinex 1,arkham,high,true,2025-01-01,Bitfinex hot wallet
+0x742d35Cc6634C0532925a3b8D4C9C8b97Bb3a4BF,ETH,cex,Bitfinex 2,arkham,high,true,2025-01-01,Bitfinex cold wallet
+0x876EABf441b2eE5B5B0554Fd502a8E0600950cFa,ETH,cex,Bitfinex 3,arkham,high,true,2025-01-01,Bitfinex cold wallet
+0xd24400ae8BfEBb18cA49Be86258a3C749cf46853,ETH,cex,Gemini 1,arkham,high,true,2025-01-01,Gemini hot wallet
+0x6Fc82a5fe25A5cDb58bc74600A40A69C065263f8,ETH,cex,Gemini 2,arkham,high,true,2025-01-01,Gemini hot wallet
+0x61EdCDf5bb737ADffE5043706e7C5bb1f1a56eEA,ETH,cex,Gemini 3,arkham,high,true,2025-01-01,Gemini exchange wallet
+0xa9D1e08C7793af67e9d92fe308d5697FB81d3E43,ETH,cex,Coinbase 1,arkham,high,true,2025-01-01,Coinbase Prime
+0x503828976D22510aad0201ac7EC88293211D23Da,ETH,cex,Coinbase 2,arkham,high,true,2025-01-01,Coinbase hot wallet
+0xddfAbCdc4D8FfC6d5beaf154f18B778f892A0740,ETH,cex,Coinbase 3,arkham,high,true,2025-01-01,Coinbase hot wallet
+0x3cD751E6b0078Be393132286c442345e5DC49699,ETH,cex,Coinbase 4,arkham,high,true,2025-01-01,Coinbase hot wallet
+0xb5d85CBf7cB3EE0D56b3bB207D5Fc4B82f43F511,ETH,cex,Coinbase 5,arkham,high,true,2025-01-01,Coinbase hot wallet
+0x22d491Bde2303f2f43325b2108D26f1eAbA1e32b,ETH,cex,Robinhood 1,arkham,medium,true,2025-01-01,Robinhood crypto wallet
+0x73BCEb1Cd57C711feaC4224D062b0F6ff338501e,ETH,cex,Robinhood 2,arkham,medium,true,2025-01-01,Robinhood crypto wallet
+0x6cC5F688a315f3dC28A7781717a9A798a59fDA7b,ETH,cex,OKX 1,arkham,high,true,2025-01-01,OKX exchange wallet
+0x95a9bd206ae52C4Ba8eeCfC93d18EEBfAFd7F8A7,ETH,cex,OKX 2,arkham,high,true,2025-01-01,OKX exchange wallet
+0xf89d7b9c864f589bbF53a82105107622B35EaA40,ETH,cex,Bybit 1,arkham,high,true,2025-01-01,Bybit exchange wallet
+0x2B5634C42055806a59e9107ED44D43c426E58258,ETH,cex,Bybit 2,arkham,high,true,2025-01-01,Bybit exchange wallet
+0xaB5c66752a9e8167967685F1450532fB96d5d24F,ETH,cex,Huobi 1,arkham,high,true,2025-01-01,Huobi/HTX wallet
+0x2B6eD29A95753C3Ad948348e3e7b1A251080Ffb9,ETH,cex,Upbit 1,arkham,medium,true,2025-01-01,Upbit exchange wallet
+0x8894E0a0c962CB723c1976a4421c95949bE2D4E3,ETH,cex,Binance 6,arkham,high,true,2025-01-01,Binance hot wallet
+0x8315177aB297bA92A06054cE80a67Ed4DBd7ed3a,ETH,bridge,Arbitrum Bridge,public,high,true,2025-01-01,Arbitrum L1 bridge contract
+0x49048044D57e1C92A77f79988d21Fa8fAF74E97e,ETH,bridge,Base Portal,public,high,true,2025-01-01,Base L1 OptimismPortal
+0xbEb5Fc579115071764c7423A4f12eDde41f106Ed,ETH,bridge,Optimism Portal,public,high,true,2025-01-01,Optimism L1 bridge
+0xA0c68C638235ee32657e8f720a23ceC1bfc77C77,ETH,bridge,Polygon Bridge,public,high,true,2025-01-01,Polygon PoS bridge
+0x32400084C286CF3E17e7B677ea9583e60a000324,ETH,bridge,zkSync Bridge,public,high,true,2025-01-01,zkSync Era L1 bridge
+0x5c7BCd6E7De5423a257D81B442095A1a6ced35C5,ETH,bridge,Across Protocol,public,high,true,2025-01-01,Across v2 spoke pool
+0x3E4a3a4796d16c0Cd582C382691998f7c06420B6,ETH,bridge,Hop Protocol,public,high,true,2025-01-01,Hop Protocol bridge
+0xdf0770dF86a8034b3EFEf0A1Bb3c889B8332FF56,ETH,bridge,Stargate Finance,public,high,true,2025-01-01,Stargate pool ETH
+0x5427FEFA711Eff984124bFBB1AB6fbf5E3DA1820,ETH,bridge,Celer cBridge,public,high,true,2025-01-01,Celer cBridge contract
+0x2796317b0fF8538F253012862c06787Adfb8cEb6,ETH,bridge,Synapse Protocol,public,high,true,2025-01-01,Synapse bridge pool
+0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045,ETH,smart_money,Vitalik Buterin,arkham,high,true,2025-01-01,Vitalik main wallet
+0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B,ETH,smart_money,Vitalik 2,arkham,high,true,2025-01-01,Vitalik secondary wallet
+0x1Db3439a222C519ab44bb1144fC28167b4Fa6EE6,ETH,smart_money,Vitalik 3,arkham,medium,true,2025-01-01,Vitalik donation wallet
+0xFE674a9682F6D9B5D0D5e62613aB22D3C50f3af3,ETH,smart_money,Wintermute,arkham,high,true,2025-01-01,Wintermute market maker
+0x4862733B5FdDFd35f35ea8CCf08F5045e57388B3,ETH,smart_money,Jump Crypto,arkham,high,true,2025-01-01,Jump Crypto trading wallet
+0xFDE3EDA1e7D4AD96E82A3aeE97Ea6E2EffD8B9fB,ETH,smart_money,Paradigm,arkham,high,true,2025-01-01,Paradigm fund wallet
+0x5041ed759Dd4aFc3a72b8192C143F72f4724081F,ETH,smart_money,Paradigm 2,arkham,medium,true,2025-01-01,Paradigm secondary
+0x5599Ac24eF24e6C3A80cD81e3C91b46F1a55f60A,ETH,smart_money,a16z Crypto,arkham,high,true,2025-01-01,Andreessen Horowitz crypto
+0x0716a17FBAee714f1E6aB0f9d59edbC5f09815C0,ETH,smart_money,Polychain Capital,arkham,high,true,2025-01-01,Polychain venture fund
+0x220866B1A2219f40e72f5c628B65D54268cA3A9D,ETH,smart_money,Dragonfly Capital,arkham,medium,true,2025-01-01,Dragonfly fund wallet
+0xD7029BDEa1c17493893AAfE29AAD69EF892B8ff2,ETH,smart_money,Multicoin Capital,arkham,medium,true,2025-01-01,Multicoin fund wallet
+0x6262998Ced04146fA42253a5C0AF90CA02dfd2A3,ETH,smart_money,Crypto.com,arkham,high,true,2025-01-01,Crypto.com institutional
+0x46705dfff24256421A05D056c29E81Bdc09723B8,ETH,smart_money,Celsius Network,arkham,high,true,2025-01-01,Celsius custodial wallet
+0x8bda8B9823B8490E2CF35B8d6E4AC5E30Fe9bC41,ETH,smart_money,BlockFi,arkham,high,true,2025-01-01,BlockFi lending wallet
+0x9BF4001d307dFd62B26A2F1307ee0C0307632d59,ETH,smart_money,Alameda Research,arkham,high,true,2025-01-01,Alameda trading wallet
+0x477573f212a7bdd5f7c12889bd1ad0aa44fb82aa,ETH,smart_money,FTX Exchange,arkham,high,true,2025-01-01,FTX exchange wallet
+0xCdF7028ceAB81fA0C6971208e83fa7872994beE5,ETH,smart_money,Three Arrows Capital,arkham,high,true,2025-01-01,3AC fund wallet
+0x2FAF487A4414Fe77e2327F0bf4AE2a264a776AD2,ETH,smart_money,FTX US,arkham,medium,true,2025-01-01,FTX US wallet
+0x04d4E63F8f3a3E8D1Fd2fE9b2e1a79b4c5e6f7a8,ETH,smart_money,Delphi Digital,arkham,medium,true,2025-01-01,Delphi Digital research fund
+0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf,ETH,smart_money,Galaxy Digital,arkham,medium,true,2025-01-01,Galaxy Digital trading desk
+0xdAC17F958D2ee523a2206206994597C13D831ec7,ETH,token_whale,Tether Treasury,public,high,true,2025-01-01,USDT issuer contract
+0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48,ETH,token_whale,Circle USDC,public,high,true,2025-01-01,USDC token contract
+0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2,ETH,token_whale,WETH Contract,public,high,true,2025-01-01,Wrapped Ether contract
+0x00000000219ab540356cBB839Cbe05303d7705Fa,ETH,token_whale,ETH2 Deposit,public,high,true,2025-01-01,Ethereum beacon deposit contract
+0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599,ETH,token_whale,WBTC Contract,public,high,true,2025-01-01,Wrapped Bitcoin contract
+0x5e11E7a47f62a3D82bB5A53C48cDc5aE96e2E3f0,ETH,token_whale,USDT Whale 1,arkham,medium,true,2025-01-01,Large USDT holder
+0x8e5660b4Ab70168b5a6fEeA312E7698f45E2fADD,ETH,token_whale,USDT Whale 2,arkham,medium,true,2025-01-01,Large USDT holder
+0x9dB5a5Ad2e0fFa98aCa6F2F1eA13C31fA4eDcB26,ETH,token_whale,USDT Whale 3,arkham,medium,true,2025-01-01,Large USDT holder
+0xF6874D78b4E74Aacc5ce73E0bE91d7f5b7D6B2E1,ETH,token_whale,USDC Whale 1,arkham,medium,true,2025-01-01,Large USDC holder
+0x0d4a11d5EEaaC28EC3F61d100daF4d40471f1852,ETH,token_whale,USDC Whale 2,arkham,medium,true,2025-01-01,Large USDC holder
+0xC61b9BB3A7a0767E3179713f3A5c7a9aeDce193C,ETH,token_whale,ETH Whale 1,arkham,medium,true,2025-01-01,Large ETH holder
+0x9BCf6B1Db8a69EBF6E1b64c20e1404c016e7cB7A,ETH,token_whale,ETH Whale 2,arkham,medium,true,2025-01-01,Large ETH holder
+0x4aAD2f101a7378caf1a12B7d006cA6d23b73E6dB,ETH,token_whale,ETH Whale 3,arkham,medium,true,2025-01-01,Large ETH holder
+0x5Ee5bf7ae06D1Be5997A1A72006FE6C607eC6DE8,ETH,token_whale,WBTC Whale 1,arkham,medium,true,2025-01-01,Large WBTC holder
+0x218B95BE3ed99141b0144Dba6cE88807c4AD7C09,ETH,token_whale,WBTC Whale 2,arkham,medium,true,2025-01-01,Large WBTC holder
+0x40ec5B33f54e0E8A33A975908C5BA1c14e5BbbDf,ETH,token_whale,Polygon ERC20 Bridge,public,high,true,2025-01-01,Polygon ERC20 bridge escrow
+0xBb2b8038a1640196FbE3e38816F3e67Cba72D940,ETH,token_whale,Uniswap WBTC-ETH,public,high,true,2025-01-01,Uniswap V2 WBTC-ETH pool
+0xBA12222222228d8Ba445958a75a0704d566BF2C8,ETH,token_whale,Balancer Vault,public,high,true,2025-01-01,Balancer protocol vault
+9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM,SOL,token_whale,SOL Whale 1,arkham,medium,true,2025-01-01,Large SOL holder
+5tzFkiKscXHK5B9MnkQkUqdRPaJe6oM8CUrSMJVsZkqm,SOL,token_whale,SOL Whale 2,arkham,medium,true,2025-01-01,Large SOL holder
