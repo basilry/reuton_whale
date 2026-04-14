@@ -1,4 +1,4 @@
-"""Verify API connections: Whale Alert, CoinGecko, Anthropic, Google Sheets, Telegram."""
+"""Verify API connections: Etherscan, CoinGecko, Anthropic, Google Sheets, Telegram."""
 
 import sys
 
@@ -10,20 +10,21 @@ from src.utils.logger import get_logger
 logger = get_logger("test_connection")
 
 
-def test_whale_alert(api_key: str) -> bool:
+def test_etherscan(api_key: str) -> bool:
     import requests
 
     try:
         resp = requests.get(
-            "https://api.whale-alert.io/v1/status",
-            params={"api_key": api_key},
+            "https://api.etherscan.io/v2/api",
+            params={"chainid": 1, "module": "proxy", "action": "eth_blockNumber", "apikey": api_key},
             timeout=10,
         )
-        ok = resp.status_code == 200
-        logger.info("Whale Alert: %s (status %d)", "OK" if ok else "FAIL", resp.status_code)
+        data = resp.json()
+        ok = resp.status_code == 200 and data.get("status") != "0"
+        logger.info("Etherscan: %s", "OK" if ok else "FAIL")
         return ok
     except Exception as e:
-        logger.error("Whale Alert: FAIL (%s)", e)
+        logger.error("Etherscan: FAIL (%s)", e)
         return False
 
 
@@ -104,7 +105,7 @@ def test_telegram(token: str) -> bool:
 def main():
     config = load_config()
     results = {
-        "Whale Alert": test_whale_alert(config.whale_alert_api_key),
+        "Etherscan": test_etherscan(config.etherscan_api_key),
         "CoinGecko": test_coingecko(),
         "Anthropic": test_anthropic(config.anthropic_api_key),
         "Google Sheets": test_google_sheets(config.sheet_id, config.google_credentials),

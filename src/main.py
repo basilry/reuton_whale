@@ -4,16 +4,40 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from src.analyzer.claude_analyzer import ClaudeAnalyzer
+from src.analyzer.price_service import PriceService
 from src.analyzer.scoring import TransactionScorer
 from src.collectors.coingecko import CoinGeckoEnricher
-from src.collectors.whale_alert import WhaleAlertCollector
 from src.config import load_config
 from src.distributor.telegram_bot import WhaleScopeBot
+from src.ingestion.etherscan import EtherscanCollector
+from src.ingestion.registry import load_watched
+from src.ingestion.solscan import SolscanCollector
+from src.signals.models import Event
 from src.storage.queries import now_iso
 from src.storage.sheets_client import SheetsClient
 from src.utils.logger import get_logger
 
 logger = get_logger("pipeline")
+
+_EVM_CHAINS = ("ETH", "ARB", "BASE", "BSC", "POLYGON")
+
+
+def _event_to_dict(e: Event) -> dict:
+    return {
+        "hash": e.tx_hash or "",
+        "from_address": e.from_addr,
+        "from_owner_type": e.counterparty_category or "unknown",
+        "from_owner": e.from_addr[:12] if e.direction == "out" else (e.counterparty_category or "unknown"),
+        "to_address": e.to_addr,
+        "to_owner_type": e.counterparty_category or "unknown",
+        "to_owner": e.to_addr[:12] if e.direction == "in" else (e.counterparty_category or "unknown"),
+        "symbol": e.token,
+        "amount": e.amount_token,
+        "amount_usd": e.amount_usd,
+        "timestamp": int(e.block_time.timestamp()),
+        "blockchain": e.chain,
+        "raw_response_hash": e.tx_hash or "",
+    }
 
 
 async def run_daily_pipeline() -> dict:
@@ -39,17 +63,45 @@ async def run_daily_pipeline() -> dict:
     # Step 2: Initialize clients
     logger.info("[%s] Step 2/10: Initializing clients", run_id)
     sheets = SheetsClient(config.sheet_id, config.google_credentials)
-    collector = WhaleAlertCollector(config.whale_alert_api_key)
+    eth_collector = EtherscanCollector(config.etherscan_api_key)
+    sol_collector = SolscanCollector(config.solscan_api_key or None)
+    price_svc = PriceService()
     enricher = CoinGeckoEnricher()
     analyzer = ClaudeAnalyzer(config.anthropic_api_key, sheets=sheets)
     scorer = TransactionScorer()
     bot = WhaleScopeBot(config.telegram_token, sheets)
     bot.build()
 
-    # Step 3: Fetch whale transactions
+    # Step 3: Fetch whale transactions from on-chain sources
     logger.info("[%s] Step 3/10: Fetching whale transactions", run_id)
+    watched_index = load_watched(sheets)
+    since_ts = int(datetime.now(timezone.utc).timestamp()) - 24 * 3600
+    raw_events: list[Event] = []
     try:
-        transactions = collector.fetch_transactions(hours=24)
+        for chain in _EVM_CHAINS:
+            addrs = [
+                addr for addr, row in watched_index.items()
+                if row.get("chain", "").upper() in (chain, "EVM", "")
+            ]
+            if addrs:
+                raw_events.extend(
+                    eth_collector.fetch(
+                        addrs, chain, since_ts,
+                        watched_index=watched_index, price_service=price_svc,
+                    )
+                )
+        sol_addrs = [
+            addr for addr, row in watched_index.items()
+            if row.get("chain", "").upper() == "SOL"
+        ]
+        if sol_addrs:
+            raw_events.extend(
+                sol_collector.fetch(
+                    sol_addrs, since_ts,
+                    watched_index=watched_index, price_service=price_svc,
+                )
+            )
+        transactions = [_event_to_dict(e) for e in raw_events]
         logger.info("[%s] Fetched %d transactions", run_id, len(transactions))
     except Exception as e:
         errors.append(f"fetch_transactions: {e}")
