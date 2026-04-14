@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -77,7 +79,21 @@ class WhaleScopeBot:
         return result
 
     def _filter_brief(self, brief_text: str, watchlist: list[str]) -> str:
-        return brief_text
+        if not watchlist:
+            return brief_text
+        symbols = [re.escape(c.upper()) for c in watchlist if c]
+        if not symbols:
+            return brief_text
+        pattern = re.compile(rf"\b({'|'.join(symbols)})\b")
+        lines = []
+        for line in brief_text.splitlines():
+            if pattern.search(line):
+                stripped = line.lstrip()
+                indent = line[: len(line) - len(stripped)]
+                lines.append(f"{indent}\u2b50 {stripped}")
+            else:
+                lines.append(line)
+        return "\n".join(lines)
 
     async def handle_start(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -106,7 +122,7 @@ class WhaleScopeBot:
             if current:
                 text = format_watchlist_confirmation(current)
             else:
-                text = "No watchlist set. Usage: /watchlist ETH BTC SOL"
+                text = "설정된 관심 코인이 없습니다. 사용법: /watchlist ETH BTC SOL"
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
             return
 
@@ -121,7 +137,9 @@ class WhaleScopeBot:
     ) -> None:
         chat_id = update.effective_chat.id
         self._sheets.set_status(chat_id=chat_id, status="paused")
-        await update.message.reply_text("Notifications paused. Send /start to resume.")
+        await update.message.reply_text(
+            "알림이 일시중지되었습니다. 다시 시작하려면 /start 를 입력하세요."
+        )
 
     async def handle_status(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -130,18 +148,22 @@ class WhaleScopeBot:
         info = self._sheets.get_subscriber_info(chat_id=chat_id)
 
         if not info:
-            await update.message.reply_text("Not subscribed. Send /start to begin.")
+            await update.message.reply_text(
+                "구독되어 있지 않습니다. 시작하려면 /start 를 입력하세요."
+            )
             return
 
-        status = info.get("status", "unknown")
+        status_map = {"active": "활성", "paused": "일시중지"}
+        status_raw = info.get("status", "")
+        status_text = status_map.get(status_raw, status_raw or "알 수 없음")
         watchlist = info.get("watchlist", [])
-        last_brief = info.get("last_brief_at", "N/A")
+        last_brief = info.get("last_brief_at") or "없음"
 
-        wl_text = ", ".join(watchlist) if watchlist else "all coins"
+        wl_text = ", ".join(watchlist) if watchlist else "전체 코인"
         text = (
-            f"<b>Subscription Status</b>\n\n"
-            f"Status: {status}\n"
-            f"Watchlist: {wl_text}\n"
-            f"Last brief: {last_brief}"
+            f"<b>구독 상태</b>\n\n"
+            f"상태: {status_text}\n"
+            f"관심 코인: {wl_text}\n"
+            f"최근 브리프: {last_brief}"
         )
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)

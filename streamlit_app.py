@@ -23,6 +23,25 @@ SCOPES = [
 ]
 
 
+def _check_password() -> None:
+    expected = os.getenv("STREAMLIT_PASSWORD", "")
+    if not expected:
+        st.warning("STREAMLIT_PASSWORD가 설정되지 않아 인증이 비활성화되었습니다.")
+        return
+    if st.session_state.get("authenticated"):
+        return
+    pw = st.text_input("비밀번호", type="password")
+    if pw and pw == expected:
+        st.session_state["authenticated"] = True
+        st.rerun()
+    if pw:
+        st.error("비밀번호가 올바르지 않습니다.")
+    st.stop()
+
+
+_check_password()
+
+
 @st.cache_resource
 def get_spreadsheet():
     creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")

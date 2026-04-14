@@ -9,8 +9,8 @@ _STAR = " \u2b50"
 
 
 def _importance_bar(score: float) -> str:
-    clamped = max(0.0, min(1.0, score))
-    filled = round(clamped * _BAR_LENGTH)
+    normalized = max(0.0, min(1.0, score / 10.0))
+    filled = round(normalized * _BAR_LENGTH)
     return _IMPORTANCE_FULL * filled + _IMPORTANCE_EMPTY * (_BAR_LENGTH - filled)
 
 
@@ -26,7 +26,7 @@ def format_daily_brief(
     briefs: list[dict], watchlist: list[str] | None = None
 ) -> str:
     if not briefs:
-        return "<b>WhaleScope Daily Brief</b>\n\nNo significant whale movements detected."
+        return "<b>WhaleScope 데일리 브리핑</b>\n\n주목할 만한 고래 거래가 없습니다."
 
     watchlist_upper = {c.upper() for c in watchlist} if watchlist else set()
     cards: list[str] = []
@@ -42,32 +42,31 @@ def format_daily_brief(
 
         card = (
             f"<b>{symbol}{star}</b>\n"
-            f"Amount: {_format_usd(amount_usd)}\n"
-            f"Importance: [{_importance_bar(importance)}] {importance:.0%}\n"
+            f"금액: {_format_usd(amount_usd)}\n"
+            f"중요도: [{_importance_bar(importance)}] {importance}/10\n"
         )
         if analysis:
             card += f"<i>{analysis}</i>\n"
 
         cards.append(card)
 
-    header = f"<b>WhaleScope Daily Brief</b> ({len(briefs)} transactions)\n"
+    header = f"<b>WhaleScope 데일리 브리핑</b> (거래 {len(briefs)}건)\n"
     return header + "\n" + "\n".join(cards)
 
 
 def format_welcome_message() -> str:
     return (
-        "<b>Welcome to WhaleScope</b>\n\n"
-        "Real-time whale transaction monitoring with AI analysis.\n\n"
-        "<b>Commands:</b>\n"
-        "/watchlist ETH BTC SOL - Set coins to watch\n"
-        "/watchlist - View current watchlist\n"
-        "/pause - Pause notifications\n"
-        "/status - Subscription status & latest brief\n"
+        "<b>🐋 WhaleScope에 오신 것을 환영합니다!</b>\n\n"
+        "매일 아침 KST 08:00에 Top 5 고래 거래 브리핑이 전달됩니다.\n\n"
+        "<b>명령어:</b>\n"
+        "/watchlist - 관심 코인 설정\n"
+        "/pause - 알림 일시중지\n"
+        "/status - 구독 상태 확인\n"
     )
 
 
 def format_watchlist_confirmation(coins: list[str]) -> str:
     if not coins:
-        return "Watchlist cleared. You'll receive briefs for all coins."
+        return "모든 코인을 기본으로 추적합니다."
     formatted = ", ".join(f"<b>{c.upper()}</b>" for c in coins)
-    return f"Watchlist updated: {formatted}\nMatching transactions will be highlighted with {_STAR.strip()}."
+    return f"관심 코인 설정 완료: {formatted}"

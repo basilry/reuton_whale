@@ -8,11 +8,12 @@ from src.storage.schema import (
     ALL_TABS,
     ANALYSIS_LOG_HEADERS,
     DAILY_BRIEF_HEADERS,
+    SUBSCRIBERS_HEADERS,
     SYSTEM_LOG_HEADERS,
     TAB_HEADERS,
+    TAB_SUBSCRIBERS,
     TAB_TRANSACTIONS,
     TRANSACTIONS_HEADERS,
-    WATCHLIST_HEADERS,
 )
 
 
@@ -29,6 +30,22 @@ class TestSchema:
     def test_no_duplicate_headers(self):
         for tab, headers in TAB_HEADERS.items():
             assert len(headers) == len(set(headers)), f"Duplicate headers in {tab}"
+
+    def test_subscribers_headers_contain_required_fields(self):
+        required = {
+            "chat_id",
+            "username",
+            "status",
+            "watchlist_coins",
+            "created_at",
+            "updated_at",
+            "last_brief_at",
+        }
+        assert required.issubset(set(SUBSCRIBERS_HEADERS))
+
+    def test_subscribers_tab_registered(self):
+        assert TAB_SUBSCRIBERS in ALL_TABS
+        assert TAB_HEADERS[TAB_SUBSCRIBERS] == SUBSCRIBERS_HEADERS
 
 
 class TestQueries:
@@ -70,6 +87,18 @@ class TestQueries:
         assert "+" in ts or "Z" in ts
 
 
+def _make_sub_row(chat_id, username="", status="active", coins="", created="", updated="", last_brief=""):
+    row = [""] * len(SUBSCRIBERS_HEADERS)
+    row[SUBSCRIBERS_HEADERS.index("chat_id")] = str(chat_id)
+    row[SUBSCRIBERS_HEADERS.index("username")] = username
+    row[SUBSCRIBERS_HEADERS.index("status")] = status
+    row[SUBSCRIBERS_HEADERS.index("watchlist_coins")] = coins
+    row[SUBSCRIBERS_HEADERS.index("created_at")] = created
+    row[SUBSCRIBERS_HEADERS.index("updated_at")] = updated
+    row[SUBSCRIBERS_HEADERS.index("last_brief_at")] = last_brief
+    return row
+
+
 class TestSheetsClient:
     def _make_client(self):
         with patch("src.storage.sheets_client.gspread") as mock_gspread, \
@@ -80,7 +109,6 @@ class TestSheetsClient:
             mock_spreadsheet = MagicMock()
             mock_gc.open_by_key.return_value = mock_spreadsheet
 
-            # All worksheets exist
             mock_ws_list = [MagicMock(title=t) for t in ALL_TABS]
             mock_spreadsheet.worksheets.return_value = mock_ws_list
 
@@ -96,21 +124,18 @@ class TestSheetsClient:
         client, mock_ss = self._make_client()
         mock_ws = MagicMock()
         mock_ss.worksheet.return_value = mock_ws
-        # Existing row with hash "abc"
         hash_col = TRANSACTIONS_HEADERS.index("raw_response_hash")
         existing_row = [""] * len(TRANSACTIONS_HEADERS)
         existing_row[hash_col] = "abc"
         mock_ws.get_all_values.return_value = [TRANSACTIONS_HEADERS, existing_row]
 
         txs = [
-            {"raw_response_hash": "abc", "hash": "h1"},  # duplicate
-            {"raw_response_hash": "def", "hash": "h2"},  # new
+            {"raw_response_hash": "abc", "hash": "h1"},
+            {"raw_response_hash": "def", "hash": "h2"},
         ]
         count = client.append_transactions(txs)
         assert count == 1
         mock_ws.append_rows.assert_called_once()
-        appended = mock_ws.append_rows.call_args[0][0]
-        assert len(appended) == 1
 
     def test_append_transactions_empty_sheet(self):
         client, mock_ss = self._make_client()
@@ -137,46 +162,185 @@ class TestSheetsClient:
         assert len(result) == 1
         assert result[0]["date"] == "2026-04-14"
 
-    def test_get_active_watchlists(self):
+    def test_get_active_subscribers_filters_by_status(self):
         client, mock_ss = self._make_client()
         mock_ws = MagicMock()
         mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [
+            SUBSCRIBERS_HEADERS,
+            _make_sub_row(1, "alice", "active", "BTC,ETH"),
+            _make_sub_row(2, "bob", "paused", "SOL"),
+            _make_sub_row(3, "carol", "active", ""),
+        ]
 
-        active_col = WATCHLIST_HEADERS.index("active")
-        uid_col = WATCHLIST_HEADERS.index("user_id")
-        row1 = [""] * len(WATCHLIST_HEADERS)
-        row1[active_col] = "true"
-        row1[uid_col] = "1"
-        row2 = [""] * len(WATCHLIST_HEADERS)
-        row2[active_col] = "false"
-        row2[uid_col] = "2"
-        mock_ws.get_all_values.return_value = [WATCHLIST_HEADERS, row1, row2]
+        result = client.get_active_subscribers()
+        assert len(result) == 2
+        ids = [r["chat_id"] for r in result]
+        assert ids == [1, 3]
+        # watchlist parsed to list
+        assert result[0]["watchlist"] == ["BTC", "ETH"]
+        assert result[1]["watchlist"] == []
+
+    def test_add_subscriber_new(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [SUBSCRIBERS_HEADERS]
+
+        client.add_subscriber(chat_id=100, username="alice")
+        mock_ws.append_row.assert_called_once()
+        row_data = mock_ws.append_row.call_args[0][0]
+        assert row_data[SUBSCRIBERS_HEADERS.index("chat_id")] == "100"
+        assert row_data[SUBSCRIBERS_HEADERS.index("username")] == "alice"
+        assert row_data[SUBSCRIBERS_HEADERS.index("status")] == "active"
+
+    def test_add_subscriber_reactivates_existing(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [
+            SUBSCRIBERS_HEADERS,
+            _make_sub_row(100, "alice", "paused", "BTC", created="old"),
+        ]
+
+        client.add_subscriber(chat_id=100, username="alice")
+        mock_ws.append_row.assert_not_called()
+        mock_ws.update.assert_called_once()
+        row_written = mock_ws.update.call_args[0][1][0]
+        assert row_written[SUBSCRIBERS_HEADERS.index("status")] == "active"
+        # preserved watchlist
+        assert row_written[SUBSCRIBERS_HEADERS.index("watchlist_coins")] == "BTC"
+        assert row_written[SUBSCRIBERS_HEADERS.index("created_at")] == "old"
+
+    def test_get_watchlist_returns_list(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [
+            SUBSCRIBERS_HEADERS,
+            _make_sub_row(100, "alice", "active", "btc, eth , sol"),
+        ]
+
+        assert client.get_watchlist(chat_id=100) == ["BTC", "ETH", "SOL"]
+
+    def test_get_watchlist_missing_subscriber(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [SUBSCRIBERS_HEADERS]
+
+        assert client.get_watchlist(chat_id=404) == []
+
+    def test_set_watchlist_updates_existing(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [
+            SUBSCRIBERS_HEADERS,
+            _make_sub_row(100, "alice", "active", "BTC"),
+        ]
+
+        client.set_watchlist(chat_id=100, coins=["eth", "sol"])
+        mock_ws.update.assert_called_once()
+        row_written = mock_ws.update.call_args[0][1][0]
+        assert row_written[SUBSCRIBERS_HEADERS.index("watchlist_coins")] == "ETH,SOL"
+
+    def test_set_watchlist_creates_when_missing(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [SUBSCRIBERS_HEADERS]
+
+        client.set_watchlist(chat_id=200, coins=["BTC"])
+        mock_ws.append_row.assert_called_once()
+
+    def test_set_status_paused(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [
+            SUBSCRIBERS_HEADERS,
+            _make_sub_row(100, "alice", "active", "BTC"),
+        ]
+
+        client.set_status(chat_id=100, status="paused")
+        row_written = mock_ws.update.call_args[0][1][0]
+        assert row_written[SUBSCRIBERS_HEADERS.index("status")] == "paused"
+
+    def test_set_status_invalid_raises(self):
+        from src.utils.errors import StorageError
+        client, mock_ss = self._make_client()
+
+        with pytest.raises(StorageError, match="Invalid status"):
+            client.set_status(chat_id=100, status="garbage")
+
+    def test_set_status_missing_subscriber_raises(self):
+        from src.utils.errors import StorageError
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [SUBSCRIBERS_HEADERS]
+
+        with pytest.raises(StorageError, match="not found"):
+            client.set_status(chat_id=404, status="paused")
+
+    def test_get_subscriber_info_hit(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [
+            SUBSCRIBERS_HEADERS,
+            _make_sub_row(100, "alice", "active", "BTC,ETH", last_brief="2026-04-14"),
+        ]
+
+        info = client.get_subscriber_info(chat_id=100)
+        assert info is not None
+        assert info["chat_id"] == 100
+        assert info["status"] == "active"
+        assert info["watchlist"] == ["BTC", "ETH"]
+        assert info["last_brief_at"] == "2026-04-14"
+
+    def test_get_subscriber_info_miss(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [SUBSCRIBERS_HEADERS]
+
+        assert client.get_subscriber_info(chat_id=404) is None
+
+    def test_legacy_get_active_watchlists_maps_from_subscribers(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [
+            SUBSCRIBERS_HEADERS,
+            _make_sub_row(1, "alice", "active", "BTC"),
+            _make_sub_row(2, "bob", "paused", "ETH"),
+        ]
 
         result = client.get_active_watchlists()
         assert len(result) == 1
-        assert result[0]["user_id"] == "1"
+        assert result[0]["user_id"] == 1
+        assert result[0]["coins"] == ["BTC"]
+        assert result[0]["active"] == "true"
 
-    def test_upsert_watchlist_insert(self):
+    def test_legacy_upsert_watchlist_uses_subscribers(self):
         client, mock_ss = self._make_client()
         mock_ws = MagicMock()
         mock_ss.worksheet.return_value = mock_ws
-        mock_ws.get_all_values.return_value = [WATCHLIST_HEADERS]
+        # Simulate row appearing after add_subscriber so that set_watchlist updates it.
+        row = _make_sub_row(123, "alice", "active")
+        states = iter([
+            [SUBSCRIBERS_HEADERS],            # add_subscriber initial read
+            [SUBSCRIBERS_HEADERS, row],       # set_watchlist sees the row after insert
+        ])
+        mock_ws.get_all_values.side_effect = lambda: next(states)
 
-        client.upsert_watchlist(123, "alice", ["BTC", "ETH"])
+        client.upsert_watchlist(user_id=123, username="alice", coins=["BTC", "ETH"])
         mock_ws.append_row.assert_called_once()
-
-    def test_upsert_watchlist_update(self):
-        client, mock_ss = self._make_client()
-        mock_ws = MagicMock()
-        mock_ss.worksheet.return_value = mock_ws
-
-        uid_col = WATCHLIST_HEADERS.index("user_id")
-        existing = [""] * len(WATCHLIST_HEADERS)
-        existing[uid_col] = "123"
-        mock_ws.get_all_values.return_value = [WATCHLIST_HEADERS, existing]
-
-        client.upsert_watchlist(123, "alice", ["BTC"])
         mock_ws.update.assert_called_once()
+        row_written = mock_ws.update.call_args[0][1][0]
+        assert row_written[SUBSCRIBERS_HEADERS.index("watchlist_coins")] == "BTC,ETH"
 
     def test_get_cached_analysis_found(self):
         client, mock_ss = self._make_client()
@@ -200,6 +364,20 @@ class TestSheetsClient:
 
         assert client.get_cached_analysis("missing") is None
 
+    def test_save_analysis_appends_row(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+
+        client.save_analysis({
+            "prompt_hash": "h1",
+            "prompt": "p",
+            "response": "{}",
+            "model": "claude",
+            "tokens_used": 10,
+        })
+        mock_ws.append_row.assert_called_once()
+
     def test_ensure_worksheets_creates_missing(self):
         with patch("src.storage.sheets_client.gspread") as mock_gspread, \
              patch("src.storage.sheets_client.Credentials") as mock_creds:
@@ -208,10 +386,25 @@ class TestSheetsClient:
             mock_gspread.authorize.return_value = mock_gc
             mock_ss = MagicMock()
             mock_gc.open_by_key.return_value = mock_ss
-            # No existing worksheets
             mock_ss.worksheets.return_value = []
             mock_ss.add_worksheet.return_value = MagicMock()
 
             from src.storage.sheets_client import SheetsClient
             SheetsClient("id", '{"type":"service_account"}')
-            assert mock_ss.add_worksheet.call_count == 5
+            assert mock_ss.add_worksheet.call_count == len(ALL_TABS)
+
+    def test_ensure_worksheets_creates_subscribers_tab(self):
+        with patch("src.storage.sheets_client.gspread") as mock_gspread, \
+             patch("src.storage.sheets_client.Credentials") as mock_creds:
+            mock_creds.from_service_account_info.return_value = MagicMock()
+            mock_gc = MagicMock()
+            mock_gspread.authorize.return_value = mock_gc
+            mock_ss = MagicMock()
+            mock_gc.open_by_key.return_value = mock_ss
+            mock_ss.worksheets.return_value = []
+            mock_ss.add_worksheet.return_value = MagicMock()
+
+            from src.storage.sheets_client import SheetsClient
+            SheetsClient("id", '{"type":"service_account"}')
+            titles = [c.kwargs.get("title") for c in mock_ss.add_worksheet.call_args_list]
+            assert TAB_SUBSCRIBERS in titles

@@ -1,13 +1,13 @@
 TAB_TRANSACTIONS = "transactions"
 TAB_DAILY_BRIEF = "daily_brief"
-TAB_WATCHLIST = "watchlist"
+TAB_SUBSCRIBERS = "subscribers"
 TAB_ANALYSIS_LOG = "analysis_log"
 TAB_SYSTEM_LOG = "system_log"
 
 ALL_TABS = [
     TAB_TRANSACTIONS,
     TAB_DAILY_BRIEF,
-    TAB_WATCHLIST,
+    TAB_SUBSCRIBERS,
     TAB_ANALYSIS_LOG,
     TAB_SYSTEM_LOG,
 ]
@@ -38,12 +38,14 @@ DAILY_BRIEF_HEADERS = [
     "created_at",
 ]
 
-WATCHLIST_HEADERS = [
-    "user_id",
+SUBSCRIBERS_HEADERS = [
+    "chat_id",
     "username",
-    "coins",
-    "active",
+    "status",
+    "watchlist_coins",
+    "created_at",
     "updated_at",
+    "last_brief_at",
 ]
 
 ANALYSIS_LOG_HEADERS = [
@@ -69,7 +71,7 @@ SYSTEM_LOG_HEADERS = [
 TAB_HEADERS = {
     TAB_TRANSACTIONS: TRANSACTIONS_HEADERS,
     TAB_DAILY_BRIEF: DAILY_BRIEF_HEADERS,
-    TAB_WATCHLIST: WATCHLIST_HEADERS,
+    TAB_SUBSCRIBERS: SUBSCRIBERS_HEADERS,
     TAB_ANALYSIS_LOG: ANALYSIS_LOG_HEADERS,
     TAB_SYSTEM_LOG: SYSTEM_LOG_HEADERS,
 }

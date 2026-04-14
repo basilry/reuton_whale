@@ -41,7 +41,7 @@ async def run_daily_pipeline() -> dict:
     sheets = SheetsClient(config.sheet_id, config.google_credentials)
     collector = WhaleAlertCollector(config.whale_alert_api_key)
     enricher = CoinGeckoEnricher()
-    analyzer = ClaudeAnalyzer(config.anthropic_api_key)
+    analyzer = ClaudeAnalyzer(config.anthropic_api_key, sheets=sheets)
     scorer = TransactionScorer()
     bot = WhaleScopeBot(config.telegram_token, sheets)
     bot.build()
@@ -100,7 +100,14 @@ async def run_daily_pipeline() -> dict:
     except Exception as e:
         errors.append(f"analyze_batch: {e}")
         logger.error("[%s] Analysis failed: %s", run_id, e)
-        analyzed = filtered
+        analyzed = []
+        for tx in filtered:
+            tx_copy = dict(tx)
+            tx_copy["importance_score"] = int(tx.get("base_score", 0))
+            tx_copy["type"] = "unknown"
+            tx_copy["interpretation"] = "(AI 분석 실패, 규칙 기반 점수로 대체)"
+            tx_copy["confidence"] = "low"
+            analyzed.append(tx_copy)
 
     # Step 7: Rank and select top 5
     logger.info("[%s] Step 7/10: Ranking top transactions", run_id)
@@ -134,7 +141,18 @@ async def run_daily_pipeline() -> dict:
             sheets.save_daily_brief(today, [{
                 "summary": brief_text,
                 "top_transactions": json.dumps(
-                    [tx.get("hash", "") for tx in top5], ensure_ascii=False
+                    [
+                        {
+                            "hash": tx.get("hash", ""),
+                            "symbol": tx.get("symbol", ""),
+                            "amount_usd": tx.get("amount_usd", 0),
+                            "importance_score": tx.get("importance_score", 0),
+                            "interpretation": tx.get("interpretation", ""),
+                            "type": tx.get("type", ""),
+                        }
+                        for tx in top5
+                    ],
+                    ensure_ascii=False,
                 ),
                 "total_volume_usd": total_volume,
                 "alert_count": len(top5),

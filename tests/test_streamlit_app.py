@@ -1,7 +1,13 @@
+import json
+import os
+
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
+
+# Ensure module import doesn't block on auth (empty password = auth disabled).
+os.environ.setdefault("STREAMLIT_PASSWORD", "")
 
 from src.storage.schema import DAILY_BRIEF_HEADERS, TRANSACTIONS_HEADERS
 
@@ -66,3 +72,39 @@ class TestLoadDailyBriefs:
         assert len(df) == 1
         assert df.iloc[0]["total_volume_usd"] == 100000.0
         assert df.iloc[0]["alert_count"] == 5
+
+    @patch("streamlit_app.get_spreadsheet")
+    def test_top_transactions_dict_list_roundtrip(self, mock_ss):
+        # Main.py now stores top_transactions as a JSON-encoded dict list.
+        # Streamlit reads that column and parses it inline; verify the round-trip
+        # against the format main.py emits.
+        top_txs = [
+            {
+                "hash": "h1",
+                "symbol": "BTC",
+                "amount_usd": 50_000_000,
+                "importance_score": 8,
+                "interpretation": "Big move",
+                "type": "distribution",
+            }
+        ]
+        payload = json.dumps(top_txs, ensure_ascii=False)
+        mock_ws = MagicMock()
+        mock_ws.get_all_values.return_value = [
+            DAILY_BRIEF_HEADERS,
+            ["2026-04-14", "summary", payload, "100000", "1", "2026-04-14T00:00:00"],
+        ]
+        mock_spreadsheet = MagicMock()
+        mock_spreadsheet.worksheet.return_value = mock_ws
+        mock_ss.return_value = mock_spreadsheet
+
+        from streamlit_app import load_daily_briefs
+        load_daily_briefs.clear()
+        df = load_daily_briefs()
+        parsed = json.loads(df.iloc[0]["top_transactions"])
+        assert isinstance(parsed, list)
+        assert parsed[0]["symbol"] == "BTC"
+        assert parsed[0]["importance_score"] == 8
+        assert set(parsed[0].keys()) >= {
+            "hash", "symbol", "amount_usd", "importance_score", "interpretation", "type"
+        }

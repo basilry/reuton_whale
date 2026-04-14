@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 import time
 
 import requests
@@ -11,6 +12,10 @@ from src.utils.retry import retry
 logger = get_logger("whale_alert")
 
 BASE_URL = "https://api.whale-alert.io/v1/transactions"
+
+
+def _mask_url(url: str) -> str:
+    return re.sub(r"api_key=[^&]*", "api_key=***", url)
 
 
 class WhaleAlertCollector:
@@ -43,6 +48,8 @@ class WhaleAlertCollector:
             timeout=30,
         )
 
+        logger.debug("Whale Alert request: %s", _mask_url(resp.url))
+
         if resp.status_code == 401:
             raise ValueError("Invalid Whale Alert API key")
 
@@ -53,7 +60,10 @@ class WhaleAlertCollector:
         if resp.status_code == 429:
             raise WhaleAlertError("Rate limited (429)")
 
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except requests.HTTPError as exc:
+            raise WhaleAlertError(_mask_url(str(exc))) from None
         return resp.json().get("transactions", [])
 
     def _parse_transaction(self, raw: dict) -> dict:

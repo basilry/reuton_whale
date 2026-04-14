@@ -9,6 +9,7 @@ from src.distributor.formatters import (
     _format_usd,
     _importance_bar,
 )
+from src.storage.sheets_client import SheetsClient
 
 
 class TestFormatUsd:
@@ -24,31 +25,41 @@ class TestFormatUsd:
 
 class TestImportanceBar:
     def test_full(self):
-        bar = _importance_bar(1.0)
+        bar = _importance_bar(10)
         assert len(bar) == 10
+        assert bar.count("\u2588") == 10
 
     def test_empty(self):
-        bar = _importance_bar(0.0)
+        bar = _importance_bar(0)
         assert len(bar) == 10
+        assert bar.count("\u2591") == 10
 
     def test_clamp_above(self):
-        bar = _importance_bar(1.5)
+        bar = _importance_bar(15)
+        assert len(bar) == 10
+        assert bar.count("\u2588") == 10
+
+    def test_mid(self):
+        bar = _importance_bar(5)
         assert len(bar) == 10
 
 
 class TestFormatDailyBrief:
-    def test_empty(self):
+    def test_empty_korean(self):
         result = format_daily_brief([])
-        assert "No significant" in result
+        assert "주목할 만한" in result
 
     def test_with_briefs(self):
-        briefs = [{"symbol": "BTC", "amount_usd": 50_000_000, "importance_score": 0.8, "analysis": "Big move"}]
+        briefs = [
+            {"symbol": "BTC", "amount_usd": 50_000_000, "importance_score": 8, "analysis": "큰 움직임"}
+        ]
         result = format_daily_brief(briefs)
         assert "BTC" in result
-        assert "Big move" in result
+        assert "큰 움직임" in result
+        assert "8/10" in result
 
     def test_watchlist_star(self):
-        briefs = [{"symbol": "ETH", "amount_usd": 10_000_000, "importance_score": 0.5}]
+        briefs = [{"symbol": "ETH", "amount_usd": 10_000_000, "importance_score": 5}]
         result = format_daily_brief(briefs, watchlist=["eth"])
         assert "\u2b50" in result
 
@@ -60,6 +71,10 @@ class TestFormatWelcomeMessage:
         assert "/pause" in msg
         assert "/status" in msg
 
+    def test_is_korean(self):
+        msg = format_welcome_message()
+        assert "환영" in msg
+
 
 class TestFormatWatchlistConfirmation:
     def test_with_coins(self):
@@ -67,9 +82,42 @@ class TestFormatWatchlistConfirmation:
         assert "BTC" in result
         assert "ETH" in result
 
-    def test_cleared(self):
+    def test_cleared_korean(self):
         result = format_watchlist_confirmation([])
-        assert "cleared" in result.lower()
+        assert "모든 코인" in result
+
+
+class TestFilterBrief:
+    def _bot(self):
+        from src.distributor.telegram_bot import WhaleScopeBot
+        return WhaleScopeBot(token="x", sheets_client=MagicMock(spec=SheetsClient))
+
+    def test_empty_watchlist_returns_original(self):
+        bot = self._bot()
+        text = "- 500 ETH to Binance"
+        assert bot._filter_brief(text, []) == text
+
+    def test_marks_matching_lines(self):
+        bot = self._bot()
+        text = "- 500 ETH to Binance\n- 100 BTC to cold wallet\n- 200 SOL burn"
+        result = bot._filter_brief(text, ["ETH", "SOL"])
+        lines = result.splitlines()
+        assert lines[0].startswith("\u2b50")
+        assert not lines[1].startswith("\u2b50")
+        assert lines[2].startswith("\u2b50")
+
+    def test_word_boundary_no_partial_match(self):
+        bot = self._bot()
+        # "BNB" shouldn't match "BN" in text like "Binance BNB"
+        text = "- 500 BNBX to somewhere"
+        result = bot._filter_brief(text, ["BNB"])
+        assert "\u2b50" not in result
+
+    def test_case_insensitive_via_upper(self):
+        bot = self._bot()
+        text = "- 500 ETH to Binance"
+        result = bot._filter_brief(text, ["eth"])
+        assert result.startswith("\u2b50")
 
 
 class TestWhaleScopeBot:
@@ -78,7 +126,7 @@ class TestWhaleScopeBot:
         from src.distributor.telegram_bot import WhaleScopeBot
         from src.utils.errors import DistributorError
 
-        sheets_mock = MagicMock()
+        sheets_mock = MagicMock(spec=SheetsClient)
         bot = WhaleScopeBot(token="test", sheets_client=sheets_mock)
         with pytest.raises(DistributorError, match="not built"):
             await bot.send_daily_brief("test brief")
@@ -92,8 +140,8 @@ class TestWhaleScopeBot:
         mock_app_cls.builder.return_value = mock_builder
 
         from src.distributor.telegram_bot import WhaleScopeBot
-        bot = WhaleScopeBot(token="test-token", sheets_client=MagicMock())
-        app = bot.build()
+        bot = WhaleScopeBot(token="test-token", sheets_client=MagicMock(spec=SheetsClient))
+        bot.build()
         assert mock_app.add_handler.call_count == 4
 
     @patch("src.distributor.telegram_bot.Application")
@@ -106,9 +154,9 @@ class TestWhaleScopeBot:
         mock_app_cls.builder.return_value = mock_builder
         mock_app.bot.send_message = AsyncMock()
 
-        sheets_mock = MagicMock()
+        sheets_mock = MagicMock(spec=SheetsClient)
         sheets_mock.get_active_subscribers.return_value = [
-            {"chat_id": "123", "watchlist": None},
+            {"chat_id": 123, "watchlist": []},
         ]
 
         from src.distributor.telegram_bot import WhaleScopeBot
@@ -121,6 +169,30 @@ class TestWhaleScopeBot:
 
     @patch("src.distributor.telegram_bot.Application")
     @pytest.mark.asyncio
+    async def test_send_daily_brief_applies_filter_when_watchlist(self, mock_app_cls):
+        mock_app = MagicMock()
+        mock_builder = MagicMock()
+        mock_builder.token.return_value = mock_builder
+        mock_builder.build.return_value = mock_app
+        mock_app_cls.builder.return_value = mock_builder
+        send_mock = AsyncMock()
+        mock_app.bot.send_message = send_mock
+
+        sheets_mock = MagicMock(spec=SheetsClient)
+        sheets_mock.get_active_subscribers.return_value = [
+            {"chat_id": 123, "watchlist": ["ETH"]},
+        ]
+
+        from src.distributor.telegram_bot import WhaleScopeBot
+        bot = WhaleScopeBot(token="test-token", sheets_client=sheets_mock)
+        bot.build()
+
+        await bot.send_daily_brief("- 500 ETH transfer\n- 10 BTC transfer")
+        sent_text = send_mock.call_args.kwargs["text"]
+        assert "\u2b50" in sent_text
+
+    @patch("src.distributor.telegram_bot.Application")
+    @pytest.mark.asyncio
     async def test_send_daily_brief_blocked_user(self, mock_app_cls):
         mock_app = MagicMock()
         mock_builder = MagicMock()
@@ -129,9 +201,9 @@ class TestWhaleScopeBot:
         mock_app_cls.builder.return_value = mock_builder
         mock_app.bot.send_message = AsyncMock(side_effect=Exception("Forbidden: bot was blocked"))
 
-        sheets_mock = MagicMock()
+        sheets_mock = MagicMock(spec=SheetsClient)
         sheets_mock.get_active_subscribers.return_value = [
-            {"chat_id": "456"},
+            {"chat_id": 456, "watchlist": []},
         ]
 
         from src.distributor.telegram_bot import WhaleScopeBot
@@ -143,9 +215,9 @@ class TestWhaleScopeBot:
         assert result["sent"] == 0
 
     @pytest.mark.asyncio
-    async def test_handle_start(self):
+    async def test_handle_start_calls_add_subscriber(self):
         from src.distributor.telegram_bot import WhaleScopeBot
-        sheets_mock = MagicMock()
+        sheets_mock = MagicMock(spec=SheetsClient)
         bot = WhaleScopeBot(token="test-token", sheets_client=sheets_mock)
 
         update = MagicMock()
@@ -161,7 +233,7 @@ class TestWhaleScopeBot:
     @pytest.mark.asyncio
     async def test_handle_watchlist_set(self):
         from src.distributor.telegram_bot import WhaleScopeBot
-        sheets_mock = MagicMock()
+        sheets_mock = MagicMock(spec=SheetsClient)
         bot = WhaleScopeBot(token="test-token", sheets_client=sheets_mock)
 
         update = MagicMock()
@@ -174,9 +246,9 @@ class TestWhaleScopeBot:
         sheets_mock.set_watchlist.assert_called_once_with(chat_id=999, coins=["BTC", "ETH"])
 
     @pytest.mark.asyncio
-    async def test_handle_watchlist_view(self):
+    async def test_handle_watchlist_view_existing(self):
         from src.distributor.telegram_bot import WhaleScopeBot
-        sheets_mock = MagicMock()
+        sheets_mock = MagicMock(spec=SheetsClient)
         sheets_mock.get_watchlist.return_value = ["BTC"]
         bot = WhaleScopeBot(token="test-token", sheets_client=sheets_mock)
 
@@ -187,12 +259,30 @@ class TestWhaleScopeBot:
         context.args = []
 
         await bot.handle_watchlist(update, context)
-        update.message.reply_text.assert_called_once()
+        reply_text = update.message.reply_text.call_args[0][0]
+        assert "BTC" in reply_text
 
     @pytest.mark.asyncio
-    async def test_handle_pause(self):
+    async def test_handle_watchlist_view_empty_korean(self):
         from src.distributor.telegram_bot import WhaleScopeBot
-        sheets_mock = MagicMock()
+        sheets_mock = MagicMock(spec=SheetsClient)
+        sheets_mock.get_watchlist.return_value = []
+        bot = WhaleScopeBot(token="test-token", sheets_client=sheets_mock)
+
+        update = MagicMock()
+        update.effective_chat.id = 999
+        update.message.reply_text = AsyncMock()
+        context = MagicMock()
+        context.args = []
+
+        await bot.handle_watchlist(update, context)
+        reply_text = update.message.reply_text.call_args[0][0]
+        assert "관심 코인" in reply_text
+
+    @pytest.mark.asyncio
+    async def test_handle_pause_korean(self):
+        from src.distributor.telegram_bot import WhaleScopeBot
+        sheets_mock = MagicMock(spec=SheetsClient)
         bot = WhaleScopeBot(token="test-token", sheets_client=sheets_mock)
 
         update = MagicMock()
@@ -202,3 +292,44 @@ class TestWhaleScopeBot:
 
         await bot.handle_pause(update, context)
         sheets_mock.set_status.assert_called_once_with(chat_id=999, status="paused")
+        reply_text = update.message.reply_text.call_args[0][0]
+        assert "일시중지" in reply_text
+
+    @pytest.mark.asyncio
+    async def test_handle_status_subscribed(self):
+        from src.distributor.telegram_bot import WhaleScopeBot
+        sheets_mock = MagicMock(spec=SheetsClient)
+        sheets_mock.get_subscriber_info.return_value = {
+            "chat_id": 999,
+            "status": "active",
+            "watchlist": ["BTC", "ETH"],
+            "last_brief_at": "2026-04-14",
+        }
+        bot = WhaleScopeBot(token="test-token", sheets_client=sheets_mock)
+
+        update = MagicMock()
+        update.effective_chat.id = 999
+        update.message.reply_text = AsyncMock()
+        context = MagicMock()
+
+        await bot.handle_status(update, context)
+        reply_text = update.message.reply_text.call_args[0][0]
+        assert "활성" in reply_text
+        assert "BTC" in reply_text
+        assert "구독 상태" in reply_text
+
+    @pytest.mark.asyncio
+    async def test_handle_status_not_subscribed_korean(self):
+        from src.distributor.telegram_bot import WhaleScopeBot
+        sheets_mock = MagicMock(spec=SheetsClient)
+        sheets_mock.get_subscriber_info.return_value = None
+        bot = WhaleScopeBot(token="test-token", sheets_client=sheets_mock)
+
+        update = MagicMock()
+        update.effective_chat.id = 999
+        update.message.reply_text = AsyncMock()
+        context = MagicMock()
+
+        await bot.handle_status(update, context)
+        reply_text = update.message.reply_text.call_args[0][0]
+        assert "구독" in reply_text

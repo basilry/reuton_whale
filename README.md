@@ -118,9 +118,11 @@ ANTHROPIC_API_KEY=발급받은_anthropic_키
 GOOGLE_SHEET_ID=스프레드시트_ID
 GOOGLE_CREDENTIALS_JSON={"type":"service_account","project_id":"..."}
 TELEGRAM_BOT_TOKEN=발급받은_텔레그램_봇_토큰
+STREAMLIT_PASSWORD=대시보드_접근_비밀번호
 ```
 
 > `GOOGLE_CREDENTIALS_JSON`은 다운로드한 JSON 파일 내용을 한 줄로 넣는다.
+> `STREAMLIT_PASSWORD`를 비워두면 대시보드 인증이 비활성화된다 (개발 환경 전용).
 
 ### 3. Google Sheets 초기화
 
@@ -128,7 +130,7 @@ TELEGRAM_BOT_TOKEN=발급받은_텔레그램_봇_토큰
 python -m scripts.init_sheets
 ```
 
-5개 탭(transactions, daily_brief, watchlist, analysis_log, system_log)과 헤더가 자동 생성된다.
+5개 탭(transactions, daily_brief, subscribers, analysis_log, system_log)과 헤더가 자동 생성된다.
 
 ### 4. 연결 테스트
 
@@ -146,7 +148,17 @@ python scripts/manual_brief.py
 
 파이프라인을 1회 실행하여 거래 수집 -> 분석 -> 브리핑 생성 -> 텔레그램 발송까지 확인한다.
 
-### 6. Streamlit 대시보드
+### 6. 텔레그램 봇 상시 실행 (구독자 명령 처리)
+
+```bash
+python scripts/run_bot.py
+```
+
+`/start`, `/watchlist`, `/pause`, `/status` 명령을 long-polling으로 처리한다.
+데스크탑에서 상시 실행하거나 Render / Fly.io 같은 상시 실행 환경에 배포한다.
+GitHub Actions만으로는 폴링이 불가능하므로, 구독 관리 기능을 쓰려면 별도 실행 필요.
+
+### 7. Streamlit 대시보드
 
 ```bash
 streamlit run streamlit_app.py
@@ -157,7 +169,7 @@ streamlit run streamlit_app.py
 - **거래 히스토리**: 날짜/토큰/금액 필터링 테이블
 - **통계**: 일별 추이, 토큰별 분포, 거래소 입출금 비율 차트
 
-### 7. GitHub Actions 자동화 (선택)
+### 8. GitHub Actions 자동화 (선택)
 
 GitHub 저장소 Settings -> Secrets and variables -> Actions에 5개 시크릿 등록:
 

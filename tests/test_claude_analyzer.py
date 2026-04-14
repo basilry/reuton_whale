@@ -131,6 +131,106 @@ class TestAnalyzeBatch:
         assert len(results) == 0
 
 
+class TestParseJsonResponse:
+    @patch("src.analyzer.claude_analyzer.anthropic")
+    def test_raw_json(self, mock_anthropic):
+        mock_anthropic.Anthropic.return_value = MagicMock()
+        analyzer = ClaudeAnalyzer(api_key="test-key")
+        assert analyzer._parse_json_response('{"a": 1}') == {"a": 1}
+
+    @patch("src.analyzer.claude_analyzer.anthropic")
+    def test_markdown_fence_with_json_hint(self, mock_anthropic):
+        mock_anthropic.Anthropic.return_value = MagicMock()
+        analyzer = ClaudeAnalyzer(api_key="test-key")
+        raw = '```json\n{"a": 1}\n```'
+        assert analyzer._parse_json_response(raw) == {"a": 1}
+
+    @patch("src.analyzer.claude_analyzer.anthropic")
+    def test_markdown_fence_without_hint(self, mock_anthropic):
+        mock_anthropic.Anthropic.return_value = MagicMock()
+        analyzer = ClaudeAnalyzer(api_key="test-key")
+        raw = '```\n{"a": 1}\n```'
+        assert analyzer._parse_json_response(raw) == {"a": 1}
+
+    @patch("src.analyzer.claude_analyzer.anthropic")
+    def test_extract_braces_from_prose(self, mock_anthropic):
+        mock_anthropic.Anthropic.return_value = MagicMock()
+        analyzer = ClaudeAnalyzer(api_key="test-key")
+        raw = 'Here is the analysis: {"a": 1, "b": "x"} done.'
+        assert analyzer._parse_json_response(raw) == {"a": 1, "b": "x"}
+
+    @patch("src.analyzer.claude_analyzer.anthropic")
+    def test_garbage_raises(self, mock_anthropic):
+        mock_anthropic.Anthropic.return_value = MagicMock()
+        analyzer = ClaudeAnalyzer(api_key="test-key")
+        with pytest.raises(AnalysisError):
+            analyzer._parse_json_response("no json at all")
+
+
+class TestSheetsCache:
+    @patch("src.analyzer.claude_analyzer.anthropic")
+    def test_sheets_cache_hit_skips_api(self, mock_anthropic):
+        from src.storage.sheets_client import SheetsClient
+
+        client = MagicMock()
+        client.messages.create.return_value = _mock_response(VALID_JSON)
+        mock_anthropic.Anthropic.return_value = client
+
+        sheets = MagicMock(spec=SheetsClient)
+        sheets.get_cached_analysis.return_value = {"response": VALID_JSON}
+
+        analyzer = ClaudeAnalyzer(api_key="test-key", sheets=sheets)
+        result = analyzer.analyze_transaction(_sample_tx())
+
+        assert result["importance_score"] == 8
+        client.messages.create.assert_not_called()
+        sheets.save_analysis.assert_not_called()
+
+    @patch("src.analyzer.claude_analyzer.anthropic")
+    def test_sheets_cache_miss_persists(self, mock_anthropic):
+        from src.storage.sheets_client import SheetsClient
+
+        client = MagicMock()
+        client.messages.create.return_value = _mock_response(VALID_JSON)
+        mock_anthropic.Anthropic.return_value = client
+
+        sheets = MagicMock(spec=SheetsClient)
+        sheets.get_cached_analysis.return_value = None
+
+        analyzer = ClaudeAnalyzer(api_key="test-key", sheets=sheets)
+        analyzer.analyze_transaction(_sample_tx())
+
+        client.messages.create.assert_called_once()
+        sheets.save_analysis.assert_called_once()
+
+    @patch("src.analyzer.claude_analyzer.anthropic")
+    def test_sheets_none_falls_through(self, mock_anthropic):
+        client = MagicMock()
+        client.messages.create.return_value = _mock_response(VALID_JSON)
+        mock_anthropic.Anthropic.return_value = client
+
+        analyzer = ClaudeAnalyzer(api_key="test-key", sheets=None)
+        result = analyzer.analyze_transaction(_sample_tx())
+        assert result["importance_score"] == 8
+
+    @patch("src.analyzer.claude_analyzer.anthropic")
+    def test_sheets_cache_failure_falls_back_to_api(self, mock_anthropic):
+        from src.storage.sheets_client import SheetsClient
+
+        client = MagicMock()
+        client.messages.create.return_value = _mock_response(VALID_JSON)
+        mock_anthropic.Anthropic.return_value = client
+
+        sheets = MagicMock(spec=SheetsClient)
+        sheets.get_cached_analysis.side_effect = Exception("sheets down")
+
+        analyzer = ClaudeAnalyzer(api_key="test-key", sheets=sheets)
+        result = analyzer.analyze_transaction(_sample_tx())
+
+        assert result["importance_score"] == 8
+        client.messages.create.assert_called_once()
+
+
 class TestGenerateDailyBrief:
     @patch("src.analyzer.claude_analyzer.anthropic")
     def test_brief(self, mock_anthropic):
