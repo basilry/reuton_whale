@@ -8,6 +8,7 @@ import requests
 from src.ingestion.normalizer import normalize_chain_tx
 from src.signals.models import Event
 from src.utils.errors import EtherscanError
+from src.utils.http_backoff import get_with_backoff
 from src.utils.logger import get_logger
 
 logger = get_logger("etherscan")
@@ -28,6 +29,19 @@ _CHAIN_LABELS: dict[int, str] = {
     137: "POLYGON",
 }
 _BASE_URL = "https://api.etherscan.io/v2/api"
+
+
+def _is_etherscan_rate_limited(data: dict) -> bool:
+    return str(data.get("status")) == "0" and "rate limit" in data.get("message", "").lower()
+
+
+def _get_with_backoff(url: str, params: dict) -> requests.Response:
+    return get_with_backoff(
+        do_get=lambda: requests.get(url, params=params, timeout=15),
+        is_rate_limited=_is_etherscan_rate_limited,
+        error_cls=EtherscanError,
+        logger=logger,
+    )
 
 
 class EtherscanCollector:
@@ -90,12 +104,7 @@ class EtherscanCollector:
             "sort": "desc",
             "apikey": self._api_key,
         }
-        try:
-            resp = requests.get(_BASE_URL, params=params, timeout=15)
-            resp.raise_for_status()
-        except requests.RequestException as exc:
-            raise EtherscanError(f"HTTP error: {exc}") from exc
-
+        resp = _get_with_backoff(_BASE_URL, params)
         data = resp.json()
         if data.get("status") == "0":
             msg = data.get("message", "")

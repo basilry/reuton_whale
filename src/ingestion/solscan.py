@@ -6,12 +6,26 @@ import requests
 from src.ingestion.normalizer import normalize_chain_tx
 from src.signals.models import Event
 from src.utils.errors import SolscanError
+from src.utils.http_backoff import get_with_backoff
 from src.utils.logger import get_logger
 
 logger = get_logger("solscan")
 
 _BASE_URL = "https://public-api.solscan.io"
 _PAGE_SIZE = 50
+
+
+def _is_solscan_rate_limited(data: dict) -> bool:
+    return data.get("status") == 0 and "rate limit" in str(data.get("message", "")).lower()
+
+
+def _get_with_backoff(url: str, params: dict, headers: dict | None = None) -> requests.Response:
+    return get_with_backoff(
+        do_get=lambda: requests.get(url, params=params, headers=headers, timeout=15),
+        is_rate_limited=_is_solscan_rate_limited,
+        error_cls=SolscanError,
+        logger=logger,
+    )
 
 
 class SolscanCollector:
@@ -55,17 +69,11 @@ class SolscanCollector:
         return events
 
     def _fetch_transactions(self, addr: str, since_ts: int) -> list[dict]:
-        try:
-            resp = requests.get(
-                f"{_BASE_URL}/v2/account/transactions",
-                params={"account": addr, "limit": _PAGE_SIZE},
-                headers=self._headers,
-                timeout=15,
-            )
-            resp.raise_for_status()
-        except requests.RequestException as exc:
-            raise SolscanError(f"HTTP error: {exc}") from exc
-
+        resp = _get_with_backoff(
+            f"{_BASE_URL}/v2/account/transactions",
+            params={"account": addr, "limit": _PAGE_SIZE},
+            headers=self._headers or None,
+        )
         data = resp.json()
         if isinstance(data, dict) and data.get("status") == 0:
             raise SolscanError(f"API error: {data.get('message')}")
