@@ -61,15 +61,16 @@ class SignalEngine:
                 srcs = tx_sources.get(h, set())
                 if "tg" in srcs and "chain" in srcs:
                     return True
-            # Path 3: heuristic - find a matching event in the opposite source
+            # Path 3: heuristic — find a matching event in the opposite source
             if sig.source == "chain":
-                for ce in chain_ev:
-                    if ce.tx_hash not in sig.evidence_tx_hashes and ce.tx_hash not in (None,):
-                        continue
+                evidence_chain_events = [
+                    ce for ce in chain_ev if ce.tx_hash in sig.evidence_tx_hashes
+                ]
+                for ce in evidence_chain_events:
                     for te in tg_ev:
                         time_diff = abs((te.block_time - ce.block_time).total_seconds() / 60)
-                        usd_diff = abs(te.amount_usd - ce.amount_usd) / max(ce.amount_usd, 1.0)
-                        if time_diff <= match_min and usd_diff <= usd_tol:
+                        usd_diff_pct = abs(te.amount_usd - ce.amount_usd) / max(ce.amount_usd, 1.0)
+                        if time_diff <= match_min and usd_diff_pct <= usd_tol:
                             return True
             return False
 
