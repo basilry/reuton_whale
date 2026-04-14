@@ -1,4 +1,4 @@
-"""Event and Signal dataclasses. Filled in TRACK 4, pre-declared here for TRACK 3 consumers."""
+"""Event and Signal dataclasses."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -36,3 +36,19 @@ class Signal:
     window_end: datetime
     summary: str
     extra: dict = field(default_factory=dict)
+
+
+@dataclass
+class RuleContext:
+    now: datetime
+    # Per-chain baseline stats for anomaly detection
+    # {"eth": {"out_mean_usd": float, "out_std_usd": float, "in_mean_usd": float, "in_std_usd": float}}
+    chain_baselines: dict = field(default_factory=dict)
+    # Set of watched address strings
+    watched_index: set = field(default_factory=set)
+    # token -> list[float] price history
+    price_history: dict = field(default_factory=dict)
+    # chain -> list[float] weekly net USD flow (positive = net accumulation)
+    weekly_net_history: dict = field(default_factory=dict)
+    # "chain:token" -> list[float] top-N whale % concentration per week
+    concentration_history: dict = field(default_factory=dict)

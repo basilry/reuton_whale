@@ -1,2 +1,37 @@
-# Signal rules configuration. Filled in TRACK 4.
-rules: []
+# Signal rules configuration.
+rules:
+  - name: cex_outflow_spike
+    window_hours: 24
+    baseline_days: 7
+    sigma_threshold: 3.0
+    min_usd: 1000000
+    severity_base: medium
+  - name: cex_inflow_spike
+    window_hours: 24
+    baseline_days: 7
+    sigma_threshold: 3.0
+    min_usd: 1000000
+    severity_base: medium
+  - name: cold_to_hot_transfer
+    min_usd: 5000000
+    severity_base: high
+  - name: smart_money_accumulation
+    window_hours: 24
+    min_addresses: 3
+    severity_base: high
+  - name: token_whale_concentration_shift
+    top_n: 10
+    threshold_pct: 2.0
+    severity_base: medium
+  - name: tg_cex_inflow_burst
+    window_minutes: 10
+    min_events: 3
+    severity_base: medium
+  - name: corroborated_move
+    match_window_minutes: 3
+    usd_tolerance_pct: 5.0
+    severity_boost: 1
+  - name: weekly_net_accumulation
+    lookback_weeks: 4
+    deviation_sigma: 2.0
+    severity_base: low
