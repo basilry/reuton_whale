@@ -107,7 +107,7 @@ class TelethonListener:
                     ),
                     user=text,
                 )
-                parsed = json.loads(result.content)
+                parsed = json.loads(result.text)
                 confidence = "low"
             except Exception as exc:
                 logger.warning("LLM fallback failed msg_id=%s: %s", msg_id, exc)

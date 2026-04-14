@@ -83,7 +83,7 @@ class TestTelethonListenerHandleMessage:
         mock_storage = MagicMock()
         mock_router = MagicMock()
         mock_result = MagicMock()
-        mock_result.content = '{"symbol":"ETH","amount":1000,"amount_usd":2000000,"from_owner":"unknown","to_owner":"Binance","from_owner_type":"unknown","to_owner_type":"exchange","blockchain":"ethereum"}'
+        mock_result.text = '{"symbol":"ETH","amount":1000,"amount_usd":2000000,"from_owner":"unknown","to_owner":"Binance","from_owner_type":"unknown","to_owner_type":"exchange","blockchain":"ethereum"}'
         mock_router.call_task.return_value = mock_result
 
         listener = TelethonListener(12345, "hash", "session", mock_storage, router=mock_router)
