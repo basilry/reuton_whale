@@ -1,4 +1,5 @@
 class WhaleAlertError(Exception):
+    """Deprecated. Removed in TRACK 3."""
     pass
 
 
@@ -11,4 +12,24 @@ class StorageError(Exception):
 
 
 class DistributorError(Exception):
+    pass
+
+
+class LLMProviderError(Exception):
+    pass
+
+
+class LLMRouterError(Exception):
+    pass
+
+
+class EtherscanError(Exception):
+    pass
+
+
+class SolscanError(Exception):
+    pass
+
+
+class SignalEngineError(Exception):
     pass
