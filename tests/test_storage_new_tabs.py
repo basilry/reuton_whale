@@ -71,7 +71,7 @@ class TestWatchedAddresses:
         written = mock_ws.update.call_args[0][1][0]
         assert written[WATCHED_ADDRESSES_HEADERS.index("label")] == "new_label"
 
-    def test_list_watched_addresses_enabled_only(self):
+    def test_list_watched_addresses_returns_all_as_dict(self):
         client, mock_ss = _make_client()
         mock_ws = MagicMock()
         mock_ss.worksheet.return_value = mock_ws
@@ -83,22 +83,24 @@ class TestWatchedAddresses:
         row_off[WATCHED_ADDRESSES_HEADERS.index("enabled")] = "false"
         mock_ws.get_all_values.return_value = [WATCHED_ADDRESSES_HEADERS, row_on, row_off]
 
-        result = client.list_watched_addresses(enabled_only=True)
-        assert len(result) == 1
-        assert result[0]["address"] == "0xON"
+        result = client.list_watched_addresses()
+        assert isinstance(result, dict)
+        assert len(result) == 2
+        assert "0xON" in result
+        assert "0xOFF" in result
 
-    def test_list_watched_addresses_all(self):
+    def test_list_watched_addresses_evm_key_lowercased(self):
         client, mock_ss = _make_client()
         mock_ws = MagicMock()
         mock_ss.worksheet.return_value = mock_ws
-        row_on = [""] * len(WATCHED_ADDRESSES_HEADERS)
-        row_on[WATCHED_ADDRESSES_HEADERS.index("enabled")] = "true"
-        row_off = [""] * len(WATCHED_ADDRESSES_HEADERS)
-        row_off[WATCHED_ADDRESSES_HEADERS.index("enabled")] = "false"
-        mock_ws.get_all_values.return_value = [WATCHED_ADDRESSES_HEADERS, row_on, row_off]
+        row = [""] * len(WATCHED_ADDRESSES_HEADERS)
+        row[WATCHED_ADDRESSES_HEADERS.index("address")] = "0xABCDEF"
+        row[WATCHED_ADDRESSES_HEADERS.index("chain")] = "eth"
+        mock_ws.get_all_values.return_value = [WATCHED_ADDRESSES_HEADERS, row]
 
-        result = client.list_watched_addresses(enabled_only=False)
-        assert len(result) == 2
+        result = client.list_watched_addresses()
+        assert "0xabcdef" in result
+        assert "0xABCDEF" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -269,7 +271,7 @@ class TestUserInterests:
         written = mock_ws.update.call_args[0][1][0]
         assert written[USER_INTERESTS_HEADERS.index("weight")] == "0.95"
 
-    def test_list_user_interests_filters_by_chat_id(self):
+    def test_list_user_interests_filters_by_user_id(self):
         client, mock_ss = _make_client()
         mock_ws = MagicMock()
         mock_ss.worksheet.return_value = mock_ws
@@ -280,7 +282,7 @@ class TestUserInterests:
         row2[USER_INTERESTS_HEADERS.index("chat_id")] = "9999"
         mock_ws.get_all_values.return_value = [USER_INTERESTS_HEADERS, row1, row2]
 
-        result = client.list_user_interests(1001)
+        result = client.list_user_interests(user_id="1001")
         assert len(result) == 1
         assert result[0]["chat_id"] == "1001"
 
@@ -290,7 +292,7 @@ class TestUserInterests:
         mock_ss.worksheet.return_value = mock_ws
         mock_ws.get_all_values.return_value = [USER_INTERESTS_HEADERS]
 
-        assert client.list_user_interests(1001) == []
+        assert client.list_user_interests(user_id="1001") == []
 
 
 # ---------------------------------------------------------------------------

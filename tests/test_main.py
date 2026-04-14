@@ -49,11 +49,10 @@ class TestRunDailyPipeline:
         mock_bot = MagicMock()
         mock_bot_cls.return_value = mock_bot
 
+        mock_sheets.list_watched_addresses.return_value = {}
         with patch("src.main.EtherscanCollector") as mock_eth_cls, \
              patch("src.main.SolscanCollector") as mock_sol_cls, \
-             patch("src.main.load_watched") as mock_lw, \
              patch("src.main.PriceService"):
-            mock_lw.return_value = {}
             mock_eth = MagicMock()
             mock_eth.fetch.return_value = []
             mock_eth_cls.return_value = mock_eth
@@ -106,15 +105,13 @@ class TestRunDailyPipeline:
             for tx in txs_as_dicts
         ]
 
+        mock_sheets.list_watched_addresses.return_value = {"0xaaa": {"address": "0xaaa", "chain": "ETH", "category": "exchange"}}
         with patch("src.main.EtherscanCollector") as mock_eth_cls, \
              patch("src.main.SolscanCollector") as mock_sol_cls, \
-             patch("src.main.load_watched") as mock_lw, \
              patch("src.main.PriceService"), \
              patch("src.main.CoinGeckoEnricher") as mock_enrich_cls, \
              patch("src.main.ClaudeAnalyzer") as mock_analyzer_cls, \
              patch("src.main.TransactionScorer") as mock_scorer_cls:
-
-            mock_lw.return_value = {"0xaaa": {"address": "0xaaa", "chain": "ETH", "category": "exchange"}}
 
             mock_eth = MagicMock()
             mock_eth.fetch.return_value = events
@@ -180,15 +177,13 @@ class TestRunDailyPipeline:
         evt = _sample_event("h1", 10_000_000)
         events = [evt]
 
+        mock_sheets.list_watched_addresses.return_value = {"0xaaa": {"address": "0xaaa", "chain": "ETH", "category": "exchange"}}
         with patch("src.main.EtherscanCollector") as mock_eth_cls, \
              patch("src.main.SolscanCollector") as mock_sol_cls, \
-             patch("src.main.load_watched") as mock_lw, \
              patch("src.main.PriceService"), \
              patch("src.main.CoinGeckoEnricher") as mock_enrich_cls, \
              patch("src.main.ClaudeAnalyzer") as mock_analyzer_cls, \
              patch("src.main.TransactionScorer") as mock_scorer_cls:
-
-            mock_lw.return_value = {"0xaaa": {"address": "0xaaa", "chain": "ETH", "category": "exchange"}}
 
             mock_eth = MagicMock()
             mock_eth.fetch.return_value = events
@@ -248,15 +243,13 @@ class TestRunDailyPipeline:
             "interpretation": "",
         }
 
+        mock_sheets.list_watched_addresses.return_value = {"0xaaa": {"address": "0xaaa", "chain": "ETH", "category": "exchange"}}
         with patch("src.main.EtherscanCollector") as mock_eth_cls, \
              patch("src.main.SolscanCollector") as mock_sol_cls, \
-             patch("src.main.load_watched") as mock_lw, \
              patch("src.main.PriceService"), \
              patch("src.main.CoinGeckoEnricher") as mock_enrich_cls, \
              patch("src.main.ClaudeAnalyzer") as mock_analyzer_cls, \
              patch("src.main.TransactionScorer") as mock_scorer_cls:
-
-            mock_lw.return_value = {"0xaaa": {"address": "0xaaa", "chain": "ETH", "category": "exchange"}}
 
             mock_eth = MagicMock()
             mock_eth.fetch.return_value = [evt]

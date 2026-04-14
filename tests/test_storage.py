@@ -14,6 +14,8 @@ from src.storage.schema import (
     TAB_SUBSCRIBERS,
     TAB_TRANSACTIONS,
     TRANSACTIONS_HEADERS,
+    USER_INTERESTS_HEADERS,
+    WATCHED_ADDRESSES_HEADERS,
 )
 
 
@@ -408,3 +410,98 @@ class TestSheetsClient:
             SheetsClient("id", '{"type":"service_account"}')
             titles = [c.kwargs.get("title") for c in mock_ss.add_worksheet.call_args_list]
             assert TAB_SUBSCRIBERS in titles
+
+
+class TestStorageProtocolNewMethods:
+    def _make_client(self):
+        with patch("src.storage.sheets_client.gspread") as mock_gspread, \
+             patch("src.storage.sheets_client.Credentials") as mock_creds:
+            mock_creds.from_service_account_info.return_value = MagicMock()
+            mock_gc = MagicMock()
+            mock_gspread.authorize.return_value = mock_gc
+            mock_spreadsheet = MagicMock()
+            mock_gc.open_by_key.return_value = mock_spreadsheet
+            mock_ws_list = [MagicMock(title=t) for t in ALL_TABS]
+            mock_spreadsheet.worksheets.return_value = mock_ws_list
+
+            from src.storage.sheets_client import SheetsClient
+            client = SheetsClient("fake_sheet_id", '{"type":"service_account"}')
+            return client, mock_spreadsheet
+
+    def _make_addr_row(self, address, chain, enabled="true"):
+        row = [""] * len(WATCHED_ADDRESSES_HEADERS)
+        row[WATCHED_ADDRESSES_HEADERS.index("address")] = address
+        row[WATCHED_ADDRESSES_HEADERS.index("chain")] = chain
+        row[WATCHED_ADDRESSES_HEADERS.index("enabled")] = enabled
+        return row
+
+    def _make_interest_row(self, chat_id, dimension="chain", value="ETH"):
+        row = [""] * len(USER_INTERESTS_HEADERS)
+        row[USER_INTERESTS_HEADERS.index("chat_id")] = str(chat_id)
+        row[USER_INTERESTS_HEADERS.index("dimension")] = dimension
+        row[USER_INTERESTS_HEADERS.index("value")] = value
+        return row
+
+    def test_list_watched_addresses_returns_dict_keyed_by_address(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        row = self._make_addr_row("0xABCD1234", "eth")
+        mock_ws.get_all_values.return_value = [WATCHED_ADDRESSES_HEADERS, row]
+
+        result = client.list_watched_addresses()
+
+        assert isinstance(result, dict)
+        assert "0xabcd1234" in result
+        assert result["0xabcd1234"]["address"] == "0xABCD1234"
+
+    def test_list_watched_addresses_mixed_chain_handling(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        evm_row = self._make_addr_row("0xDEADBEEF", "ethereum")
+        sol_row = self._make_addr_row("FooBarSolanaAddr1111", "sol")
+        disabled_row = self._make_addr_row("0xDisabledAddr", "base", enabled="false")
+        mock_ws.get_all_values.return_value = [
+            WATCHED_ADDRESSES_HEADERS, evm_row, sol_row, disabled_row
+        ]
+
+        result = client.list_watched_addresses()
+
+        assert "0xdeadbeef" in result
+        assert "FooBarSolanaAddr1111" in result
+        assert "0xdisabledaddr" in result
+        assert len(result) == 3
+
+    def test_list_user_interests_all(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [
+            USER_INTERESTS_HEADERS,
+            self._make_interest_row(1001),
+            self._make_interest_row(2002),
+        ]
+
+        result = client.list_user_interests(user_id=None)
+
+        assert len(result) == 2
+        chat_ids = [r["chat_id"] for r in result]
+        assert "1001" in chat_ids
+        assert "2002" in chat_ids
+
+    def test_list_user_interests_filtered(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [
+            USER_INTERESTS_HEADERS,
+            self._make_interest_row(1001, "chain", "ETH"),
+            self._make_interest_row(1001, "category", "cex"),
+            self._make_interest_row(9999, "chain", "SOL"),
+        ]
+
+        result = client.list_user_interests(user_id="1001")
+
+        assert len(result) == 2
+        assert all(r["chat_id"] == "1001" for r in result)
