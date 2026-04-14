@@ -15,7 +15,6 @@ from src.collectors.coingecko import CoinGeckoEnricher
 from src.config import load_config
 from src.distributor.telegram_bot import WhaleScopeBot
 from src.ingestion.etherscan import EtherscanCollector
-from src.ingestion.registry import load_watched
 from src.ingestion.solscan import SolscanCollector
 from src.llm.anthropic_provider import AnthropicProvider
 from src.llm.router import LLMRouter
@@ -167,7 +166,7 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
             logger.error("[%s] Failed to load fixtures: %s", run_id, e)
     else:
         try:
-            watched_index = load_watched(sheets)
+            watched_index = sheets.list_watched_addresses()
             since_ts = int(datetime.now(timezone.utc).timestamp()) - 24 * 3600
             for chain in _EVM_CHAINS:
                 addrs = [
