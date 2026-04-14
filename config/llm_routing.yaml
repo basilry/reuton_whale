@@ -1,2 +1,25 @@
-# LLM routing configuration. Filled in TRACK 1.
-tasks: {}
+tasks:
+  per_signal_narration:
+    preferred: "gemini/gemini-1.5-flash"
+    fallback:
+      - "groq/llama-3.3-70b-versatile"
+      - "anthropic/claude-3-5-haiku-latest"
+    max_tokens: 400
+
+  daily_brief:
+    preferred: "anthropic/claude-3-5-sonnet-latest"
+    fallback:
+      - "gemini/gemini-1.5-pro"
+    max_tokens: 1500
+
+  weekly_trend:
+    preferred: "anthropic/claude-3-5-sonnet-latest"
+    fallback:
+      - "gemini/gemini-1.5-pro"
+    max_tokens: 2000
+
+  nl_intent:
+    preferred: "anthropic/claude-3-5-haiku-latest"
+    fallback:
+      - "gemini/gemini-1.5-flash"
+    max_tokens: 300
