@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import time
+from datetime import date
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import anthropic
@@ -15,10 +19,230 @@ from src.utils.errors import AnalysisError
 from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
+    from src.llm.router import LLMRouter
+    from src.signals.models import Signal
     from src.storage.sheets_client import SheetsClient
 
 logger = get_logger("claude_analyzer")
 
+
+# ---------------------------------------------------------------------------
+# LLMAnalyzer — new class, uses LLMRouter; ClaudeAnalyzer kept for compat
+# ---------------------------------------------------------------------------
+
+class LLMAnalyzer:
+    """LLM-backed analyzer wired through the multi-provider LLMRouter."""
+
+    def __init__(
+        self,
+        router: "LLMRouter",
+        storage=None,
+        prompts_dir: "Path | None" = None,
+    ):
+        self._router = router
+        self._storage = storage
+        self._prompts_dir = prompts_dir
+        self.analysis_log: dict[str, dict] = {}
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _load_prompt(self, name: str) -> tuple[str, str]:
+        from src.analyzer.prompt_loader import load_prompt
+        return load_prompt(name, base_dir=self._prompts_dir)
+
+    def _make_hash(self, *parts: str) -> str:
+        return hashlib.sha256("".join(parts).encode()).hexdigest()
+
+    def _load_from_cache(self, prompt_hash: str) -> str | None:
+        if not self._storage:
+            return None
+        try:
+            cached = self._storage.get_cached_analysis(prompt_hash)
+            if cached and cached.get("response"):
+                return cached["response"]
+        except Exception:
+            pass
+        return None
+
+    def _save_to_cache(self, prompt_hash: str, response: str) -> None:
+        if not self._storage:
+            return
+        try:
+            self._storage.save_analysis({
+                "prompt_hash": prompt_hash,
+                "response": response,
+            })
+        except Exception as e:
+            logger.warning("Failed to save analysis cache: %s", e)
+
+    def _log_analysis(self, entry: dict) -> None:
+        if not self._storage:
+            return
+        try:
+            self._storage.save_analysis_log(entry)
+        except Exception as e:
+            logger.warning("Failed to log analysis: %s", e)
+
+    def _parse_json(self, raw: str) -> dict:
+        stripped = raw.strip()
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            pass
+        if stripped.startswith("```"):
+            inner = stripped.strip("`")
+            if inner.lower().startswith("json"):
+                inner = inner[4:]
+            inner = inner.strip().rstrip("`").strip()
+            try:
+                return json.loads(inner)
+            except json.JSONDecodeError:
+                pass
+        m = re.search(r"\{.*\}", stripped, re.DOTALL)
+        if m:
+            try:
+                return json.loads(m.group())
+            except json.JSONDecodeError:
+                pass
+        raise AnalysisError(f"Cannot parse JSON: {raw!r}")
+
+    # ------------------------------------------------------------------
+    # Public API — new interface
+    # ------------------------------------------------------------------
+
+    def generate_daily_brief(self, signals: "list[Signal]") -> str:
+        sys_prompt, sys_ver = self._load_prompt("daily_brief.system")
+        user_tmpl, user_ver = self._load_prompt("daily_brief.user")
+
+        signals_json = json.dumps(
+            [
+                {
+                    "rule": s.rule,
+                    "severity": s.severity,
+                    "score": s.score,
+                    "summary": s.summary,
+                    "source": s.source,
+                    "confidence": s.confidence,
+                }
+                for s in signals
+            ],
+            ensure_ascii=False,
+        )
+        today = date.today().isoformat()
+        user_content = user_tmpl.replace("{{signals_json}}", signals_json).replace(
+            "{{date}}", today
+        )
+
+        prompt_hash = self._make_hash(sys_prompt, user_content)
+        cached = self._load_from_cache(prompt_hash)
+        if cached:
+            logger.info("Cache hit for daily_brief prompt_hash=%s", prompt_hash[:8])
+            return cached
+
+        t0 = time.perf_counter()
+        result = self._router.call_task("daily_brief", sys_prompt, user_content)
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+
+        prompt_version = f"{sys_ver}+{user_ver}"
+        self._log_analysis({
+            "task": "daily_brief",
+            "model_id": result.model_id,
+            "prompt_version": prompt_version,
+            "tokens_in": result.tokens_in,
+            "tokens_out": result.tokens_out,
+            "cost_usd": result.cost_usd,
+            "latency_ms": latency_ms,
+        })
+        self._save_to_cache(prompt_hash, result.text)
+        return result.text
+
+    def generate_weekly_commentary(self, summary_rows: list[dict]) -> str:
+        sys_prompt, sys_ver = self._load_prompt("weekly_trend.system")
+        user_content = json.dumps(summary_rows, ensure_ascii=False)
+
+        result = self._router.call_task("weekly_trend", sys_prompt, user_content)
+        self._log_analysis({
+            "task": "weekly_trend",
+            "model_id": result.model_id,
+            "prompt_version": sys_ver,
+            "tokens_in": result.tokens_in,
+            "tokens_out": result.tokens_out,
+            "cost_usd": result.cost_usd,
+            "latency_ms": result.latency_ms,
+        })
+        return result.text
+
+    def parse_intent(self, message: str) -> dict:
+        sys_prompt, sys_ver = self._load_prompt("nl_intent.system")
+
+        result = self._router.call_task("nl_intent", sys_prompt, message)
+        self._log_analysis({
+            "task": "nl_intent",
+            "model_id": result.model_id,
+            "prompt_version": sys_ver,
+            "tokens_in": result.tokens_in,
+            "tokens_out": result.tokens_out,
+            "cost_usd": result.cost_usd,
+            "latency_ms": result.latency_ms,
+        })
+        try:
+            return self._parse_json(result.text)
+        except (AnalysisError, json.JSONDecodeError):
+            return {}
+
+    def analyze_batch(self, transactions: list[dict]) -> list[dict]:
+        """Legacy compat: score each transaction dict via LLMRouter."""
+        results = []
+        for tx in transactions:
+            try:
+                user_content = _safe_format(USER_PROMPT_TEMPLATE, tx)
+                prompt_hash = self._make_hash(SYSTEM_PROMPT, user_content)
+
+                # check memory cache
+                if prompt_hash in self.analysis_log:
+                    results.append({**tx, **self.analysis_log[prompt_hash]})
+                    continue
+
+                cached = self._load_from_cache(prompt_hash)
+                if cached:
+                    try:
+                        parsed = json.loads(cached)
+                        parsed["prompt_hash"] = prompt_hash
+                        self.analysis_log[prompt_hash] = parsed
+                        results.append({**tx, **parsed})
+                        continue
+                    except json.JSONDecodeError:
+                        pass
+
+                result = self._router.call_task(
+                    "per_signal_narration", SYSTEM_PROMPT, user_content
+                )
+                parsed = self._parse_json(result.text)
+                parsed["prompt_hash"] = prompt_hash
+                self.analysis_log[prompt_hash] = parsed
+                self._save_to_cache(prompt_hash, result.text)
+                results.append({**tx, **parsed})
+            except Exception as e:
+                logger.error("Skipping transaction %s: %s", tx.get("hash", ""), e)
+        return results
+
+
+def _safe_format(template: str, data: dict) -> str:
+    """Format template with data, substituting missing keys with '?'."""
+    import string
+
+    class SafeDict(dict):
+        def __missing__(self, key):
+            return "?"
+
+    return template.format_map(SafeDict(data))
+
+
+# ---------------------------------------------------------------------------
+# ClaudeAnalyzer — original class kept for backward compatibility with tests
+# ---------------------------------------------------------------------------
 
 class ClaudeAnalyzer:
     def __init__(
