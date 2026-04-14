@@ -1,12 +1,83 @@
-"""Solscan Public API v2 collector. Filled in TRACK 3."""
+"""Solscan Public API v2 collector."""
 from __future__ import annotations
 
+import requests
+
+from src.ingestion.normalizer import normalize_chain_tx
 from src.signals.models import Event
+from src.utils.errors import SolscanError
+from src.utils.logger import get_logger
+
+logger = get_logger("solscan")
+
+_BASE_URL = "https://public-api.solscan.io"
+_PAGE_SIZE = 50
 
 
 class SolscanCollector:
-    def __init__(self, api_key: str | None = None):
-        raise NotImplementedError("TRACK 3")
+    def __init__(self, api_key: str | None = None) -> None:
+        self._headers: dict[str, str] = {}
+        if api_key:
+            self._headers["token"] = api_key
 
-    def fetch(self, addresses: list[str], since_ts: int) -> list[Event]:
-        raise NotImplementedError("TRACK 3")
+    def fetch(
+        self,
+        addresses: list[str],
+        since_ts: int,
+        *,
+        watched_index: dict | None = None,
+        price_service=None,
+    ) -> list[Event]:
+        seen: set[str] = set()
+        events: list[Event] = []
+
+        for addr in addresses:
+            try:
+                rows = self._fetch_transactions(addr, since_ts)
+            except SolscanError as exc:
+                logger.warning("Solscan error addr=%s: %s", addr, exc)
+                continue
+
+            for row in rows:
+                sig = row.get("txHash") or row.get("signature") or ""
+                if sig and sig in seen:
+                    continue
+                seen.add(sig)
+
+                row["_chain"] = "SOL"
+                row["_watched_address"] = addr
+                try:
+                    evt = normalize_chain_tx(row, "SOL", watched_index or {}, price_service)
+                    events.append(evt)
+                except Exception as exc:
+                    logger.warning("normalize failed sig=%s: %s", sig, exc)
+
+        return events
+
+    def _fetch_transactions(self, addr: str, since_ts: int) -> list[dict]:
+        try:
+            resp = requests.get(
+                f"{_BASE_URL}/v2/account/transactions",
+                params={"account": addr, "limit": _PAGE_SIZE},
+                headers=self._headers,
+                timeout=15,
+            )
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            raise SolscanError(f"HTTP error: {exc}") from exc
+
+        data = resp.json()
+        if isinstance(data, dict) and data.get("status") == 0:
+            raise SolscanError(f"API error: {data.get('message')}")
+
+        txs: list[dict] = data if isinstance(data, list) else data.get("data", [])
+        result: list[dict] = []
+        for tx in txs:
+            block_time = int(tx.get("blockTime") or 0)
+            if block_time < since_ts:
+                continue
+            row = dict(tx)
+            row.setdefault("hash", tx.get("txHash") or tx.get("signature") or "")
+            row.setdefault("timeStamp", block_time)
+            result.append(row)
+        return result
