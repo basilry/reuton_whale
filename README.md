@@ -1,247 +1,293 @@
 # WhaleScope
 
-AI 기반 암호화폐 고래 거래 모니터링 및 일일 브리핑 서비스.
-온체인 고래 이동을 수집하고, Claude AI로 분석한 뒤, 텔레그램으로 한국어 브리핑을 전달한다.
+온체인 고래 지갑 모니터링 + 규칙 기반 시그널 탐지 + LLM 분석 → 텔레그램 한국어 브리핑.
+
+> 본 서비스는 투자 조언을 제공하지 않습니다. 모든 브리핑은 참고 목적이며 투자 결정은 본인 책임입니다.
+
+---
 
 ## 아키텍처
 
 ```
-[데이터 수집]               [AI 분석]                [저장 & 배포]
-
-Whale Alert API ----+      TransactionScorer       Google Sheets
-  (온체인 데이터)    |        (사전 필터링)           (거래, 브리핑,
-                    v            |                   워치리스트, 로그)
-               Collector ---> pre_filter (>=1M)          |
-                    |            |                       v
-CoinGecko API ------+      ClaudeAnalyzer          Telegram Bot
-  (시장 데이터)   Enricher   (배치 분석)              (일일 브리핑)
-                    |            |                       |
-                    v            v                       v
-               보강된 거래 --> 분석된 거래 ---+---> Daily Brief
-                                            |
-                                    rank_by_importance
-                                       (Top 5)
+[온체인 수집]                [시그널 탐지]          [LLM 분석]          [저장 & 배포]
+                                                                        
+Etherscan API --+                                                       
+ (ETH/ARB/BASE  |   normalizer  --> SignalEngine --> LLMAnalyzer ----+-> Telegram Bot
+  BSC/POLYGON)  |                     (8 rules)   (LLMRouter:        |   (일일 브리핑)
+                +-> Event list                     Anthropic/         |
+Solscan API  ---+   (dataclass)  --> personalize   Gemini/Groq)      +-> Google Sheets
+ (SOL)                                (interests)                    |   (signals, brief,
+                                                                     |    activity, log)
+Telethon -------+   parse_tg_message                                 |
+ (TG channel)   |   (regex + LLM  -> tg_whale_events             +-> Streamlit
+                |    fallback)                                    |   (대시보드)
+                +----------------------------------------------> |
+                                                                 |
+watched_addresses.csv ---> registry.load_watched() -----------> +
 ```
+
+**핵심 흐름**: 수집 → normalizer → SignalEngine.run → personalize → LLMAnalyzer.generate_daily_brief → Telegram
+
+---
 
 ## 기술 스택
 
 | 분류 | 기술 | 용도 |
 |------|------|------|
 | 언어 | Python 3.11 | 코어 런타임 |
-| AI | Anthropic Claude API (claude-sonnet-4-20250514) | 거래 해석 + 브리핑 생성 |
-| 데이터 소스 | Whale Alert API | 온체인 고래 거래 피드 |
-| 시장 데이터 | CoinGecko API | 실시간 가격/거래량 보강 |
+| AI | LLMRouter (Anthropic/Gemini/Groq) | 시그널 분석 + 브리핑 생성 |
+| 온체인 수집 | Etherscan API v2 | ETH/ARB/BASE/BSC/POLYGON |
+| 온체인 수집 | Solscan API v2 | Solana |
+| TG 수신 | Telethon | 고래 알림 채널 실시간 수신 |
+| 시장 데이터 | CoinGecko API | 실시간 가격 보강 |
 | 저장소 | Google Sheets (gspread) | 영구 데이터 저장 |
 | 배포 | Telegram Bot API (python-telegram-bot) | 사용자 브리핑 전달 |
 | 대시보드 | Streamlit | 웹 기반 모니터링 UI |
-| CI/CD | GitHub Actions | 자동 일일 파이프라인 |
-| 테스트 | pytest | 단위/통합 테스트 |
+| CI/CD | GitHub Actions | 자동 일일 + 주간 파이프라인 |
+| 테스트 | pytest | 단위/통합 테스트 (210+) |
 
-## 모듈 구조
+---
 
-```
-reuton_whale/
-├── docs/                        # 기획 문서
-├── src/
-│   ├── config.py                # 환경변수 로드
-│   ├── main.py                  # 10단계 파이프라인 오케스트레이터
-│   ├── collectors/
-│   │   ├── whale_alert.py       # Whale Alert API 수집
-│   │   └── coingecko.py         # CoinGecko 시장 데이터 보강
-│   ├── analyzer/
-│   │   ├── claude_analyzer.py   # Claude AI 거래 분석
-│   │   ├── scoring.py           # 중요도 스코어링 (규칙 + AI)
-│   │   └── prompts.py           # 시스템/유저/브리핑 프롬프트
-│   ├── storage/
-│   │   ├── sheets_client.py     # Google Sheets CRUD
-│   │   ├── schema.py            # 5개 탭 스키마 정의
-│   │   └── queries.py           # 데이터 변환 헬퍼
-│   ├── distributor/
-│   │   ├── telegram_bot.py      # 텔레그램 봇 (구독/워치리스트/발송)
-│   │   └── formatters.py        # HTML 브리핑 포맷터
-│   └── utils/
-│       ├── logger.py            # 로거
-│       ├── retry.py             # exponential backoff 데코레이터
-│       └── errors.py            # 커스텀 예외
-├── tests/                       # 78개 단위 테스트
-├── scripts/
-│   ├── init_sheets.py           # Google Sheets 초기 셋업
-│   ├── test_connection.py       # API 연결 검증
-│   └── manual_brief.py          # 수동 브리핑 실행
-├── streamlit_app.py             # Streamlit 대시보드
-├── .github/workflows/
-│   └── daily_brief.yml          # GitHub Actions 크론 워크플로우
-├── requirements.txt
-├── .env.example
-└── .gitignore
-```
+## 데이터 처리 안내 (Data Processing Notice)
 
-## 사전 준비
+본 서비스는 아래 데이터를 처리합니다:
 
-### 1. API 키 발급
+| 데이터 종류 | 출처 | 처리 목적 |
+|------------|------|----------|
+| 온체인 트랜잭션 | Etherscan / Solscan 공개 API | 고래 거래 감지 및 시그널 생성 |
+| 텔레그램 공개 채널 메시지 | Telethon (공개 채널 구독) | 고래 이벤트 파싱 |
+| 텔레그램 사용자 정보 | 텔레그램 봇 `/start` 명령 | 브리핑 구독 관리 |
 
-| 서비스 | 발급 방법 |
-|--------|----------|
-| **Whale Alert** | https://whale-alert.io 가입 -> API Plan 선택 -> API Key 복사 |
-| **Anthropic** | https://console.anthropic.com -> API Keys -> Create Key |
-| **Google Sheets** | Google Cloud Console -> 서비스 계정 생성 -> JSON 키 다운로드 -> 스프레드시트에 서비스 계정 이메일 공유 |
-| **Telegram Bot** | @BotFather에게 /newbot -> 봇 이름 설정 -> Token 복사 |
+**PII (개인식별정보)**: 텔레그램 `chat_id`와 `username`만 저장하며, 이 외 개인정보는 수집하지 않습니다.
 
-### 2. Google Sheets 설정
+**LLM 공급자**: 브리핑 생성 시 Anthropic / Google Gemini / Groq 중 하나 이상의 API를 통해 처리됩니다. 각 공급자의 데이터 처리 정책을 확인하세요.
 
-1. Google Cloud Console에서 프로젝트 생성
-2. Google Sheets API, Google Drive API 활성화
-3. 서비스 계정 생성 후 JSON 키 다운로드
-4. Google Sheets에서 빈 스프레드시트 생성
-5. 스프레드시트를 서비스 계정 이메일(xxx@xxx.iam.gserviceaccount.com)과 공유
-6. 스프레드시트 URL에서 ID 복사 (https://docs.google.com/spreadsheets/d/**{이 부분}**/edit)
+**온체인 데이터**: 공개 블록체인 데이터이며 사용자 동의 없이도 공개적으로 열람 가능합니다.
 
-## 설치 및 실행
+---
 
-### 1. 의존성 설치
+## 설치
 
 ```bash
 pip install -r requirements.txt
-```
-
-### 2. 환경변수 설정
-
-```bash
 cp .env.example .env
+# .env 파일에 필요한 키 입력 (아래 환경변수 목록 참조)
 ```
 
-`.env` 파일을 열고 발급받은 키를 입력:
+### 필요 환경변수
 
 ```
-WHALE_ALERT_API_KEY=발급받은_whale_alert_키
-ANTHROPIC_API_KEY=발급받은_anthropic_키
-GOOGLE_SHEET_ID=스프레드시트_ID
-GOOGLE_CREDENTIALS_JSON={"type":"service_account","project_id":"..."}
-TELEGRAM_BOT_TOKEN=발급받은_텔레그램_봇_토큰
-STREAMLIT_PASSWORD=대시보드_접근_비밀번호
+# 온체인 수집
+ETHERSCAN_API_KEY=
+SOLSCAN_API_KEY=          # optional (Solana)
+
+# LLM 라우터 (최소 1개 필수)
+ANTHROPIC_API_KEY=
+GEMINI_API_KEY=           # optional fallback
+GROQ_API_KEY=             # optional fallback
+
+# 저장소
+GOOGLE_SHEET_ID=
+GOOGLE_CREDENTIALS_JSON=  # 서비스 계정 JSON 한 줄 (값 전체)
+
+# 텔레그램 봇
+TELEGRAM_BOT_TOKEN=
+
+# 텔레그램 리스너 (Telethon, 상시 프로세스용)
+TELETHON_API_ID=
+TELETHON_API_HASH=
+TELETHON_SESSION=whalescope
 ```
 
-> `GOOGLE_CREDENTIALS_JSON`은 다운로드한 JSON 파일 내용을 한 줄로 넣는다.
-> `STREAMLIT_PASSWORD`를 비워두면 대시보드 인증이 비활성화된다 (개발 환경 전용).
+---
 
-### 3. Google Sheets 초기화
+## 실행 방법 (3가지)
+
+### 1. 일일 파이프라인 (Daily Pipeline)
+
+온체인 이벤트 수집 → 시그널 탐지 → LLM 브리핑 생성 → Telegram 발송.
+
+**사전 조건**: `ETHERSCAN_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_*`, `TELEGRAM_BOT_TOKEN`
 
 ```bash
-python -m scripts.init_sheets
+# 실제 실행
+python -m src.main
+
+# --dry-run: 외부 API 호출 없이 fixture 데이터로 파이프라인 전 구간 검증
+python -m src.main --dry-run
 ```
 
-5개 탭(transactions, daily_brief, subscribers, analysis_log, system_log)과 헤더가 자동 생성된다.
+**예상 출력 (dry-run)**:
+```
+[pipeline] INFO: Stage 3/10: Collecting whale events (dry_run=True)
+[pipeline] INFO: Loaded 23 fixture events
+[pipeline] INFO: SignalEngine produced 3 signals
+[pipeline] INFO: Pipeline finished. Status: completed
+```
 
-### 4. 연결 테스트
+**GitHub Actions**: `.github/workflows/daily_brief.yml` — 매일 UTC 23:00 (KST 08:00) 자동 실행.
+
+---
+
+### 2. Telethon 리스너 (상시 프로세스)
+
+텔레그램 공개 고래 알림 채널을 실시간 구독하여 이벤트를 storage에 저장.
+
+**사전 조건**: `TELETHON_API_ID`, `TELETHON_API_HASH`, `TELETHON_SESSION`, `TG_CHANNEL`
 
 ```bash
-python scripts/test_connection.py
+# 연결 테스트 (Telethon 인증 없이 파서만 검증)
+python scripts/run_listener.py --dry-run
+
+# 실제 실행 (SIGINT로 종료)
+TG_CHANNEL=@whale_alert_io python scripts/run_listener.py
 ```
 
-각 서비스(Whale Alert, CoinGecko, Anthropic, Google Sheets, Telegram) 연결 상태를 확인한다.
-
-### 5. 수동 브리핑 실행
-
-```bash
-python scripts/manual_brief.py
+**예상 출력 (dry-run)**:
+```
+dry-run: testing message parser
+  input : 🚨 1,000,000 #USDT (1,012,450 USD) transferred from #Bin...
+  parsed: {'symbol': 'USDT', 'amount': 1000000.0, ...}
+dry-run OK
 ```
 
-파이프라인을 1회 실행하여 거래 수집 -> 분석 -> 브리핑 생성 -> 텔레그램 발송까지 확인한다.
+**참고**: 상시 실행이 필요하므로 Render / Fly.io / 로컬 데스크탑에 별도 배포 권장. GitHub Actions 단독으로는 상시 폴링 불가.
 
-### 6. 텔레그램 봇 상시 실행 (구독자 명령 처리)
+---
+
+### 3. 텔레그램 봇 (사용자 명령 처리)
+
+구독자 `/start`, `/watchlist`, `/pause`, `/status` 명령 long-polling 처리.
+
+**사전 조건**: `TELEGRAM_BOT_TOKEN`, `GOOGLE_*`
 
 ```bash
 python scripts/run_bot.py
 ```
 
-`/start`, `/watchlist`, `/pause`, `/status` 명령을 long-polling으로 처리한다.
-데스크탑에서 상시 실행하거나 Render / Fly.io 같은 상시 실행 환경에 배포한다.
-GitHub Actions만으로는 폴링이 불가능하므로, 구독 관리 기능을 쓰려면 별도 실행 필요.
+**예상 출력**:
+```
+[run_bot] INFO: Starting WhaleScope bot polling...
+```
 
-### 7. Streamlit 대시보드
+SIGINT (Ctrl+C)로 종료. 봇은 명령 처리만 담당하며, 브리핑 발송은 일일 파이프라인이 수행.
+
+---
+
+## 연기 테스트 (Smoke Test)
 
 ```bash
-streamlit run streamlit_app.py
+python scripts/smoke_pipeline.py
 ```
 
-브라우저에서 `http://localhost:8501` 접속. 3개 탭:
-- **오늘의 브리핑**: 최신 분석 결과 카드 + 총 거래액/평균 중요도 지표
-- **거래 히스토리**: 날짜/토큰/금액 필터링 테이블
-- **통계**: 일별 추이, 토큰별 분포, 거래소 입출금 비율 차트
-
-### 8. GitHub Actions 자동화 (선택)
-
-GitHub 저장소 Settings -> Secrets and variables -> Actions에 5개 시크릿 등록:
-
-| Secret 이름 | 값 |
-|-------------|-----|
-| `WHALE_ALERT_API_KEY` | Whale Alert API 키 |
-| `ANTHROPIC_API_KEY` | Anthropic API 키 |
-| `GOOGLE_SHEET_ID` | 스프레드시트 ID |
-| `GOOGLE_CREDENTIALS_JSON` | 서비스 계정 JSON (전체) |
-| `TELEGRAM_BOT_TOKEN` | 텔레그램 봇 토큰 |
-
-등록 후 매일 KST 08:00 (UTC 23:00)에 자동 실행된다. Actions 탭에서 수동 실행(workflow_dispatch)도 가능.
-
-## 파이프라인 동작 순서
+외부 API 없이 전 구간 파이프라인을 검증. fixture 이벤트 23건 → SignalEngine → 브리핑 생성까지 확인.
 
 ```
-1. 환경변수 로드 (config.py)
-2. 클라이언트 초기화 (Collector, Enricher, Analyzer, Scorer, Sheets, Bot)
-3. Whale Alert API에서 최근 24시간 고래 거래 수집
-4. CoinGecko API로 시장 데이터 보강 (현재가, 변동률, 거래량, 시가총액)
-5. 규칙 기반 사전 필터링 (>= $1M, 거래소 입출금 우선, 최대 30건)
-6. Claude AI 배치 분석 (중요도 점수, 거래 유형, 해석, 신뢰도)
-7. 중요도 순 Top 5 선별
-8. 한국어 일일 브리핑 텍스트 생성
-9. Google Sheets에 거래 데이터 + 브리핑 저장
-10. 텔레그램 구독자에게 브리핑 발송
+Events : 23
+Signals: 3
+Brief  : 61 chars
+Model  : dry_run
+Status : completed
+AnalLog: 1 row(s) written, log_ok=True
+SMOKE OK
 ```
 
-## 텔레그램 봇 명령어
+---
 
-| 명령어 | 설명 |
-|--------|------|
-| `/start` | 구독 등록 + 사용 가이드 |
-| `/watchlist ETH BTC SOL` | 관심 코인 설정 (해당 코인 거래에 별 표시) |
-| `/watchlist` | 현재 관심 코인 조회 |
-| `/pause` | 알림 일시 중지 |
-| `/status` | 구독 상태 + 최근 브리핑 요약 |
+## 모듈 구조
+
+```
+src/
+├── main.py                    # 10단계 파이프라인 오케스트레이터
+├── config.py                  # 환경변수 로드
+├── llm/
+│   ├── base.py                # LLMProvider Protocol, LLMResult
+│   ├── router.py              # LLMRouter (preferred + fallback)
+│   ├── anthropic_provider.py
+│   ├── gemini_provider.py
+│   └── groq_provider.py
+├── signals/
+│   ├── engine.py              # SignalEngine (run + personalize)
+│   ├── rules.py               # 8개 규칙 (cex_outflow_spike, ...)
+│   └── models.py              # Event, Signal, RuleContext dataclass
+├── ingestion/
+│   ├── etherscan.py           # EtherscanCollector (5 EVM chains)
+│   ├── solscan.py             # SolscanCollector
+│   ├── normalizer.py          # raw tx → Event
+│   ├── telethon_listener.py   # 상시 채널 리스너
+│   └── registry.py            # watched_addresses 인덱스 로더
+├── analyzer/
+│   ├── claude_analyzer.py     # LLMAnalyzer (+ ClaudeAnalyzer compat)
+│   ├── prompt_loader.py       # mtime-cached prompt loader (sha1 버전)
+│   ├── scoring.py             # TransactionScorer (legacy compat)
+│   └── price_service.py       # CoinGecko 가격 캐시
+├── storage/
+│   ├── sheets_client.py       # Google Sheets CRUD (Storage Protocol)
+│   ├── protocol.py            # Storage Protocol 정의
+│   └── schema.py              # 탭별 헤더 상수
+├── distributor/
+│   ├── telegram_bot.py        # WhaleScopeBot
+│   └── formatters.py          # 브리핑 포맷터
+└── utils/
+    ├── logger.py
+    ├── retry.py               # exponential backoff
+    └── errors.py
+prompts/
+├── daily_brief.system.txt     # 일일 브리핑 페르소나 + 출력 구조
+├── daily_brief.user.txt       # {{signals_json}} / {{date}} 템플릿
+├── weekly_trend.system.txt    # 주간 트렌드 분석 구조
+└── nl_intent.system.txt       # TG 메시지 → JSON 추출 스키마
+config/
+├── llm_routing.yaml           # LLMRouter 태스크별 모델/폴백 설정
+├── signals.yaml               # 8개 시그널 규칙 임계값
+└── watched_addresses.csv      # 80개 감시 주소 시드
+```
+
+---
+
+## 시그널 규칙 (8가지)
+
+| 규칙 | 설명 | 기본 심각도 |
+|------|------|------------|
+| `cex_outflow_spike` | CEX 유출 24h 이동평균 3σ 초과 | medium |
+| `cex_inflow_spike` | CEX 유입 24h 이동평균 3σ 초과 | medium |
+| `cold_to_hot_transfer` | cold → hot 지갑 이동 ≥$5M | high |
+| `smart_money_accumulation` | 스마트머니 주소 3곳 이상 24h 동시 매집 | high |
+| `token_whale_concentration_shift` | 상위 10 고래 보유 비중 2% 변화 | medium |
+| `tg_cex_inflow_burst` | TG 채널 10분 내 CEX 유입 3건 이상 | medium |
+| `corroborated_move` | 온체인 + TG 교차 확인 시 심각도 1단계 상향 | — |
+| `weekly_net_accumulation` | 주간 누적 자금 흐름 2σ 편차 | low |
+
+---
 
 ## 테스트
 
 ```bash
-pytest tests/ -v
+pytest -q
+# 210 passed, 1 warning
 ```
 
-78개 테스트, 외부 API는 전부 mock 처리. 커버리지:
+외부 API 전부 mock 처리 → CI 안정 실행 가능.
 
-| 테스트 파일 | 대상 | 건수 |
-|------------|------|------|
-| test_collectors.py | WhaleAlertCollector, CoinGeckoEnricher | 7 |
-| test_claude_analyzer.py | ClaudeAnalyzer (API, 캐시, 재시도) | 8 |
-| test_scoring.py | TransactionScorer (점수, 필터, 랭킹) | 11 |
-| test_storage.py | SheetsClient, schema, queries | 18 |
-| test_distributor.py | WhaleScopeBot, formatters | 16 |
-| test_main.py | run_daily_pipeline 통합 | 3 |
-| test_streamlit_app.py | 대시보드 데이터 로딩 | 4 |
+---
 
-## AI 도구 활용
+## GitHub Actions 시크릿 등록
 
-| 도구 | 활용 방식 |
-|------|----------|
-| **Claude API** (claude-sonnet-4-20250514) | 런타임: 각 고래 거래를 분석하여 중요도 점수, 거래 유형 분류, 해석, 신뢰도를 JSON으로 반환. Top 5 거래를 종합하여 한국어 일일 브리핑 생성. |
-| **Claude Code** (claude-opus-4-6) | 개발: 프로젝트 스캐폴딩, 4개 에이전트 병렬 모듈 구현, 파이프라인 통합, 테스트 작성, 보안 점검, QA 전체 수행. |
+Settings → Secrets and variables → Actions:
 
-## 향후 계획
+| Secret | 설명 |
+|--------|------|
+| `ANTHROPIC_API_KEY` | Anthropic API 키 |
+| `GEMINI_API_KEY` | Google Gemini API 키 (optional fallback) |
+| `GROQ_API_KEY` | Groq API 키 (optional fallback) |
+| `ETHERSCAN_API_KEY` | Etherscan API 키 |
+| `SOLSCAN_API_KEY` | Solscan API 키 (optional) |
+| `GOOGLE_SHEET_ID` | 스프레드시트 ID |
+| `GOOGLE_CREDENTIALS_JSON` | 서비스 계정 JSON 전체 |
+| `TELEGRAM_BOT_TOKEN` | 텔레그램 봇 토큰 |
 
-- 실시간 WebSocket 스트리밍 (폴링 대체)
-- 멀티체인 확장 (Solana, Polygon, Arbitrum)
-- 과거 패턴 탐지 (반복 주소 추적)
-- 사용자별 커스텀 알림 임계값
-- Supabase/PostgreSQL 마이그레이션
-- 토큰 비용 추적 및 예산 알림
+---
 
 ## 라이선스
 
-Private - All rights reserved.
+Private — All rights reserved.
