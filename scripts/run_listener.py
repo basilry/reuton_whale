@@ -5,6 +5,12 @@ Usage:
     python scripts/run_listener.py
     python scripts/run_listener.py --dry-run
     TG_CHANNEL=@my_channel python scripts/run_listener.py
+
+Environment variables required (non-dry-run):
+    TELETHON_API_ID, TELETHON_API_HASH, TELETHON_SESSION
+    TG_CHANNEL
+    ANTHROPIC_API_KEY (for LLM NL-intent fallback)
+    GOOGLE_SHEET_ID, GOOGLE_CREDENTIALS_JSON (storage)
 """
 from __future__ import annotations
 
@@ -18,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.config import load_config
 from src.ingestion.telethon_listener import TelethonListener, parse_tg_message
+from src.main import _build_router
 from src.storage.sheets_client import SheetsClient
 from src.utils.logger import get_logger
 
@@ -52,16 +59,24 @@ async def _run():
         sys.exit(1)
 
     sheets = SheetsClient(config.sheet_id, config.google_credentials)
+    router = _build_router(config)  # LLM fallback for NL-intent parsing
 
+    # Bug note (TRACK 3): TelethonListener._handle_message uses result.content
+    # but LLMResult has .text — to be fixed in TRACK 3 patch.
     listener = TelethonListener(
         api_id=config.telethon_api_id,
         api_hash=config.telethon_api_hash,
         session=config.telethon_session,
         storage=sheets,
+        router=router,
         channel=channel,
     )
 
-    logger.info("Starting TelethonListener channel=%s session=%s", channel, config.telethon_session)
+    logger.info(
+        "Starting TelethonListener channel=%s session=%s",
+        channel,
+        config.telethon_session,
+    )
     await listener.run()
 
 

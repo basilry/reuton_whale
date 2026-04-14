@@ -1,18 +1,18 @@
-name: Daily Whale Brief
+name: Weekly Trend Commentary
 
 on:
   schedule:
-    - cron: "0 23 * * *"  # UTC 23:00 (KST 08:00)
+    - cron: "0 23 * * 1"  # Monday 23:00 UTC (KST Tuesday 08:00)
   workflow_dispatch:
 
 concurrency:
-  group: daily-brief
+  group: weekly-trend
   cancel-in-progress: true
 
 jobs:
-  daily-brief:
+  weekly-trend:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run pipeline
+      - name: Run weekly trend
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -37,4 +37,4 @@ jobs:
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        run: python -m src.main
+        run: python scripts/run_weekly_trend.py
