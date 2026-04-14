@@ -401,18 +401,23 @@ class SheetsClient:
         except gspread.exceptions.APIError as e:
             raise StorageError(f"Failed to upsert watched address: {e}") from e
 
+    _EVM_CHAINS = {"eth", "ethereum", "arbitrum", "base", "bsc", "polygon"}
+
     @retry(max_retries=3, base_delay=2.0)
-    def list_watched_addresses(self, *, enabled_only: bool = True) -> list[dict]:
+    def list_watched_addresses(self) -> dict[str, dict]:
         try:
             ws = self._worksheet(TAB_WATCHED_ADDRESSES)
             all_values = ws.get_all_values()
             if len(all_values) <= 1:
-                return []
-            enabled_col = WATCHED_ADDRESSES_HEADERS.index("enabled")
-            rows = [row_to_dict(row, WATCHED_ADDRESSES_HEADERS) for row in all_values[1:]]
-            if enabled_only:
-                rows = [r for r in rows if r.get("enabled", "true").lower() not in ("false", "0", "")]
-            return rows
+                return {}
+            result = {}
+            for row in all_values[1:]:
+                d = row_to_dict(row, WATCHED_ADDRESSES_HEADERS)
+                addr = d.get("address", "")
+                chain = d.get("chain", "").lower()
+                key = addr.lower() if chain in self._EVM_CHAINS else addr
+                result[key] = d
+            return result
         except gspread.exceptions.APIError as e:
             raise StorageError(f"Failed to list watched addresses: {e}") from e
 
@@ -572,19 +577,17 @@ class SheetsClient:
             raise StorageError(f"Failed to upsert user interest: {e}") from e
 
     @retry(max_retries=3, base_delay=2.0)
-    def list_user_interests(self, chat_id: int) -> list[dict]:
+    def list_user_interests(self, user_id: str | None = None) -> list[dict]:
         try:
             ws = self._worksheet(TAB_USER_INTERESTS)
             all_values = ws.get_all_values()
             if len(all_values) <= 1:
                 return []
-            cid_col = USER_INTERESTS_HEADERS.index("chat_id")
-            target = str(chat_id)
-            return [
-                row_to_dict(row, USER_INTERESTS_HEADERS)
-                for row in all_values[1:]
-                if cid_col < len(row) and row[cid_col] == target
-            ]
+            rows = [row_to_dict(row, USER_INTERESTS_HEADERS) for row in all_values[1:]]
+            if user_id is None:
+                return rows
+            target = str(user_id)
+            return [r for r in rows if r.get("chat_id", "") == target]
         except gspread.exceptions.APIError as e:
             raise StorageError(f"Failed to list user interests: {e}") from e
 
