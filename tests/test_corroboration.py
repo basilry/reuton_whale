@@ -192,3 +192,51 @@ class TestCorroborationHeuristicPath:
         signals = engine.run([chain_ev, tg_ev], NOW)
         corr_sigs = [s for s in signals if s.rule == "corroborated_move"]
         assert len(corr_sigs) == 0
+
+
+class TestCorroborationEdgeCases:
+    """Edge cases for Path 3 filter logic."""
+
+    def test_corroboration_tx_hash_none_skipped(self):
+        """chain event with tx_hash=None must not upgrade cold_to_hot_transfer via Path 3.
+
+        With the old `not in (None,)` idiom, ce.tx_hash=None was NOT skipped,
+        allowing spurious corroboration. Post-refactor, None-hash events are excluded
+        from evidence_chain_events, so the cold_to_hot_transfer signal stays source='chain'.
+        """
+        engine = _make_engine()
+        bt_chain = NOW - timedelta(hours=2)
+        bt_tg = bt_chain + timedelta(minutes=2)  # within 3-min window
+        chain_ev = _evt(
+            source="chain", tx_hash=None,
+            direction="out", amount_usd=5_000_000, block_time=bt_chain,
+        )
+        tg_ev = _evt(
+            source="tg", tx_hash=None,
+            direction="out", amount_usd=5_000_000,  # 0% diff, within tolerance
+            block_time=bt_tg, collected_at=bt_tg,
+        )
+        signals = engine.run([chain_ev, tg_ev], NOW)
+        # cold_to_hot_transfer fires with evidence_tx_hashes=[] (no tx_hash)
+        # Engine Path 3 must NOT upgrade it: None not in [] → ce excluded
+        cth_sigs = [s for s in signals if s.rule == "cold_to_hot_transfer"]
+        assert all(s.source == "chain" for s in cth_sigs)
+
+    def test_corroboration_path_3_time_boundary(self):
+        """chain + tg events exactly at match_window_minutes=3 should still corroborate."""
+        engine = _make_engine()
+        bt_chain = NOW - timedelta(hours=2)
+        bt_tg = bt_chain + timedelta(minutes=3)  # exactly at boundary, <= 3 → match
+        chain_ev = _evt(
+            source="chain", tx_hash="0xboundary",
+            direction="out", amount_usd=5_000_000, block_time=bt_chain,
+        )
+        tg_ev = _evt(
+            source="tg", tx_hash=None,
+            direction="out", amount_usd=5_000_000,  # 0% diff
+            block_time=bt_tg, collected_at=bt_tg,
+        )
+        signals = engine.run([chain_ev, tg_ev], NOW)
+        corr_sigs = [s for s in signals if s.rule == "corroborated_move"]
+        assert len(corr_sigs) >= 1
+        assert corr_sigs[0].source == "both"
