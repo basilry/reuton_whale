@@ -17,6 +17,10 @@ def _mock_resp(data: dict, status_code: int = 200):
     return resp
 
 
+def _mock_429():
+    return _mock_resp({}, status_code=429)
+
+
 def _etherscan_row(hash_val="0xabc", ts=1700000000, from_addr="0xaaa", to_addr="0xbbb", value="1000000000000000000"):
     return {
         "hash": hash_val,
@@ -121,3 +125,47 @@ class TestEtherscanCollector:
         for chain in ("ETH", "ARB", "BASE", "BSC", "POLYGON"):
             events = collector.fetch([], chain, since_ts=0)
             assert events == []
+
+
+class TestEtherscanBackoff:
+    @patch("src.utils.http_backoff.time.sleep")
+    @patch("src.ingestion.etherscan.requests.get")
+    def test_429_then_success(self, mock_get, mock_sleep):
+        row = _etherscan_row()
+        success = _mock_resp({"status": "1", "result": [row]})
+        # txlist: 429 x2, then success; tokentx: success immediately
+        mock_get.side_effect = [_mock_429(), _mock_429(), success, success]
+
+        # rate_limit_per_sec=inf → _rate_limit never sleeps, so all sleep calls are backoff
+        collector = EtherscanCollector(api_key="test", rate_limit_per_sec=float("inf"))
+        events = collector.fetch(["0xaaa"], "ETH", since_ts=0)
+
+        assert len(events) >= 1
+        assert mock_sleep.call_count == 2
+
+    @patch("src.utils.http_backoff.time.sleep")
+    @patch("src.ingestion.etherscan.requests.get")
+    def test_rate_limit_json_status_then_success(self, mock_get, mock_sleep):
+        row = _etherscan_row()
+        rate_limited = _mock_resp({"status": "0", "message": "Max rate limit reached", "result": []})
+        success = _mock_resp({"status": "1", "result": [row]})
+        # txlist: JSON rate-limit, then success; tokentx: success immediately
+        mock_get.side_effect = [rate_limited, success, success]
+
+        collector = EtherscanCollector(api_key="test", rate_limit_per_sec=float("inf"))
+        events = collector.fetch(["0xaaa"], "ETH", since_ts=0)
+
+        assert len(events) >= 1
+        assert mock_sleep.call_count == 1
+
+    @patch("src.utils.http_backoff.time.sleep")
+    @patch("src.ingestion.etherscan.requests.get")
+    def test_5_failures_raise_ingestion_error(self, mock_get, mock_sleep):
+        mock_get.return_value = _mock_429()
+
+        collector = EtherscanCollector(api_key="test", rate_limit_per_sec=float("inf"))
+        with pytest.raises(EtherscanError):
+            collector._fetch_page("0xaaa", "txlist", 1, 0)
+
+        assert mock_get.call_count == 5
+        assert mock_sleep.call_count == 5
