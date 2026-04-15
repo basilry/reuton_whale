@@ -11,3 +11,8 @@ dist/
 *.egg-info/
 .streamlit/secrets.toml
 .pytest_cache/
+node_modules/
+.next/
+*.tsbuildinfo
+apps/dashboard/.env.local
+apps/dashboard/.vercel/

@@ -16,6 +16,27 @@ One Pager: [docs/one-pager.md](docs/one-pager.md)
 
 Next.js Dashboard 개발 계획: [docs/nextjs-dashboard-development-plan.md](docs/nextjs-dashboard-development-plan.md)
 
+## Next.js 대시보드
+
+`apps/dashboard`는 Vercel 배포용 프론트 대시보드입니다. 앱 단독 실행 안내는 [apps/dashboard/README.md](apps/dashboard/README.md), 배포 설계는 [docs/nextjs-dashboard-development-plan.md](docs/nextjs-dashboard-development-plan.md)를 기준으로 봅니다.
+
+로컬 개발과 빌드는 루트 워크스페이스 명령으로 실행합니다.
+
+```bash
+cp apps/dashboard/.env.example apps/dashboard/.env.local
+npm install
+npm run dashboard:dev
+npm run dashboard:build
+```
+
+배포 기준은 다음과 같습니다.
+
+- Vercel 프로젝트의 Root Directory는 `apps/dashboard`로 설정합니다.
+- `GOOGLE_CREDENTIALS_JSON`, `GOOGLE_SHEET_ID`, `DASHBOARD_PASSWORD`, `RENDER_PIPELINE_WEBHOOK_URL`, `RENDER_PIPELINE_WEBHOOK_SECRET`는 server-only secret입니다.
+- `NEXT_PUBLIC_`에는 공개 가능한 표시용 값만 둡니다.
+- Render는 `python -m src.main`, `python scripts/run_bot.py`, `TG_CHANNEL=@whale_alert_io python scripts/run_listener.py`를 각각 독립 worker로 운영합니다.
+- 정보수집, Telegram bot, Telegram listener를 하나의 프로세스로 합치지 않습니다.
+
 ## 현재 상태
 
 - Whale Alert 유료 API 의존을 제거하고 Etherscan, Solscan, 공개 Telegram 채널 수신 기반 구조로 전환했습니다.
@@ -69,8 +90,8 @@ user_interests sheet --> per-subscriber personalize --> Telegram message variant
 | TG 수신 | Telethon | 공개 고래 알림 채널 수신 |
 | 시장 데이터 | CoinGecko API | 토큰 USD 가격 보강 |
 | 저장소 | Google Sheets, gspread | MVP 영구 저장소 |
-| 배포 | python-telegram-bot | 사용자 명령 처리와 브리핑 발송 |
-| 대시보드 | Streamlit | 운영 모니터링 UI |
+| 배포 | Render Cron/Worker, Vercel | 백엔드 워커와 프론트 대시보드 분리 |
+| 대시보드 | Next.js / Streamlit | Vercel target 프론트와 legacy local UI |
 | CI/CD | GitHub Actions | 일일 브리프, 주간 트렌드 자동 실행 |
 | 테스트 | pytest, pytest-asyncio | 단위/통합 테스트 |
 

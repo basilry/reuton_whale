@@ -501,3 +501,42 @@ Streamlit은 이후 `legacy local dashboard`로 유지하거나 제거한다.
 - [Next.js Fetching Data](https://nextjs.org/docs/app/getting-started/fetching-data)
 - [Next.js Route Handlers](https://nextjs.org/docs/app/getting-started/route-handlers-and-middleware)
 - [Next.js Environment Variables](https://nextjs.org/docs/15/app/guides/environment-variables)
+
+## 16. 개발자 경험 및 배포 실행
+
+이 섹션은 실제 개발자가 명령어와 배포 위치를 헷갈리지 않도록 정리한 실행 기준이다.
+
+### 로컬 명령
+
+- `npm install`: repo 루트에서 workspace 의존성을 설치한다.
+- `npm run dashboard:dev`: `apps/dashboard`의 Next.js 개발 서버를 연다.
+- `npm run dashboard:build`: `apps/dashboard`의 production build를 수행한다.
+- `cp apps/dashboard/.env.example apps/dashboard/.env.local`: dashboard 전용 로컬 환경파일을 만든다.
+
+### 환경변수 원칙
+
+- `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `DASHBOARD_PASSWORD`, `RENDER_PIPELINE_WEBHOOK_URL`, `RENDER_PIPELINE_WEBHOOK_SECRET`는 server-only secret이다.
+- `NEXT_PUBLIC_` prefix에는 공개 가능한 앱 이름이나 표시용 설정만 둔다.
+- Google service account JSON은 절대 browser bundle에 들어가면 안 된다.
+
+### Vercel 배포
+
+- Vercel 프로젝트의 Root Directory는 `apps/dashboard`로 설정한다.
+- build command는 `npm run build`를 사용한다.
+- install command는 `npm install`을 사용한다.
+- dashboard는 read-only Sheets access를 server side에서만 수행해야 한다.
+
+### Render 분리
+
+- 정보수집은 `python -m src.main`으로 동작하는 Cron Job 또는 단발성 worker로 둔다.
+- Telegram bot은 `python scripts/run_bot.py`를 실행하는 상시 worker로 둔다.
+- Telegram listener는 `TG_CHANNEL=@whale_alert_io python scripts/run_listener.py`를 실행하는 상시 worker로 둔다.
+- 세 프로세스를 하나의 런타임으로 합치지 않고, 로그와 재시작 단위를 분리한다.
+
+### 운영자가 먼저 확인할 순서
+
+1. `.env.local`과 Vercel server env를 채운다.
+2. `npm run dashboard:dev`로 로컬 UI를 확인한다.
+3. `npm run dashboard:build`로 production build를 확인한다.
+4. Render worker 설정을 나눈 뒤 production deploy를 진행한다.
+5. Vercel production URL에서 `/api/dashboard`와 주요 테이블이 보이는지 확인한다.
