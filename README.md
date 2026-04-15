@@ -275,6 +275,8 @@ python scripts/import_watched_addresses.py --csv path/to/watched_addresses.csv
 
 ## 실행 방법
 
+운영 모드 실행은 실제 Google Sheets 쓰기, LLM API 호출, Telegram 발송을 포함합니다. 실행 전후 체크리스트와 합격 기준은 [docs/operational-run-verification.md](docs/operational-run-verification.md)를 기준으로 확인하세요.
+
 ### 1. 외부 API 없는 smoke test
 
 fixture 이벤트 23건으로 파이프라인 핵심 경로를 검증합니다. credentials 없이도 동작하도록 외부 의존성을 mock 처리합니다.
