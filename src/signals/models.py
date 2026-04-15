@@ -41,7 +41,7 @@ class Signal:
 @dataclass
 class RuleContext:
     now: datetime
-    # Per-chain baseline stats for anomaly detection
+    # Per-chain baseline stats for anomaly detection; "default" is the aggregate used by current rules.
     # {"eth": {"out_mean_usd": float, "out_std_usd": float, "in_mean_usd": float, "in_std_usd": float}}
     chain_baselines: dict = field(default_factory=dict)
     # Set of watched address strings

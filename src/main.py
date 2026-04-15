@@ -18,8 +18,9 @@ from src.ingestion.etherscan import EtherscanCollector
 from src.ingestion.solscan import SolscanCollector
 from src.llm.anthropic_provider import AnthropicProvider
 from src.llm.router import LLMRouter
+from src.signals.baseline import build_chain_baselines
 from src.signals.engine import SignalEngine
-from src.signals.models import Event, RuleContext
+from src.signals.models import Event, Signal
 from src.storage.queries import now_iso
 from src.storage.sheets_client import SheetsClient
 from src.utils.logger import get_logger
@@ -91,6 +92,34 @@ def _event_to_dict(e: Event) -> dict:
     }
 
 
+def _signals_to_top5(signals: list[Signal], events: list[Event]) -> list[dict]:
+    events_by_hash = {e.tx_hash: e for e in events if e.tx_hash}
+    top_signals = sorted(signals, key=lambda sig: sig.score, reverse=True)[:5]
+    rows: list[dict] = []
+
+    for sig in top_signals:
+        evidence_events = [
+            events_by_hash[h]
+            for h in sig.evidence_tx_hashes
+            if h in events_by_hash
+        ]
+        first_event = evidence_events[0] if evidence_events else None
+        amount_usd = sum(e.amount_usd for e in evidence_events)
+        rows.append({
+            "hash": sig.evidence_tx_hashes[0] if sig.evidence_tx_hashes else "",
+            "symbol": first_event.token if first_event else sig.extra.get("token", ""),
+            "amount_usd": amount_usd,
+            "importance_score": sig.score,
+            "interpretation": sig.summary,
+            "type": sig.rule,
+            "severity": sig.severity,
+            "confidence": sig.confidence,
+            "source": sig.source,
+        })
+
+    return rows
+
+
 def _dict_to_event(d: dict) -> Event:
     """Deserialize Event from fixture JSON dict."""
     from datetime import timezone as tz
@@ -148,7 +177,7 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
     enricher = CoinGeckoEnricher()
     eth_collector = EtherscanCollector(config.etherscan_api_key)
     sol_collector = SolscanCollector(config.solscan_api_key or None)
-    bot = WhaleScopeBot(config.telegram_token, sheets)
+    bot = WhaleScopeBot(config.telegram_token, sheets, personalize_fn=engine.personalize)
     bot.build()
 
     # Stage 3: Collect events
@@ -198,6 +227,23 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
     transactions = [_event_to_dict(e) for e in raw_events]
     logger.info("[%s] Collected %d events / %d tx dicts", run_id, len(raw_events), len(transactions))
 
+    unknown_price_symbols = price_svc.drain_unknown_report()
+    if not dry_run and isinstance(unknown_price_symbols, list) and unknown_price_symbols:
+        try:
+            sheets.append_system_log(
+                "warning",
+                "price_unknown_symbols",
+                {
+                    "symbols": [
+                        {"symbol": symbol, "count": count}
+                        for symbol, count in unknown_price_symbols
+                    ],
+                },
+            )
+        except Exception as e:
+            errors.append(f"price_unknown_symbols: {e}")
+            logger.warning("[%s] Failed to log unknown price symbols: %s", run_id, e)
+
     if not transactions:
         result.update(
             status="completed_empty",
@@ -225,52 +271,67 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
     signals = []
     try:
         now = datetime.now(timezone.utc)
-        signals = engine.run(raw_events, now)
-        # TODO: load user_interests from storage when per-user personalisation lands
-        # (tracked in issue: chain_baselines empty until historical data accumulates)
-        signals = engine.personalize(signals, [])
+        baselines = {}
+        if not dry_run:
+            baselines = build_chain_baselines(sheets, now)
+            logger.info("[%s] Loaded %d baseline bucket(s)", run_id, len(baselines))
+        signals = engine.run(raw_events, now, baselines=baselines)
         logger.info("[%s] SignalEngine produced %d signals", run_id, len(signals))
     except Exception as e:
         errors.append(f"signal_engine: {e}")
         logger.error("[%s] SignalEngine failed (continuing with legacy path): %s", run_id, e)
 
-    # Stage 6: Pre-filter (legacy compat path, keeps test_main.py green)
-    logger.info("[%s] Stage 6/10: Pre-filtering transactions", run_id)
-    filtered = scorer.pre_filter(transactions)
-    logger.info("[%s] %d -> %d after pre-filter", run_id, len(transactions), len(filtered))
-
-    if not filtered and not signals:
-        result.update(
-            status="completed_no_candidates",
-            finished_at=now_iso(),
-            errors=json.dumps(errors, ensure_ascii=False),
-            details="No candidates after pre-filter",
+    if signals:
+        logger.info(
+            "[%s] Stage path: signals=%d, using signals",
+            run_id,
+            len(signals),
         )
-        if not dry_run:
-            sheets.log_run(result)
-        logger.info("[%s] No candidates. Pipeline done.", run_id)
-        return result
+        top5 = _signals_to_top5(signals, raw_events)
+        logger.info("[%s] Selected top %d signals", run_id, len(top5))
+    else:
+        logger.info(
+            "[%s] Stage path: signals=0, using legacy_fallback",
+            run_id,
+        )
 
-    # Stage 7: Analyze batch (legacy compat path)
-    logger.info("[%s] Stage 7/10: Analyzing %d candidates", run_id, len(filtered))
-    try:
-        analyzed = analyzer.analyze_batch(filtered)
-        logger.info("[%s] Analyzed %d transactions", run_id, len(analyzed))
-    except Exception as e:
-        errors.append(f"analyze_batch: {e}")
-        logger.error("[%s] analyze_batch failed: %s", run_id, e)
-        analyzed = []
-        for tx in filtered:
-            tx_copy = dict(tx)
-            tx_copy["importance_score"] = int(tx.get("base_score", 0))
-            tx_copy["type"] = "unknown"
-            tx_copy["interpretation"] = "(AI 분석 실패, 규칙 기반 점수로 대체)"
-            tx_copy["confidence"] = "low"
-            analyzed.append(tx_copy)
+        # Stage 6: Pre-filter (legacy fallback path)
+        logger.info("[%s] Stage 6/10: Pre-filtering transactions", run_id)
+        filtered = scorer.pre_filter(transactions)
+        logger.info("[%s] %d -> %d after pre-filter", run_id, len(transactions), len(filtered))
 
-    # Rank top 5
-    top5 = scorer.rank_by_importance(analyzed)
-    logger.info("[%s] Selected top %d transactions", run_id, len(top5))
+        if not filtered:
+            result.update(
+                status="completed_no_candidates",
+                finished_at=now_iso(),
+                errors=json.dumps(errors, ensure_ascii=False),
+                details="No candidates after pre-filter",
+            )
+            if not dry_run:
+                sheets.log_run(result)
+            logger.info("[%s] No candidates. Pipeline done.", run_id)
+            return result
+
+        # Stage 7: Analyze batch (legacy fallback path)
+        logger.info("[%s] Stage 7/10: Analyzing %d candidates", run_id, len(filtered))
+        try:
+            analyzed = analyzer.analyze_batch(filtered)
+            logger.info("[%s] Analyzed %d transactions", run_id, len(analyzed))
+        except Exception as e:
+            errors.append(f"analyze_batch: {e}")
+            logger.error("[%s] analyze_batch failed: %s", run_id, e)
+            analyzed = []
+            for tx in filtered:
+                tx_copy = dict(tx)
+                tx_copy["importance_score"] = int(tx.get("base_score", 0))
+                tx_copy["type"] = "unknown"
+                tx_copy["interpretation"] = "(AI 분석 실패, 규칙 기반 점수로 대체)"
+                tx_copy["confidence"] = "low"
+                analyzed.append(tx_copy)
+
+        # Rank top 5
+        top5 = scorer.rank_by_importance(analyzed)
+        logger.info("[%s] Selected top %d transactions", run_id, len(top5))
 
     # Stage 8: Generate daily brief
     logger.info("[%s] Stage 8/10: Generating daily brief", run_id)
@@ -346,7 +407,7 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
     details = ""
     if brief_text and not dry_run:
         try:
-            dist_result = await bot.send_daily_brief(brief_text)
+            dist_result = await bot.send_daily_brief(brief_text, signals=signals)
             details = (
                 f"sent={dist_result['sent']}, "
                 f"failed={dist_result['failed']}, "

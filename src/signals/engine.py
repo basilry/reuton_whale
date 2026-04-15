@@ -29,8 +29,13 @@ class SignalEngine:
         self.storage = storage
         self._corr_cfg = _corr_cfg(rules_config)
 
-    def run(self, events: list[Event], now: datetime) -> list[Signal]:
-        ctx = RuleContext(now=now)
+    def run(
+        self,
+        events: list[Event],
+        now: datetime,
+        baselines: dict | None = None,
+    ) -> list[Signal]:
+        ctx = RuleContext(now=now, chain_baselines=baselines or {})
 
         # Step 1: run all rules, collect raw signals
         raw: list[Signal] = []

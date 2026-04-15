@@ -1,6 +1,8 @@
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from telegram.error import BadRequest, Forbidden, NetworkError, RetryAfter
 
 from src.distributor.formatters import (
     format_daily_brief,
@@ -10,6 +12,23 @@ from src.distributor.formatters import (
     _importance_bar,
 )
 from src.storage.sheets_client import SheetsClient
+from src.signals.models import Signal
+
+
+def _signal(rule="cex_outflow_spike", score=8.0):
+    now = datetime(2026, 4, 15, tzinfo=timezone.utc)
+    return Signal(
+        signal_id=f"{rule}-1",
+        rule=rule,
+        severity="high",
+        score=score,
+        confidence="high",
+        source="chain",
+        evidence_tx_hashes=["0xabc"],
+        window_start=now,
+        window_end=now,
+        summary=f"{rule} summary",
+    )
 
 
 class TestFormatUsd:
@@ -166,6 +185,59 @@ class TestWhaleScopeBot:
         result = await bot.send_daily_brief("test brief")
         assert result["sent"] == 1
         assert result["failed"] == 0
+        assert result["blocked"] == 0
+
+    @patch("src.utils.retry.asyncio.sleep", new_callable=AsyncMock)
+    @patch("src.distributor.telegram_bot.Application")
+    @pytest.mark.asyncio
+    async def test_send_daily_brief_retry_after_then_success(self, mock_app_cls, mock_sleep):
+        mock_app = MagicMock()
+        mock_builder = MagicMock()
+        mock_builder.token.return_value = mock_builder
+        mock_builder.build.return_value = mock_app
+        mock_app_cls.builder.return_value = mock_builder
+        mock_app.bot.send_message = AsyncMock(side_effect=[RetryAfter(2), None])
+
+        sheets_mock = MagicMock(spec=SheetsClient)
+        sheets_mock.get_active_subscribers.return_value = [
+            {"chat_id": 123, "watchlist": []},
+        ]
+
+        from src.distributor.telegram_bot import WhaleScopeBot
+        bot = WhaleScopeBot(token="test-token", sheets_client=sheets_mock)
+        bot.build()
+
+        result = await bot.send_daily_brief("test brief")
+        assert result == {"sent": 1, "failed": 0, "blocked": 0}
+        assert mock_app.bot.send_message.call_count == 2
+        mock_sleep.assert_awaited_once_with(2.0)
+
+    @patch("src.utils.retry.asyncio.sleep", new_callable=AsyncMock)
+    @patch("src.distributor.telegram_bot.Application")
+    @pytest.mark.asyncio
+    async def test_send_daily_brief_network_error_exhausts_retries(self, mock_app_cls, mock_sleep):
+        mock_app = MagicMock()
+        mock_builder = MagicMock()
+        mock_builder.token.return_value = mock_builder
+        mock_builder.build.return_value = mock_app
+        mock_app_cls.builder.return_value = mock_builder
+        mock_app.bot.send_message = AsyncMock(
+            side_effect=[NetworkError("network"), NetworkError("network"), NetworkError("network")]
+        )
+
+        sheets_mock = MagicMock(spec=SheetsClient)
+        sheets_mock.get_active_subscribers.return_value = [
+            {"chat_id": 123, "watchlist": []},
+        ]
+
+        from src.distributor.telegram_bot import WhaleScopeBot
+        bot = WhaleScopeBot(token="test-token", sheets_client=sheets_mock)
+        bot.build()
+
+        result = await bot.send_daily_brief("test brief")
+        assert result == {"sent": 0, "failed": 1, "blocked": 0}
+        assert mock_app.bot.send_message.call_count == 3
+        assert mock_sleep.await_count == 2
 
     @patch("src.distributor.telegram_bot.Application")
     @pytest.mark.asyncio
@@ -191,15 +263,16 @@ class TestWhaleScopeBot:
         sent_text = send_mock.call_args.kwargs["text"]
         assert "\u2b50" in sent_text
 
+    @patch("src.utils.retry.asyncio.sleep", new_callable=AsyncMock)
     @patch("src.distributor.telegram_bot.Application")
     @pytest.mark.asyncio
-    async def test_send_daily_brief_blocked_user(self, mock_app_cls):
+    async def test_send_daily_brief_forbidden_user_blocked(self, mock_app_cls, mock_sleep):
         mock_app = MagicMock()
         mock_builder = MagicMock()
         mock_builder.token.return_value = mock_builder
         mock_builder.build.return_value = mock_app
         mock_app_cls.builder.return_value = mock_builder
-        mock_app.bot.send_message = AsyncMock(side_effect=Exception("Forbidden: bot was blocked"))
+        mock_app.bot.send_message = AsyncMock(side_effect=Forbidden("Forbidden: bot was blocked"))
 
         sheets_mock = MagicMock(spec=SheetsClient)
         sheets_mock.get_active_subscribers.return_value = [
@@ -213,6 +286,143 @@ class TestWhaleScopeBot:
         result = await bot.send_daily_brief("test brief")
         assert result["blocked"] == 1
         assert result["sent"] == 0
+        assert result["failed"] == 0
+        assert mock_app.bot.send_message.call_count == 1
+        mock_sleep.assert_not_awaited()
+
+    @patch("src.utils.retry.asyncio.sleep", new_callable=AsyncMock)
+    @patch("src.distributor.telegram_bot.Application")
+    @pytest.mark.asyncio
+    async def test_send_daily_brief_chat_not_found_blocked(self, mock_app_cls, mock_sleep):
+        mock_app = MagicMock()
+        mock_builder = MagicMock()
+        mock_builder.token.return_value = mock_builder
+        mock_builder.build.return_value = mock_app
+        mock_app_cls.builder.return_value = mock_builder
+        mock_app.bot.send_message = AsyncMock(side_effect=BadRequest("Chat not found"))
+
+        sheets_mock = MagicMock(spec=SheetsClient)
+        sheets_mock.get_active_subscribers.return_value = [
+            {"chat_id": 789, "watchlist": []},
+        ]
+
+        from src.distributor.telegram_bot import WhaleScopeBot
+        bot = WhaleScopeBot(token="test-token", sheets_client=sheets_mock)
+        bot.build()
+
+        result = await bot.send_daily_brief("test brief")
+        assert result == {"sent": 0, "failed": 0, "blocked": 1}
+        assert mock_app.bot.send_message.call_count == 1
+        mock_sleep.assert_not_awaited()
+
+    @patch("src.utils.retry.asyncio.sleep", new_callable=AsyncMock)
+    @patch("src.distributor.telegram_bot.Application")
+    @pytest.mark.asyncio
+    async def test_send_daily_brief_isolates_subscribers(self, mock_app_cls, mock_sleep):
+        mock_app = MagicMock()
+        mock_builder = MagicMock()
+        mock_builder.token.return_value = mock_builder
+        mock_builder.build.return_value = mock_app
+        mock_app_cls.builder.return_value = mock_builder
+        mock_app.bot.send_message = AsyncMock(
+            side_effect=[NetworkError("network"), NetworkError("network"), NetworkError("network"), None]
+        )
+
+        sheets_mock = MagicMock(spec=SheetsClient)
+        sheets_mock.get_active_subscribers.return_value = [
+            {"chat_id": 111, "watchlist": []},
+            {"chat_id": 222, "watchlist": []},
+        ]
+
+        from src.distributor.telegram_bot import WhaleScopeBot
+        bot = WhaleScopeBot(token="test-token", sheets_client=sheets_mock)
+        bot.build()
+
+        result = await bot.send_daily_brief("test brief")
+        assert result == {"sent": 1, "failed": 1, "blocked": 0}
+        assert mock_app.bot.send_message.call_count == 4
+        assert mock_sleep.await_count == 2
+
+    @patch("src.distributor.telegram_bot.Application")
+    @pytest.mark.asyncio
+    async def test_send_daily_brief_personalizes_signals_per_subscriber(self, mock_app_cls):
+        mock_app = MagicMock()
+        mock_builder = MagicMock()
+        mock_builder.token.return_value = mock_builder
+        mock_builder.build.return_value = mock_app
+        mock_app_cls.builder.return_value = mock_builder
+        mock_app.bot.send_message = AsyncMock()
+
+        sheets_mock = MagicMock(spec=SheetsClient)
+        sheets_mock.get_active_subscribers.return_value = [
+            {"chat_id": 111, "watchlist": []},
+            {"chat_id": 222, "watchlist": []},
+        ]
+        sheets_mock.list_user_interests.side_effect = [
+            [{"dimension": "rule", "value": "cex_outflow_spike", "weight": "1.0"}],
+            [{"dimension": "rule", "value": "cold_to_hot_transfer", "weight": "1.0"}],
+        ]
+
+        cex_signal = _signal("cex_outflow_spike", 9.0)
+        cold_signal = _signal("cold_to_hot_transfer", 7.0)
+
+        def personalize(signals, interests):
+            rule = interests[0]["rule"]
+            return [sig for sig in signals if sig.rule == rule]
+
+        from src.distributor.telegram_bot import WhaleScopeBot
+        bot = WhaleScopeBot(
+            token="test-token",
+            sheets_client=sheets_mock,
+            personalize_fn=personalize,
+        )
+        bot.build()
+
+        result = await bot.send_daily_brief(
+            "generic brief",
+            signals=[cex_signal, cold_signal],
+        )
+
+        assert result == {"sent": 2, "failed": 0, "blocked": 0}
+        sent_texts = [call.kwargs["text"] for call in mock_app.bot.send_message.call_args_list]
+        assert "cex_outflow_spike summary" in sent_texts[0]
+        assert "cold_to_hot_transfer summary" in sent_texts[1]
+        sheets_mock.list_user_interests.assert_any_call("111")
+        sheets_mock.list_user_interests.assert_any_call("222")
+
+    @patch("src.distributor.telegram_bot.Application")
+    @pytest.mark.asyncio
+    async def test_send_daily_brief_personalized_empty_message(self, mock_app_cls):
+        mock_app = MagicMock()
+        mock_builder = MagicMock()
+        mock_builder.token.return_value = mock_builder
+        mock_builder.build.return_value = mock_app
+        mock_app_cls.builder.return_value = mock_builder
+        mock_app.bot.send_message = AsyncMock()
+
+        sheets_mock = MagicMock(spec=SheetsClient)
+        sheets_mock.get_active_subscribers.return_value = [
+            {"chat_id": 111, "watchlist": []},
+        ]
+        sheets_mock.list_user_interests.return_value = [
+            {"dimension": "rule", "value": "cold_to_hot_transfer", "weight": "1.0"}
+        ]
+
+        from src.distributor.telegram_bot import WhaleScopeBot
+        bot = WhaleScopeBot(
+            token="test-token",
+            sheets_client=sheets_mock,
+            personalize_fn=lambda signals, interests: [],
+        )
+        bot.build()
+
+        result = await bot.send_daily_brief(
+            "generic brief",
+            signals=[_signal("cex_outflow_spike")],
+        )
+
+        assert result == {"sent": 1, "failed": 0, "blocked": 0}
+        assert "관심 기준" in mock_app.bot.send_message.call_args.kwargs["text"]
 
     @pytest.mark.asyncio
     async def test_handle_start_calls_add_subscriber(self):

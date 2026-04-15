@@ -1,3 +1,9 @@
+"""Legacy transaction scoring fallback.
+
+DEPRECATED: TransactionScorer is fallback-only. Remove after baselines stabilize
+(>= 14 days of address_activity data). Tracked: B3 second phase.
+"""
+
 from src.utils.logger import get_logger
 
 logger = get_logger("scoring")

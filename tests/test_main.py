@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.signals.models import Event
+from src.signals.models import Event, Signal
 
 
 def _mock_config():
@@ -219,6 +219,93 @@ class TestRunDailyPipeline:
         top_txs = json.loads(briefs_arg[0]["top_transactions"])
         assert top_txs[0]["importance_score"] == 6
         assert top_txs[0]["type"] == "unknown"
+
+    @patch("src.main.WhaleScopeBot")
+    @patch("src.main.SheetsClient")
+    @patch("src.main.load_config")
+    async def test_signal_path_skips_legacy_scorer_and_analysis(
+        self, mock_config, mock_sheets_cls, mock_bot_cls
+    ):
+        mock_config.return_value = _mock_config()
+        mock_sheets = MagicMock()
+        mock_sheets.append_transactions.return_value = 1
+        mock_sheets.list_watched_addresses.return_value = {
+            "0xaaa": {"address": "0xaaa", "chain": "ETH", "category": "exchange"}
+        }
+        mock_sheets_cls.return_value = mock_sheets
+
+        mock_bot = MagicMock()
+        mock_bot.send_daily_brief = AsyncMock(return_value={"sent": 1, "failed": 0, "blocked": 0})
+        mock_bot_cls.return_value = mock_bot
+
+        evt = _sample_event("h1", 10_000_000)
+        sig = Signal(
+            signal_id="sig1",
+            rule="cold_to_hot_transfer",
+            severity="high",
+            score=9.0,
+            confidence="high",
+            source="chain",
+            evidence_tx_hashes=["h1"],
+            window_start=evt.block_time,
+            window_end=evt.block_time,
+            summary="Signal summary",
+        )
+
+        with patch("src.main.EtherscanCollector") as mock_eth_cls, \
+             patch("src.main.SolscanCollector") as mock_sol_cls, \
+             patch("src.main.PriceService"), \
+             patch("src.main.CoinGeckoEnricher") as mock_enrich_cls, \
+             patch("src.main.ClaudeAnalyzer") as mock_analyzer_cls, \
+             patch("src.main.SignalEngine") as mock_engine_cls, \
+             patch("src.main.TransactionScorer") as mock_scorer_cls, \
+             patch("src.main.build_chain_baselines") as mock_baselines:
+
+            mock_eth = MagicMock()
+            mock_eth.fetch.return_value = [evt]
+            mock_eth_cls.return_value = mock_eth
+            mock_sol = MagicMock()
+            mock_sol.fetch.return_value = []
+            mock_sol_cls.return_value = mock_sol
+
+            mock_enrich = MagicMock()
+            mock_enrich.enrich_transactions.side_effect = lambda txs: txs
+            mock_enrich_cls.return_value = mock_enrich
+
+            mock_analyzer = MagicMock()
+            mock_analyzer.generate_daily_brief.return_value = "signal brief"
+            mock_analyzer_cls.return_value = mock_analyzer
+
+            mock_engine = MagicMock()
+            mock_engine.run.return_value = [sig]
+            mock_engine.personalize.side_effect = lambda signals, interests: signals
+            mock_engine_cls.return_value = mock_engine
+            mock_baselines.return_value = {"default": {"out_mean_usd": 1.0}}
+
+            mock_scorer = MagicMock()
+            mock_scorer_cls.return_value = mock_scorer
+
+            from src.main import run_daily_pipeline
+            result = await run_daily_pipeline()
+
+        assert result["status"] == "completed"
+        mock_scorer.pre_filter.assert_not_called()
+        mock_scorer.rank_by_importance.assert_not_called()
+        mock_analyzer.analyze_batch.assert_not_called()
+        mock_baselines.assert_called_once()
+        assert mock_engine.run.call_args.kwargs["baselines"] == {"default": {"out_mean_usd": 1.0}}
+        assert mock_bot_cls.call_args.kwargs["personalize_fn"] == mock_engine.personalize
+
+        briefs_arg = mock_sheets.save_daily_brief.call_args[0][1]
+        top_txs = json.loads(briefs_arg[0]["top_transactions"])
+        assert top_txs == [{
+            "hash": "h1",
+            "symbol": "BTC",
+            "amount_usd": 10_000_000.0,
+            "importance_score": 9.0,
+            "interpretation": "Signal summary",
+            "type": "cold_to_hot_transfer",
+        }]
 
     @patch("src.main.WhaleScopeBot")
     @patch("src.main.SheetsClient")

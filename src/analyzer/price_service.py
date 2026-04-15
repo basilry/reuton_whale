@@ -42,6 +42,7 @@ class PriceService:
     def __init__(self) -> None:
         # {symbol: (price_usd, fetched_at)}
         self._cache: dict[str, tuple[float, float]] = {}
+        self._unknown_counts: dict[str, int] = {}
 
     def get_usd(self, symbol: str, ts: int | None = None) -> Optional[float]:
         """Return current USD price for *symbol*. *ts* is unused (reserved for historical lookup)."""
@@ -54,6 +55,7 @@ class PriceService:
 
         coin_id = _COINGECKO_IDS.get(sym)
         if not coin_id:
+            self._unknown_counts[sym] = self._unknown_counts.get(sym, 0) + 1
             return cached[0] if cached else None
 
         try:
@@ -72,3 +74,8 @@ class PriceService:
             logger.warning("CoinGecko price fetch failed symbol=%s: %s", sym, e)
 
         return cached[0] if cached else None
+
+    def drain_unknown_report(self) -> list[tuple[str, int]]:
+        report = sorted(self._unknown_counts.items())
+        self._unknown_counts.clear()
+        return report

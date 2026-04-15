@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -378,6 +379,19 @@ class SheetsClient:
         except gspread.exceptions.APIError as e:
             raise StorageError(f"Failed to log run: {e}") from e
 
+    @retry(max_retries=3, base_delay=2.0)
+    def append_system_log(self, level: str, category: str, payload: dict) -> None:
+        try:
+            ws = self._worksheet(TAB_SYSTEM_LOG)
+            entry = self._build_system_log_entry(level, category, payload)
+            ws.append_row(
+                dict_to_row(entry, SYSTEM_LOG_HEADERS),
+                value_input_option="RAW",
+            )
+            logger.info("Appended system log level=%s category=%s", level, category)
+        except gspread.exceptions.APIError as e:
+            raise StorageError(f"Failed to append system log: {e}") from e
+
     # --- watched_addresses ---
 
     @retry(max_retries=3, base_delay=2.0)
@@ -458,6 +472,32 @@ class SheetsClient:
             return len(new_rows)
         except gspread.exceptions.APIError as e:
             raise StorageError(f"Failed to append address activity: {e}") from e
+
+    @retry(max_retries=3, base_delay=2.0)
+    def list_address_activity(self, since: datetime | None = None) -> list[dict]:
+        try:
+            ws = self._worksheet(TAB_ADDRESS_ACTIVITY)
+            all_values = ws.get_all_values()
+            if len(all_values) <= 1:
+                return []
+            rows = [row_to_dict(row, ADDRESS_ACTIVITY_HEADERS) for row in all_values[1:]]
+            if since is None:
+                return rows
+
+            filtered = []
+            for row in rows:
+                raw_time = row.get("block_time") or row.get("collected_at")
+                try:
+                    row_time = datetime.fromisoformat(str(raw_time).replace("Z", "+00:00"))
+                except (TypeError, ValueError):
+                    continue
+                if row_time.tzinfo is None and since.tzinfo is not None:
+                    row_time = row_time.replace(tzinfo=since.tzinfo)
+                if row_time >= since:
+                    filtered.append(row)
+            return filtered
+        except gspread.exceptions.APIError as e:
+            raise StorageError(f"Failed to list address activity: {e}") from e
 
     # --- tg_whale_events ---
 
@@ -599,3 +639,41 @@ class SheetsClient:
         row_data = dict_to_row(entry, headers)
         last_col = chr(ord("A") + len(headers) - 1)
         ws.update(f"A{row_idx}:{last_col}{row_idx}", [row_data], value_input_option="RAW")
+
+    def _build_system_log_entry(self, level: str, category: str, payload: dict) -> dict:
+        payload = payload or {}
+        schema_keys = set(SYSTEM_LOG_HEADERS)
+        if schema_keys.intersection(payload.keys()):
+            entry = {key: payload.get(key, "") for key in SYSTEM_LOG_HEADERS}
+            if not entry.get("run_type"):
+                entry["run_type"] = category
+            if not entry.get("status"):
+                entry["status"] = level
+            if not entry.get("run_id"):
+                entry["run_id"] = f"{category}:{level}:{now_iso()}"
+            if not entry.get("started_at"):
+                entry["started_at"] = now_iso()
+            if not entry.get("details"):
+                entry["details"] = json.dumps(
+                    {"level": level, "category": category, "payload": payload},
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    default=str,
+                )
+            return entry
+
+        return {
+            "run_id": f"{category}:{level}:{now_iso()}",
+            "run_type": category,
+            "status": level,
+            "started_at": now_iso(),
+            "finished_at": "",
+            "transactions_count": "",
+            "errors": "",
+            "details": json.dumps(
+                {"level": level, "category": category, "payload": payload},
+                ensure_ascii=False,
+                sort_keys=True,
+                default=str,
+            ),
+        }

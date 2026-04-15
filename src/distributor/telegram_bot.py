@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import datetime as dt
+import random
 import re
+from collections.abc import Callable
 
 from telegram import Update
 from telegram.constants import ParseMode
+from telegram.error import BadRequest, Forbidden, NetworkError, RetryAfter, TimedOut
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -11,20 +15,27 @@ from telegram.ext import (
 )
 
 from src.distributor.formatters import (
-    format_daily_brief,
     format_watchlist_confirmation,
     format_welcome_message,
 )
+from src.signals.models import Signal
 from src.utils.errors import DistributorError
 from src.utils.logger import get_logger
+from src.utils.retry import async_retry
 
 logger = get_logger("telegram_bot")
 
 
 class WhaleScopeBot:
-    def __init__(self, token: str, sheets_client: "SheetsClient"):
+    def __init__(
+        self,
+        token: str,
+        sheets_client: "SheetsClient",
+        personalize_fn: Callable[[list[Signal], list[dict]], list[Signal]] | None = None,
+    ):
         self._token = token
         self._sheets = sheets_client
+        self._personalize_fn = personalize_fn
         self._app: Application | None = None
 
     def build(self) -> Application:
@@ -39,7 +50,11 @@ class WhaleScopeBot:
         self._app.add_handler(CommandHandler("status", self.handle_status))
         return self._app
 
-    async def send_daily_brief(self, brief_text: str) -> dict:
+    async def send_daily_brief(
+        self,
+        brief_text: str,
+        signals: list[Signal] | None = None,
+    ) -> dict:
         if self._app is None:
             raise DistributorError("Bot not built. Call build() first.")
 
@@ -53,17 +68,24 @@ class WhaleScopeBot:
                 continue
 
             watchlist = sub.get("watchlist")
-            text = brief_text if not watchlist else self._filter_brief(brief_text, watchlist)
+            text = self._brief_for_subscriber(chat_id, brief_text, signals, watchlist)
 
             try:
-                await self._app.bot.send_message(
-                    chat_id=chat_id,
-                    text=text,
-                    parse_mode=ParseMode.HTML,
+                await async_retry(
+                    lambda: self._app.bot.send_message(
+                        chat_id=chat_id,
+                        text=text,
+                        parse_mode=ParseMode.HTML,
+                    ),
+                    max_attempts=3,
+                    base_delay=2.0,
+                    max_delay=30.0,
+                    delay_for_exception=self._retry_delay_for_send,
+                    should_retry=self._should_retry_send_error,
                 )
                 result["sent"] += 1
             except Exception as exc:
-                if "blocked" in str(exc).lower() or "deactivated" in str(exc).lower():
+                if self._is_blocked_send_error(exc):
                     result["blocked"] += 1
                     logger.info("User %s blocked the bot", chat_id)
                 else:
@@ -77,6 +99,80 @@ class WhaleScopeBot:
             result["blocked"],
         )
         return result
+
+    def _brief_for_subscriber(
+        self,
+        chat_id: int,
+        brief_text: str,
+        signals: list[Signal] | None,
+        watchlist: list[str] | None,
+    ) -> str:
+        if signals is not None and self._personalize_fn is not None:
+            interests = self._load_signal_interests(chat_id)
+            personalized = self._personalize_fn(signals, interests)
+            if not personalized:
+                return "오늘은 관심 기준에 부합하는 시그널이 없습니다."
+            return self._format_signal_brief(personalized)
+
+        return brief_text if not watchlist else self._filter_brief(brief_text, watchlist)
+
+    def _load_signal_interests(self, chat_id: int) -> list[dict]:
+        try:
+            raw = self._sheets.list_user_interests(str(chat_id))
+        except Exception as exc:
+            logger.warning("Failed to load interests for %s: %s", chat_id, exc)
+            return []
+
+        interests: list[dict] = []
+        for item in raw:
+            normalized = dict(item)
+            if "rule" not in normalized and normalized.get("dimension") == "rule":
+                normalized["rule"] = normalized.get("value", "")
+            if "weight" in normalized:
+                try:
+                    normalized["weight"] = float(normalized["weight"])
+                except (TypeError, ValueError):
+                    normalized["weight"] = 1.0
+            interests.append(normalized)
+        return interests
+
+    def _format_signal_brief(self, signals: list[Signal]) -> str:
+        cards = ["<b>WhaleScope 데일리 브리핑</b>"]
+        for sig in sorted(signals, key=lambda s: s.score, reverse=True):
+            cards.append(
+                "\n".join([
+                    f"<b>{sig.rule}</b>",
+                    f"심각도: {sig.severity} / 신뢰도: {sig.confidence}",
+                    f"점수: {sig.score}/10",
+                    sig.summary,
+                ])
+            )
+        return "\n\n".join(cards)
+
+    def _retry_delay_for_send(self, exc: Exception, attempt: int) -> float:
+        if isinstance(exc, RetryAfter):
+            retry_after = exc.retry_after
+            if isinstance(retry_after, dt.timedelta):
+                return retry_after.total_seconds()
+            return float(retry_after)
+
+        base_delay = min(2.0 * (2 ** (attempt - 1)), 30.0)
+        return min(random.uniform(base_delay * 0.8, base_delay * 1.2), 30.0)
+
+    def _should_retry_send_error(self, exc: Exception) -> bool:
+        if self._is_blocked_send_error(exc):
+            return False
+        return isinstance(exc, (RetryAfter, TimedOut, NetworkError))
+
+    def _is_blocked_send_error(self, exc: Exception) -> bool:
+        if isinstance(exc, Forbidden):
+            return True
+
+        message = str(exc).lower()
+        if isinstance(exc, BadRequest):
+            return "chat not found" in message
+
+        return "blocked" in message or "deactivated" in message or "chat not found" in message
 
     def _filter_brief(self, brief_text: str, watchlist: list[str]) -> str:
         if not watchlist:

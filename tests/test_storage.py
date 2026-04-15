@@ -5,6 +5,7 @@ import pytest
 
 from src.storage.queries import dict_to_row, now_iso, row_to_dict
 from src.storage.schema import (
+    ADDRESS_ACTIVITY_HEADERS,
     ALL_TABS,
     ANALYSIS_LOG_HEADERS,
     DAILY_BRIEF_HEADERS,
@@ -380,6 +381,23 @@ class TestSheetsClient:
         })
         mock_ws.append_row.assert_called_once()
 
+    def test_append_system_log_maps_to_system_log_schema(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+
+        payload = {"symbol": "DOGE", "count": 3}
+
+        client.append_system_log("warning", "price_service", payload)
+
+        mock_ws.append_row.assert_called_once()
+        row_written = mock_ws.append_row.call_args[0][0]
+        assert row_written[SYSTEM_LOG_HEADERS.index("status")] == "warning"
+        assert row_written[SYSTEM_LOG_HEADERS.index("run_type")] == "price_service"
+        details = json.loads(row_written[SYSTEM_LOG_HEADERS.index("details")])
+        assert details["category"] == "price_service"
+        assert details["payload"] == payload
+
     def test_ensure_worksheets_creates_missing(self):
         with patch("src.storage.sheets_client.gspread") as mock_gspread, \
              patch("src.storage.sheets_client.Credentials") as mock_creds:
@@ -440,6 +458,12 @@ class TestStorageProtocolNewMethods:
         row[USER_INTERESTS_HEADERS.index("chat_id")] = str(chat_id)
         row[USER_INTERESTS_HEADERS.index("dimension")] = dimension
         row[USER_INTERESTS_HEADERS.index("value")] = value
+        return row
+
+    def _make_activity_row(self, tx_hash, block_time):
+        row = [""] * len(ADDRESS_ACTIVITY_HEADERS)
+        row[ADDRESS_ACTIVITY_HEADERS.index("tx_hash")] = tx_hash
+        row[ADDRESS_ACTIVITY_HEADERS.index("block_time")] = block_time
         return row
 
     def test_list_watched_addresses_returns_dict_keyed_by_address(self):
@@ -505,3 +529,21 @@ class TestStorageProtocolNewMethods:
 
         assert len(result) == 2
         assert all(r["chat_id"] == "1001" for r in result)
+
+    def test_list_address_activity_filters_since(self):
+        from datetime import datetime, timezone
+
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [
+            ADDRESS_ACTIVITY_HEADERS,
+            self._make_activity_row("old", "2026-04-01T00:00:00+00:00"),
+            self._make_activity_row("new", "2026-04-14T00:00:00+00:00"),
+        ]
+
+        result = client.list_address_activity(
+            since=datetime(2026, 4, 10, tzinfo=timezone.utc)
+        )
+
+        assert [row["tx_hash"] for row in result] == ["new"]
