@@ -107,14 +107,18 @@ class WhaleScopeBot:
         signals: list[Signal] | None,
         watchlist: list[str] | None,
     ) -> str:
-        if signals is not None and self._personalize_fn is not None:
-            interests = self._load_signal_interests(chat_id)
-            personalized = self._personalize_fn(signals, interests)
-            if not personalized:
-                return "오늘은 관심 기준에 부합하는 시그널이 없습니다."
-            return self._format_signal_brief(personalized)
+        base_brief = brief_text if not watchlist else self._filter_brief(brief_text, watchlist)
+        if signals is None or self._personalize_fn is None:
+            return base_brief
 
-        return brief_text if not watchlist else self._filter_brief(brief_text, watchlist)
+        interests = self._load_signal_interests(chat_id)
+        personalized = self._personalize_fn(signals, interests)
+        if not personalized:
+            return "\n\n".join([
+                base_brief,
+                "<i>추가로 관심 기준에 맞는 시그널은 없었습니다.</i>",
+            ])
+        return self._append_personalized_signals(base_brief, personalized)
 
     def _load_signal_interests(self, chat_id: int) -> list[dict]:
         try:
@@ -136,8 +140,16 @@ class WhaleScopeBot:
             interests.append(normalized)
         return interests
 
+    def _append_personalized_signals(
+        self, base_brief: str, signals: list[Signal]
+    ) -> str:
+        return "\n\n".join([
+            base_brief,
+            self._format_signal_brief(signals),
+        ])
+
     def _format_signal_brief(self, signals: list[Signal]) -> str:
-        cards = ["<b>WhaleScope 데일리 브리핑</b>"]
+        cards = ["<b>관심 시그널</b>"]
         for sig in sorted(signals, key=lambda s: s.score, reverse=True):
             cards.append(
                 "\n".join([

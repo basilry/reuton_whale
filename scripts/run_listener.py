@@ -9,7 +9,7 @@ Usage:
 Environment variables required (non-dry-run):
     TELETHON_API_ID, TELETHON_API_HASH, TELETHON_SESSION
     TG_CHANNEL
-    ANTHROPIC_API_KEY (for LLM NL-intent fallback)
+    One LLM provider key: ANTHROPIC_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY
     GOOGLE_SHEET_ID, GOOGLE_CREDENTIALS_JSON (storage)
 """
 from __future__ import annotations
@@ -61,8 +61,6 @@ async def _run():
     sheets = SheetsClient(config.sheet_id, config.google_credentials)
     router = _build_router(config)  # LLM fallback for NL-intent parsing
 
-    # Bug note (TRACK 3): TelethonListener._handle_message uses result.content
-    # but LLMResult has .text — to be fixed in TRACK 3 patch.
     listener = TelethonListener(
         api_id=config.telethon_api_id,
         api_hash=config.telethon_api_hash,

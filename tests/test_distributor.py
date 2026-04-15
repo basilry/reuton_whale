@@ -385,6 +385,10 @@ class TestWhaleScopeBot:
 
         assert result == {"sent": 2, "failed": 0, "blocked": 0}
         sent_texts = [call.kwargs["text"] for call in mock_app.bot.send_message.call_args_list]
+        assert "generic brief" in sent_texts[0]
+        assert "generic brief" in sent_texts[1]
+        assert "<b>관심 시그널</b>" in sent_texts[0]
+        assert "<b>관심 시그널</b>" in sent_texts[1]
         assert "cex_outflow_spike summary" in sent_texts[0]
         assert "cold_to_hot_transfer summary" in sent_texts[1]
         sheets_mock.list_user_interests.assert_any_call("111")
@@ -392,7 +396,7 @@ class TestWhaleScopeBot:
 
     @patch("src.distributor.telegram_bot.Application")
     @pytest.mark.asyncio
-    async def test_send_daily_brief_personalized_empty_message(self, mock_app_cls):
+    async def test_send_daily_brief_signals_without_interests_keeps_base_brief(self, mock_app_cls):
         mock_app = MagicMock()
         mock_builder = MagicMock()
         mock_builder.token.return_value = mock_builder
@@ -422,7 +426,10 @@ class TestWhaleScopeBot:
         )
 
         assert result == {"sent": 1, "failed": 0, "blocked": 0}
-        assert "관심 기준" in mock_app.bot.send_message.call_args.kwargs["text"]
+        sent_text = mock_app.bot.send_message.call_args.kwargs["text"]
+        assert sent_text.startswith("generic brief")
+        assert "관심 기준" in sent_text
+        assert "추가로 관심 기준에 맞는 시그널은 없었습니다." in sent_text
 
     @pytest.mark.asyncio
     async def test_handle_start_calls_add_subscriber(self):

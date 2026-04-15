@@ -1,8 +1,18 @@
 # WhaleScope
 
-온체인 고래 지갑 모니터링, 규칙 기반 시그널 탐지, LLM 한국어 해설, Telegram 브리핑을 하나로 묶은 크립토 고래 큐레이션 서비스입니다.
+Wrtn Technologies Product Engineer 과제 전형용 프로젝트입니다. 선택 도메인은 `C. AI 요약/큐레이션 서비스`이며, 온체인 고래 지갑 모니터링, 규칙 기반 시그널 탐지, LLM 한국어 해설, Telegram 브리핑을 하나로 묶은 크립토 고래 큐레이션 서비스입니다.
 
 > 본 서비스는 투자 조언을 제공하지 않습니다. 모든 브리핑은 참고 목적이며, 투자 판단과 책임은 사용자에게 있습니다.
+
+> 배포 URL은 현재 없습니다. 이 저장소와 로컬 실행 경로를 기준으로 평가할 수 있게 구성했습니다.
+
+## 과제 요약
+
+- One Pager와 동작하는 구현체를 하나의 Git repo에 담는 과제 전형입니다.
+- 평가 초점은 문제 정의, AI 활용 방식, 실행 가능성, 문서화, 코드 품질입니다.
+- 실제 데모 경로는 LLM API 기반 실행을 우선으로 두고, smoke는 API 키/외부 의존성 부재 시 fallback으로 남깁니다.
+
+One Pager: [docs/one-pager.md](docs/one-pager.md)
 
 ## 현재 상태
 
@@ -62,6 +72,18 @@ user_interests sheet --> per-subscriber personalize --> Telegram message variant
 | CI/CD | GitHub Actions | 일일 브리프, 주간 트렌드 자동 실행 |
 | 테스트 | pytest, pytest-asyncio | 단위/통합 테스트 |
 
+## AI 도구 / 모델 사용
+
+| 항목 | 사용 방식 | 선택 이유 |
+|---|---|---|
+| Anthropic | 기본 LLM provider | 한국어 브리핑 품질과 안정성을 우선시한 기본 경로 |
+| Gemini | fallback provider | 기본 provider 실패 시 브리핑 지속성 확보 |
+| Groq | fallback provider | 낮은 지연시간과 추가 대체 경로 확보 |
+| `LLMRouter` | task별 preferred/fallback 라우팅 | 하나의 모델 실패가 전체 브리핑 실패로 이어지지 않도록 함 |
+| Prompt templates | `prompts/*.txt` | 브리핑, 주간 코멘터리, 의도 파악 프롬프트를 분리해 유지보수성을 높임 |
+
+실제 LLM API는 요약/브리핑 생성에만 사용하고, 수집/정규화/시그널 판단은 규칙 기반으로 분리했습니다. 이렇게 하면 AI 출력이 바뀌어도 핵심 탐지 로직은 유지됩니다.
+
 ## 데이터 처리 안내
 
 WhaleScope는 다음 데이터를 처리합니다.
@@ -76,6 +98,14 @@ WhaleScope는 다음 데이터를 처리합니다.
 
 PII는 Telegram `chat_id`, `username`, 관심 설정 정도만 저장합니다. 온체인 데이터는 공개 블록체인 데이터입니다. LLM 공급자 사용 시 Anthropic, Google Gemini, Groq의 데이터 처리 정책을 별도로 확인해야 합니다.
 
+## Product Decisions / Tradeoffs
+
+- Google Sheets를 1차 저장소로 사용했습니다. 구현 속도와 과제 재현성은 좋지만, 장기적으로는 스키마 제약과 동시성 한계가 있습니다.
+- 규칙 기반 시그널과 LLM 요약을 분리했습니다. 탐지 로직과 설명 로직을 나눠서 결과의 일관성을 유지하려는 선택입니다.
+- Telegram을 주요 배포 채널로 썼습니다. 과제에서 바로 체감 가능한 사용자 접점을 만들기 쉽기 때문입니다.
+- 실제 LLM API를 기본 데모 경로로 둔 대신 smoke fallback을 유지했습니다. 과제 평가 환경에서 키/네트워크가 없을 때도 repo가 죽지 않게 하려는 선택입니다.
+- 공개 Telegram listener는 운영 복잡도가 높지만, 온체인 수집만으로는 놓치는 맥락을 보완하기 위해 포함했습니다.
+
 ## 빠른 시작
 
 ```bash
@@ -85,7 +115,47 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-`.env`에 최소 필수 값을 채운 뒤, 외부 API 없이 먼저 smoke test를 실행합니다.
+`.env`에 최소 필수 값을 채운 뒤, 아래 순서로 진행합니다.
+
+## Real LLM Quick Demo
+
+과제 제출용 기본 데모 경로입니다. fixture 시그널을 사용해 비용과 실행 시간을 통제하되, 브리핑 생성은 실제 LLM API를 통과합니다. Google Sheets, Telegram, 외부 collector 없이 AI 요약/큐레이션 핵심 경험을 확인할 수 있습니다.
+
+1. `.env`에 최소 1개 LLM provider key를 설정합니다.
+
+- `ANTHROPIC_API_KEY`
+- `GEMINI_API_KEY`
+- `GROQ_API_KEY`
+
+2. 실제 LLM 데모를 실행합니다.
+
+```bash
+python scripts/demo_real_llm.py
+```
+
+3. 선택적으로 markdown 결과를 저장합니다.
+
+```bash
+python scripts/demo_real_llm.py --output docs/demo-output.md
+```
+
+출력에는 fixture 기반 signal 요약과 실제 LLM이 생성한 한국어 브리핑이 포함됩니다.
+
+운영과 동일한 전체 파이프라인을 보려면 Google Sheets 초기화, 감시 주소 등록, Telegram 설정 후 아래 명령을 실행합니다.
+
+```bash
+python -m scripts.init_sheets
+python scripts/import_watched_addresses.py
+python -m src.main
+```
+
+- `daily_brief` 시트에 일일 브리핑이 저장됩니다.
+- Telegram bot이 연결되어 있으면 브리핑이 발송됩니다.
+- `analysis_log`에 LLM 호출 정보가 기록됩니다.
+
+LLM 키가 없거나 외부 의존성을 배제한 확인이 필요하면 아래 smoke fallback을 사용합니다.
+
+## Smoke Fallback
 
 ```bash
 python scripts/smoke_pipeline.py
@@ -112,18 +182,23 @@ SMOKE OK
 | 변수 | 설명 |
 |---|---|
 | `ETHERSCAN_API_KEY` | Etherscan API v2 키. EVM 체인 수집에 필요합니다. |
-| `ANTHROPIC_API_KEY` | 기본 LLM provider 키. 현재 `load_config()` 필수값입니다. |
 | `GOOGLE_SHEET_ID` | Google Spreadsheet ID입니다. |
 | `GOOGLE_CREDENTIALS_JSON` | Google service account JSON 전체를 한 줄 문자열로 넣습니다. |
 | `TELEGRAM_BOT_TOKEN` | BotFather에서 발급받은 Telegram bot token입니다. |
+
+LLM provider key는 아래 중 최소 1개가 필요합니다.
+
+| 변수 | 설명 |
+|---|---|
+| `ANTHROPIC_API_KEY` | Anthropic 기본 provider 키입니다. |
+| `GEMINI_API_KEY` | Gemini provider 키입니다. Anthropic 없이도 fallback provider로 사용할 수 있습니다. |
+| `GROQ_API_KEY` | Groq provider 키입니다. Anthropic/Gemini 없이도 fallback provider로 사용할 수 있습니다. |
 
 ### 선택
 
 | 변수 | 설명 |
 |---|---|
 | `SOLSCAN_API_KEY` | Solana 수집 키입니다. 없으면 SOL 수집을 건너뜁니다. |
-| `GEMINI_API_KEY` | Gemini fallback provider 키입니다. |
-| `GROQ_API_KEY` | Groq fallback provider 키입니다. |
 | `TELETHON_API_ID` | Telegram user API ID입니다. listener 실제 실행에 필요합니다. |
 | `TELETHON_API_HASH` | Telegram user API hash입니다. listener 실제 실행에 필요합니다. |
 | `TELETHON_SESSION` | Telethon session 이름입니다. 기본값은 `whalescope`입니다. |
@@ -269,7 +344,7 @@ TG_CHANNEL=@whale_alert_io python scripts/run_listener.py
 - 최초 실행 시 Telethon 인증 절차 완료
 - `TG_CHANNEL` 설정
 - Google Sheets credentials 설정
-- `ANTHROPIC_API_KEY` 설정. 정규식 파싱 실패 시 LLM fallback에 사용합니다.
+- LLM provider key 중 최소 1개 설정. 정규식 파싱 실패 시 LLM fallback에 사용합니다.
 
 listener는 상시 프로세스입니다. GitHub Actions보다는 로컬, Render, Fly.io, VPS 같은 long-running 환경에서 실행하는 것을 권장합니다.
 
@@ -368,9 +443,9 @@ Settings -> Secrets and variables -> Actions에 등록합니다.
 
 | Secret | 필수 여부 | 설명 |
 |---|---:|---|
-| `ANTHROPIC_API_KEY` | 필수 | 기본 LLM provider |
-| `GEMINI_API_KEY` | 선택 | Gemini fallback |
-| `GROQ_API_KEY` | 선택 | Groq fallback |
+| `ANTHROPIC_API_KEY` | 조건부 | LLM provider. 아래 LLM 키 중 최소 1개 필요 |
+| `GEMINI_API_KEY` | 조건부 | LLM provider. 아래 LLM 키 중 최소 1개 필요 |
+| `GROQ_API_KEY` | 조건부 | LLM provider. 아래 LLM 키 중 최소 1개 필요 |
 | `ETHERSCAN_API_KEY` | 필수 | EVM 체인 수집 |
 | `SOLSCAN_API_KEY` | 선택 | Solana 수집 |
 | `GOOGLE_SHEET_ID` | 필수 | Spreadsheet ID |
@@ -519,10 +594,17 @@ pytest tests/test_rules/test_rules.py -q
 
 ```text
 ETHERSCAN_API_KEY
-ANTHROPIC_API_KEY
 GOOGLE_SHEET_ID
 GOOGLE_CREDENTIALS_JSON
 TELEGRAM_BOT_TOKEN
+```
+
+또한 LLM provider key는 아래 중 최소 1개가 필요합니다.
+
+```text
+ANTHROPIC_API_KEY
+GEMINI_API_KEY
+GROQ_API_KEY
 ```
 
 ### Google Sheets 초기화 실패

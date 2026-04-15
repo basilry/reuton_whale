@@ -50,10 +50,17 @@ SUBSCRIBERS_HEADERS = [
 
 ANALYSIS_LOG_HEADERS = [
     "prompt_hash",
+    "task",
+    "prompt_version",
     "prompt",
     "response",
     "model",
+    "model_id",
     "tokens_used",
+    "tokens_in",
+    "tokens_out",
+    "cost_usd",
+    "latency_ms",
     "created_at",
 ]
 

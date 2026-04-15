@@ -102,6 +102,26 @@ class TestWatchedAddresses:
         assert "0xabcdef" in result
         assert "0xABCDEF" not in result
 
+    def test_append_missing_watched_addresses_batches_only_new_rows(self):
+        client, mock_ss = _make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        existing = [""] * len(WATCHED_ADDRESSES_HEADERS)
+        existing[WATCHED_ADDRESSES_HEADERS.index("address")] = "0xABC"
+        mock_ws.get_all_values.return_value = [WATCHED_ADDRESSES_HEADERS, existing]
+
+        result = client.append_missing_watched_addresses([
+            {"address": "0xABC", "chain": "ETH"},
+            {"address": "0xDEF", "chain": "ETH"},
+            {"address": "", "chain": "ETH"},
+        ])
+
+        assert result == {"inserted": 1, "skipped": 1, "invalid": 1}
+        mock_ws.append_rows.assert_called_once()
+        written_rows = mock_ws.append_rows.call_args[0][0]
+        assert len(written_rows) == 1
+        assert written_rows[0][WATCHED_ADDRESSES_HEADERS.index("address")] == "0xDEF"
+
 
 # ---------------------------------------------------------------------------
 # address_activity
@@ -300,13 +320,30 @@ class TestUserInterests:
 # ---------------------------------------------------------------------------
 
 class TestSaveAnalysisLog:
-    def test_save_analysis_log_delegates_to_save_analysis(self):
+    def test_save_analysis_log_delegates_to_save_analysis_and_keeps_telemetry(self):
         client, mock_ss = _make_client()
         mock_ws = MagicMock()
         mock_ss.worksheet.return_value = mock_ws
 
-        client.save_analysis_log({"prompt_hash": "h1", "prompt": "p", "response": "{}", "model": "x", "tokens_used": 1})
+        client.save_analysis_log({
+            "prompt_hash": "h1",
+            "task": "daily_brief",
+            "prompt": "p",
+            "response": "{}",
+            "model": "x",
+            "model_id": "x-1",
+            "tokens_used": 1,
+            "tokens_in": 2,
+            "tokens_out": 3,
+            "cost_usd": 0.004,
+            "latency_ms": 500,
+        })
         mock_ws.append_row.assert_called_once()
+        row = mock_ws.append_row.call_args[0][0]
+        from src.storage.schema import ANALYSIS_LOG_HEADERS
+        assert row[ANALYSIS_LOG_HEADERS.index("task")] == "daily_brief"
+        assert row[ANALYSIS_LOG_HEADERS.index("model_id")] == "x-1"
+        assert row[ANALYSIS_LOG_HEADERS.index("tokens_in")] == "2"
 
 
 # ---------------------------------------------------------------------------

@@ -46,14 +46,14 @@ def _build_router(config) -> LLMRouter:
     providers = {}
     if config.anthropic_api_key:
         providers["anthropic"] = AnthropicProvider(config.anthropic_api_key)
-    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    gemini_key = getattr(config, "gemini_api_key", "") or os.getenv("GEMINI_API_KEY", "")
     if gemini_key:
         try:
             from src.llm.gemini_provider import GeminiProvider
             providers["gemini"] = GeminiProvider(gemini_key)
         except Exception as e:
             logger.warning("GeminiProvider init failed: %s", e)
-    groq_key = os.getenv("GROQ_API_KEY", "")
+    groq_key = getattr(config, "groq_api_key", "") or os.getenv("GROQ_API_KEY", "")
     if groq_key:
         try:
             from src.llm.groq_provider import GroqProvider
@@ -92,32 +92,110 @@ def _event_to_dict(e: Event) -> dict:
     }
 
 
-def _signals_to_top5(signals: list[Signal], events: list[Event]) -> list[dict]:
+def _event_to_address_activity(e: Event) -> dict:
+    counterparty = e.to_addr if e.direction == "out" else e.from_addr
+    return {
+        "tx_hash": e.tx_hash or "",
+        "chain": e.chain,
+        "block_time": e.block_time.isoformat(),
+        "watched_address": e.watched_address or "",
+        "direction": e.direction,
+        "counterparty": counterparty,
+        "counterparty_category": e.counterparty_category or "",
+        "token": e.token,
+        "amount_token": e.amount_token,
+        "amount_usd": e.amount_usd,
+        "collected_at": e.collected_at.isoformat(),
+    }
+
+
+def _event_within_signal_window(event: Event, signal: Signal) -> bool:
+    return (
+        signal.window_start <= event.block_time <= signal.window_end
+        or signal.window_start <= event.collected_at <= signal.window_end
+    )
+
+
+def _signal_to_top_item(signal: Signal, events: list[Event]) -> dict:
     events_by_hash = {e.tx_hash: e for e in events if e.tx_hash}
+    evidence_events = [
+        events_by_hash[h]
+        for h in signal.evidence_tx_hashes
+        if h in events_by_hash
+    ]
+    fallback_events = [
+        e for e in events
+        if _event_within_signal_window(e, signal)
+        and (
+            signal.source == "both"
+            or e.source == signal.source
+            or (signal.source == "chain" and e.source == "chain")
+            or (signal.source == "tg" and e.source == "tg")
+        )
+    ]
+    candidate_events = evidence_events or fallback_events
+
+    seen: set[tuple[str, str, str, str]] = set()
+    deduped_events: list[Event] = []
+    for event in candidate_events:
+        key = (
+            event.tx_hash or "",
+            event.source,
+            event.block_time.isoformat(),
+            event.collected_at.isoformat(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_events.append(event)
+
+    first_event = deduped_events[0] if deduped_events else None
+    amount_usd: float | None = sum(e.amount_usd for e in deduped_events) or None
+    if amount_usd is None:
+        raw_amount = (
+            signal.extra.get("amount_usd")
+            or signal.extra.get("total_usd")
+            or signal.extra.get("notional_usd")
+        )
+        amount_usd = float(raw_amount) if raw_amount not in (None, "") else None
+
+    symbol = ""
+    if first_event and first_event.token:
+        symbol = first_event.token
+    else:
+        symbol = (
+            str(signal.extra.get("token") or signal.extra.get("symbol") or "")
+            or signal.source.upper()
+            or signal.rule
+        )
+
+    hash_value = next((h for h in signal.evidence_tx_hashes if h), "")
+    if not hash_value and first_event and first_event.tx_hash:
+        hash_value = first_event.tx_hash
+
+    return {
+        "hash": hash_value,
+        "symbol": symbol,
+        "amount_usd": amount_usd,
+        "amount_usd_known": amount_usd is not None,
+        "importance_score": signal.score,
+        "interpretation": signal.summary,
+        "type": signal.rule,
+        "signal_id": signal.signal_id,
+        "rule": signal.rule,
+        "severity": signal.severity,
+        "source": signal.source,
+        "confidence": signal.confidence,
+        "evidence_count": len(signal.evidence_tx_hashes),
+        "window_start": signal.window_start.isoformat(),
+        "window_end": signal.window_end.isoformat(),
+        "summary": signal.summary,
+    }
+
+
+def _signals_to_top5(signals: list[Signal], events: list[Event]) -> list[dict]:
     top_signals = sorted(signals, key=lambda sig: sig.score, reverse=True)[:5]
-    rows: list[dict] = []
-
-    for sig in top_signals:
-        evidence_events = [
-            events_by_hash[h]
-            for h in sig.evidence_tx_hashes
-            if h in events_by_hash
-        ]
-        first_event = evidence_events[0] if evidence_events else None
-        amount_usd = sum(e.amount_usd for e in evidence_events)
-        rows.append({
-            "hash": sig.evidence_tx_hashes[0] if sig.evidence_tx_hashes else "",
-            "symbol": first_event.token if first_event else sig.extra.get("token", ""),
-            "amount_usd": amount_usd,
-            "importance_score": sig.score,
-            "interpretation": sig.summary,
-            "type": sig.rule,
-            "severity": sig.severity,
-            "confidence": sig.confidence,
-            "source": sig.source,
-        })
-
-    return rows
+    return [_signal_to_top_item(sig, events) for sig in top_signals]
 
 
 def _dict_to_event(d: dict) -> Event:
@@ -367,6 +445,15 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
     logger.info("[%s] Stage 9/10: Storing to Google Sheets", run_id)
     if not dry_run:
         try:
+            address_activity_rows = [_event_to_address_activity(e) for e in raw_events]
+            if address_activity_rows:
+                stored_activity = sheets.append_address_activity(address_activity_rows)
+                logger.info("[%s] Stored %d address activity rows", run_id, stored_activity)
+        except Exception as e:
+            errors.append(f"append_address_activity: {e}")
+            logger.error("[%s] Failed to store address activity: %s", run_id, e)
+
+        try:
             stored_count = sheets.append_transactions(transactions)
             result["transactions_count"] = stored_count
             logger.info("[%s] Stored %d transactions", run_id, stored_count)
@@ -377,7 +464,7 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         if brief_text:
             try:
-                total_volume = sum(tx.get("amount_usd", 0) for tx in top5)
+                total_volume = sum((tx.get("amount_usd") or 0) for tx in top5)
                 sheets.save_daily_brief(today, [{
                     "summary": brief_text,
                     "top_transactions": json.dumps(
@@ -385,10 +472,19 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
                             {
                                 "hash": tx.get("hash", ""),
                                 "symbol": tx.get("symbol", ""),
-                                "amount_usd": tx.get("amount_usd", 0),
+                                "amount_usd": tx.get("amount_usd"),
+                                "amount_usd_known": tx.get("amount_usd_known", True),
                                 "importance_score": tx.get("importance_score", 0),
                                 "interpretation": tx.get("interpretation", ""),
                                 "type": tx.get("type", ""),
+                                "signal_id": tx.get("signal_id", ""),
+                                "rule": tx.get("rule", tx.get("type", "")),
+                                "severity": tx.get("severity", ""),
+                                "source": tx.get("source", ""),
+                                "confidence": tx.get("confidence", ""),
+                                "evidence_count": tx.get("evidence_count", 0),
+                                "window_start": tx.get("window_start", ""),
+                                "window_end": tx.get("window_end", ""),
                             }
                             for tx in top5
                         ],

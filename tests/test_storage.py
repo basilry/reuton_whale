@@ -381,6 +381,30 @@ class TestSheetsClient:
         })
         mock_ws.append_row.assert_called_once()
 
+    def test_save_analysis_log_preserves_llm_telemetry_fields(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+
+        client.save_analysis_log({
+            "task": "daily_brief",
+            "model_id": "claude-sonnet-4-20250514",
+            "prompt_version": "system-v1+user-v1",
+            "tokens_in": 120,
+            "tokens_out": 80,
+            "cost_usd": 0.0123,
+            "latency_ms": 950,
+        })
+
+        row = mock_ws.append_row.call_args[0][0]
+        assert row[ANALYSIS_LOG_HEADERS.index("task")] == "daily_brief"
+        assert row[ANALYSIS_LOG_HEADERS.index("model_id")] == "claude-sonnet-4-20250514"
+        assert row[ANALYSIS_LOG_HEADERS.index("prompt_version")] == "system-v1+user-v1"
+        assert row[ANALYSIS_LOG_HEADERS.index("tokens_in")] == "120"
+        assert row[ANALYSIS_LOG_HEADERS.index("tokens_out")] == "80"
+        assert row[ANALYSIS_LOG_HEADERS.index("cost_usd")] == "0.0123"
+        assert row[ANALYSIS_LOG_HEADERS.index("latency_ms")] == "950"
+
     def test_append_system_log_maps_to_system_log_schema(self):
         client, mock_ss = self._make_client()
         mock_ws = MagicMock()

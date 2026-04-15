@@ -108,3 +108,23 @@ class TestLoadDailyBriefs:
         assert set(parsed[0].keys()) >= {
             "hash", "symbol", "amount_usd", "importance_score", "interpretation", "type"
         }
+
+
+class TestFormatTopTransactionUsd:
+    def test_formats_known_amount(self):
+        from streamlit_app import format_top_transaction_usd
+
+        assert format_top_transaction_usd({"amount_usd": 1234567.8}) == "$1,234,568"
+
+    def test_handles_unknown_amount(self):
+        from streamlit_app import format_top_transaction_usd
+
+        assert format_top_transaction_usd({
+            "amount_usd": None,
+            "amount_usd_known": False,
+        }) == "USD unknown"
+
+    def test_handles_invalid_amount(self):
+        from streamlit_app import format_top_transaction_usd
+
+        assert format_top_transaction_usd({"amount_usd": "n/a"}) == "USD unknown"

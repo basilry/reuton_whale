@@ -415,6 +415,49 @@ class SheetsClient:
         except gspread.exceptions.APIError as e:
             raise StorageError(f"Failed to upsert watched address: {e}") from e
 
+    @retry(max_retries=3, base_delay=2.0)
+    def append_missing_watched_addresses(self, addresses: list[dict]) -> dict[str, int]:
+        """Append missing watched addresses with one read and one batch write."""
+        try:
+            ws = self._worksheet(TAB_WATCHED_ADDRESSES)
+            all_values = ws.get_all_values()
+            addr_col = WATCHED_ADDRESSES_HEADERS.index("address")
+            existing = {
+                row[addr_col]
+                for row in all_values[1:]
+                if addr_col < len(row) and row[addr_col]
+            }
+
+            now = now_iso()
+            new_rows = []
+            skipped = 0
+            invalid = 0
+            for addr in addresses:
+                target = str(addr.get("address", "")).strip()
+                if not target:
+                    invalid += 1
+                    continue
+                if target in existing:
+                    skipped += 1
+                    continue
+                entry = dict(addr)
+                entry["address"] = target
+                entry.setdefault("added_at", now)
+                new_rows.append(dict_to_row(entry, WATCHED_ADDRESSES_HEADERS))
+                existing.add(target)
+
+            if new_rows:
+                ws.append_rows(new_rows, value_input_option="RAW")
+            logger.info(
+                "Appended %d missing watched addresses (%d existing skipped, %d invalid skipped)",
+                len(new_rows),
+                skipped,
+                invalid,
+            )
+            return {"inserted": len(new_rows), "skipped": skipped, "invalid": invalid}
+        except gspread.exceptions.APIError as e:
+            raise StorageError(f"Failed to append missing watched addresses: {e}") from e
+
     _EVM_CHAINS = {"eth", "ethereum", "arbitrum", "base", "bsc", "polygon"}
 
     @retry(max_retries=3, base_delay=2.0)

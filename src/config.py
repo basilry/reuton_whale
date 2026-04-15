@@ -14,6 +14,8 @@ class Config:
     telethon_api_id: int = 0
     telethon_api_hash: str = ""
     telethon_session: str = "whalescope"
+    gemini_api_key: str = ""
+    groq_api_key: str = ""
 
 
 def load_config() -> Config:
@@ -21,7 +23,6 @@ def load_config() -> Config:
 
     required = {
         "etherscan_api_key": "ETHERSCAN_API_KEY",
-        "anthropic_api_key": "ANTHROPIC_API_KEY",
         "sheet_id": "GOOGLE_SHEET_ID",
         "google_credentials": "GOOGLE_CREDENTIALS_JSON",
         "telegram_token": "TELEGRAM_BOT_TOKEN",
@@ -33,6 +34,18 @@ def load_config() -> Config:
         if not value:
             raise ValueError(f"Missing required environment variable: {env_var}")
         values[field] = value
+
+    values["anthropic_api_key"] = os.getenv("ANTHROPIC_API_KEY", "")
+    values["gemini_api_key"] = os.getenv("GEMINI_API_KEY", "")
+    values["groq_api_key"] = os.getenv("GROQ_API_KEY", "")
+    if not any(
+        values[key]
+        for key in ("anthropic_api_key", "gemini_api_key", "groq_api_key")
+    ):
+        raise ValueError(
+            "Missing required LLM provider key: set at least one of "
+            "ANTHROPIC_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY"
+        )
 
     values["solscan_api_key"] = os.getenv("SOLSCAN_API_KEY", "")
     raw_api_id = os.getenv("TELETHON_API_ID", "0")

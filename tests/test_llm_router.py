@@ -85,6 +85,26 @@ def test_preferred_fails_first_fallback_succeeds():
     providers["groq"].call.assert_not_called()
 
 
+def test_missing_preferred_provider_uses_configured_fallback():
+    fallback_result = LLMResult(
+        text="fallback",
+        model_id="gemini-1.5-flash",
+        tokens_in=8,
+        tokens_out=4,
+        cost_usd=0.0000003,
+        latency_ms=90,
+    )
+    providers = _make_providers(gemini_side_effect=[fallback_result])
+    providers.pop("anthropic")
+    router = LLMRouter(providers, _ROUTING_CONFIG)
+
+    result = router.call_task("test_task", "sys", "user")
+
+    assert result.text == "fallback"
+    providers["gemini"].call.assert_called_once()
+    providers["groq"].call.assert_not_called()
+
+
 def test_all_candidates_fail_raises_router_error():
     providers = _make_providers(
         anthropic_side_effect=LLMProviderError("anthropic down"),

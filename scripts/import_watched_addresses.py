@@ -52,17 +52,16 @@ def main():
     config = load_config()
     sheets = SheetsClient(config.sheet_id, config.google_credentials)
 
-    imported = 0
-    errors = 0
-    for row in rows:
-        try:
-            sheets.upsert_watched_address(row)
-            imported += 1
-        except Exception as e:
-            logger.error("Failed to upsert %s: %s", row.get("address"), e)
-            errors += 1
+    try:
+        result = sheets.append_missing_watched_addresses(rows)
+    except Exception as e:
+        logger.error("Failed to import watched addresses: %s", e)
+        sys.exit(1)
 
-    print(f"Imported {imported} addresses, {errors} errors")
+    print(
+        "Imported {inserted} new addresses, skipped {skipped} existing, "
+        "{invalid} invalid".format(**result)
+    )
 
 
 if __name__ == "__main__":

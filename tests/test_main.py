@@ -139,6 +139,11 @@ class TestRunDailyPipeline:
 
         assert result["status"] == "completed"
         assert result["transactions_count"] == 2
+        mock_sheets.append_address_activity.assert_called_once()
+        activity_rows = mock_sheets.append_address_activity.call_args[0][0]
+        assert len(activity_rows) == 2
+        assert activity_rows[0]["tx_hash"] == "h1"
+        assert activity_rows[0]["watched_address"] == "0xaaa"
 
         mock_sheets.save_daily_brief.assert_called_once()
         briefs_arg = mock_sheets.save_daily_brief.call_args[0][1]
@@ -302,9 +307,18 @@ class TestRunDailyPipeline:
             "hash": "h1",
             "symbol": "BTC",
             "amount_usd": 10_000_000.0,
+            "amount_usd_known": True,
             "importance_score": 9.0,
             "interpretation": "Signal summary",
             "type": "cold_to_hot_transfer",
+            "signal_id": "sig1",
+            "rule": "cold_to_hot_transfer",
+            "severity": "high",
+            "source": "chain",
+            "confidence": "high",
+            "evidence_count": 1,
+            "window_start": "2024-01-01T00:00:00+00:00",
+            "window_end": "2024-01-01T00:00:00+00:00",
         }]
 
     @patch("src.main.WhaleScopeBot")
@@ -365,3 +379,43 @@ class TestRunDailyPipeline:
         assert result["status"] == "completed_with_errors"
         errors = json.loads(result["errors"])
         assert any("Sheets API error" in e for e in errors)
+
+
+def test_signals_to_top5_keeps_hashless_signal_summary_without_fake_amount():
+    from src.main import _signals_to_top5
+
+    now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    sig = Signal(
+        signal_id="sig-tg",
+        rule="tg_cex_inflow_burst",
+        severity="medium",
+        score=7.0,
+        confidence="medium",
+        source="tg",
+        evidence_tx_hashes=[],
+        window_start=now,
+        window_end=now,
+        summary="TG burst summary",
+        extra={"symbol": "USDT"},
+    )
+
+    top_items = _signals_to_top5([sig], [])
+
+    assert top_items == [{
+        "hash": "",
+        "symbol": "USDT",
+        "amount_usd": None,
+        "amount_usd_known": False,
+        "importance_score": 7.0,
+        "interpretation": "TG burst summary",
+        "type": "tg_cex_inflow_burst",
+        "signal_id": "sig-tg",
+        "rule": "tg_cex_inflow_burst",
+        "severity": "medium",
+        "source": "tg",
+        "confidence": "medium",
+        "evidence_count": 0,
+        "window_start": "2024-01-01T00:00:00+00:00",
+        "window_end": "2024-01-01T00:00:00+00:00",
+        "summary": "TG burst summary",
+    }]

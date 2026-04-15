@@ -27,7 +27,11 @@ class LLMRouter:
 
         for model_spec in candidates:
             provider_name, model_id = model_spec.split("/", 1)
-            provider = self.providers[provider_name]
+            provider = self.providers.get(provider_name)
+            if provider is None:
+                last_err = LLMRouterError(f"Provider {provider_name!r} is not configured")
+                self._log(task, model_spec, "error", error=str(last_err))
+                continue
             try:
                 result = provider.call(system, user, model=model_id, max_tokens=max_tokens)
                 self._log(task, model_spec, "ok", result)

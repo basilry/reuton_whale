@@ -1,4 +1,4 @@
-"""Verify API connections: Etherscan, CoinGecko, Anthropic, Google Sheets, Telegram."""
+"""Verify API connections: Etherscan, CoinGecko, configured LLMs, Sheets, Telegram."""
 
 import sys
 
@@ -62,6 +62,41 @@ def test_anthropic(api_key: str) -> bool:
         return False
 
 
+def test_gemini(api_key: str) -> bool:
+    from src.llm.gemini_provider import GeminiProvider
+
+    try:
+        result = GeminiProvider(api_key).call(
+            "Reply with one short word.",
+            "ping",
+            model="gemini-2.5-flash",
+            max_tokens=8,
+        )
+        logger.info("Gemini: OK")
+        return True
+    except Exception as e:
+        logger.error("Gemini: FAIL (%s)", e)
+        return False
+
+
+def test_groq(api_key: str) -> bool:
+    from src.llm.groq_provider import GroqProvider
+
+    try:
+        result = GroqProvider(api_key).call(
+            "Reply with one short word.",
+            "ping",
+            model="llama-3.3-70b-versatile",
+            max_tokens=8,
+        )
+        ok = bool(result.text)
+        logger.info("Groq: %s", "OK" if ok else "FAIL")
+        return ok
+    except Exception as e:
+        logger.error("Groq: FAIL (%s)", e)
+        return False
+
+
 def test_google_sheets(sheet_id: str, credentials_json: str) -> bool:
     import json
     import gspread
@@ -104,10 +139,18 @@ def test_telegram(token: str) -> bool:
 
 def main():
     config = load_config()
+    llm_results = {}
+    if config.anthropic_api_key:
+        llm_results["Anthropic"] = test_anthropic(config.anthropic_api_key)
+    if config.gemini_api_key:
+        llm_results["Gemini"] = test_gemini(config.gemini_api_key)
+    if config.groq_api_key:
+        llm_results["Groq"] = test_groq(config.groq_api_key)
+
     results = {
         "Etherscan": test_etherscan(config.etherscan_api_key),
         "CoinGecko": test_coingecko(),
-        "Anthropic": test_anthropic(config.anthropic_api_key),
+        **llm_results,
         "Google Sheets": test_google_sheets(config.sheet_id, config.google_credentials),
         "Telegram": test_telegram(config.telegram_token),
     }
