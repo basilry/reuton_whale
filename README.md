@@ -18,9 +18,9 @@ Next.js Dashboard 개발 계획: [docs/nextjs-dashboard-development-plan.md](doc
 
 ## Next.js 대시보드
 
-`apps/dashboard`는 Vercel 배포용 프론트 대시보드입니다. 앱 단독 실행 안내는 [apps/dashboard/README.md](apps/dashboard/README.md), 배포 설계는 [docs/nextjs-dashboard-development-plan.md](docs/nextjs-dashboard-development-plan.md)를 기준으로 봅니다.
+`apps/dashboard`는 Vercel 배포용 Next.js App Router 대시보드입니다. 현재 구현은 Google Sheets를 읽기 전용 데이터 소스로 사용해 거래, 시그널, 일일 브리핑, 시스템 로그를 보여줍니다. 앱 단독 실행 안내는 [apps/dashboard/README.md](apps/dashboard/README.md), 배포 설계는 [docs/nextjs-dashboard-development-plan.md](docs/nextjs-dashboard-development-plan.md)를 기준으로 봅니다.
 
-로컬 개발과 빌드는 루트 워크스페이스 명령으로 실행합니다.
+로컬 개발과 빌드는 루트 워크스페이스 명령으로 실행합니다. `GOOGLE_CREDENTIALS_JSON`은 JSON 문자열이므로 shell에서 `source`하지 말고, Next.js가 `apps/dashboard/.env.local`을 직접 읽게 두는 것을 권장합니다.
 
 ```bash
 cp apps/dashboard/.env.example apps/dashboard/.env.local
@@ -29,13 +29,33 @@ npm run dashboard:dev
 npm run dashboard:build
 ```
 
+현재 dashboard API는 다음 route handler로 제공됩니다.
+
+| Endpoint | 설명 |
+|---|---|
+| `/api/dashboard` | 지표, 최신 브리핑, 최근 거래, 최근 시그널, 시스템 로그 통합 snapshot |
+| `/api/transactions?limit=20` | 최근 거래 목록 |
+| `/api/signals?limit=20` | 최근 규칙 기반 시그널 목록 |
+| `/api/system-log?limit=25` | 최근 pipeline/system log 목록 |
+
 배포 기준은 다음과 같습니다.
 
 - Vercel 프로젝트의 Root Directory는 `apps/dashboard`로 설정합니다.
-- `GOOGLE_CREDENTIALS_JSON`, `GOOGLE_SHEET_ID`, `DASHBOARD_PASSWORD`, `RENDER_PIPELINE_WEBHOOK_URL`, `RENDER_PIPELINE_WEBHOOK_SECRET`는 server-only secret입니다.
+- `GOOGLE_CREDENTIALS_JSON`, `GOOGLE_SHEET_ID`는 현재 dashboard 필수 server-only secret입니다.
+- `DASHBOARD_PASSWORD`, `RENDER_PIPELINE_WEBHOOK_URL`, `RENDER_PIPELINE_WEBHOOK_SECRET`는 인증/실행 트리거 확장용 reserved server-only secret입니다.
 - `NEXT_PUBLIC_`에는 공개 가능한 표시용 값만 둡니다.
 - Render는 `python -m src.main`, `python scripts/run_bot.py`, `TG_CHANNEL=@whale_alert_io python scripts/run_listener.py`를 각각 독립 worker로 운영합니다.
 - 정보수집, Telegram bot, Telegram listener를 하나의 프로세스로 합치지 않습니다.
+
+권장 배포 구조:
+
+| 구성요소 | Runtime | 역할 |
+|---|---|---|
+| 정보수집 파이프라인 | Render Cron Job 또는 Worker | 온체인/TG 이벤트 수집, 시그널 생성, LLM 브리핑 생성, Sheets 저장 |
+| Telegram bot | Render Worker | `/start`, `/watchlist`, `/pause`, `/status` 등 사용자 명령 처리 |
+| Telegram listener | Render Worker | 공개 고래 알림 채널 수신 후 `tg_whale_events` 저장 |
+| Dashboard | Vercel | Google Sheets 읽기 전용 운영 화면 |
+| Legacy dashboard | Local Streamlit | 로컬 진단용 보조 UI |
 
 ## 현재 상태
 
@@ -92,7 +112,7 @@ user_interests sheet --> per-subscriber personalize --> Telegram message variant
 | 저장소 | Google Sheets, gspread | MVP 영구 저장소 |
 | 배포 | Render Cron/Worker, Vercel | 백엔드 워커와 프론트 대시보드 분리 |
 | 대시보드 | Next.js / Streamlit | Vercel target 프론트와 legacy local UI |
-| CI/CD | GitHub Actions | 일일 브리프, 주간 트렌드 자동 실행 |
+| CI/CD | GitHub Actions | 선택적 일일/주간 백업 스케줄러 |
 | 테스트 | pytest, pytest-asyncio | 단위/통합 테스트 |
 
 ## AI 도구 / 모델 사용
@@ -139,6 +159,22 @@ cp .env.example .env
 ```
 
 `.env`에 최소 필수 값을 채운 뒤, 아래 순서로 진행합니다.
+
+Python backend와 Next.js dashboard를 함께 확인하려면 다음 순서가 가장 짧습니다.
+
+```bash
+python -m scripts.init_sheets
+python scripts/import_watched_addresses.py --dry-run
+python scripts/import_watched_addresses.py
+python -m src.main --dry-run
+python -m src.main
+
+cp apps/dashboard/.env.example apps/dashboard/.env.local
+npm install
+npm run dashboard:dev
+```
+
+대시보드가 비어 있으면 먼저 `transactions`, `signals`, `daily_brief`, `system_log` 시트에 데이터가 쌓였는지 확인합니다. Next.js dashboard는 데이터를 직접 수집하지 않고 Google Sheets snapshot을 읽습니다.
 
 ## Real LLM Quick Demo
 
@@ -391,7 +427,7 @@ python scripts/run_bot.py
 | `/pause` | 알림 일시중지 |
 | `/status` | 구독 상태 조회 |
 
-주의: `run_bot.py`는 명령 처리용 long-polling 프로세스입니다. 일일 브리핑 발송은 `python -m src.main` 또는 GitHub Actions daily workflow에서 수행합니다.
+주의: `run_bot.py`는 명령 처리용 long-polling 프로세스입니다. 일일 브리핑 발송은 Render pipeline의 `python -m src.main` 또는 선택적 GitHub Actions daily workflow에서 수행합니다.
 
 ### 6. 주간 트렌드
 
@@ -429,7 +465,27 @@ python scripts/test_connection.py
 
 실제 API 호출이 발생하므로 로컬 smoke test와 달리 네트워크와 유효한 키가 필요합니다.
 
-### 9. Streamlit 대시보드
+### 9. Next.js 대시보드
+
+Vercel 배포 대상 dashboard입니다. Google Sheets를 server side에서 읽고 browser에는 secret을 노출하지 않습니다.
+
+```bash
+cp apps/dashboard/.env.example apps/dashboard/.env.local
+npm install
+npm run dashboard:dev
+```
+
+검증 명령:
+
+```bash
+npm run dashboard:lint
+npm run dashboard:typecheck
+npm run dashboard:build
+```
+
+자세한 내용은 [apps/dashboard/README.md](apps/dashboard/README.md)를 확인하세요.
+
+### 10. Streamlit 대시보드
 
 Google Sheets의 거래와 브리핑 데이터를 읽어 대시보드를 띄웁니다.
 
@@ -441,8 +497,43 @@ streamlit run streamlit_app.py
 
 - `STREAMLIT_PASSWORD`가 있으면 비밀번호 입력 후 접근합니다.
 - 비어 있으면 인증 없이 접근되며 화면에 경고가 표시됩니다.
+- Streamlit은 현재 Vercel 대상이 아니라 legacy local dashboard입니다.
+
+## Render / Vercel 배포
+
+현재 권장 production 구성은 Render가 Python worker를 담당하고, Vercel이 Next.js dashboard를 담당하는 분리 구조입니다.
+
+### Render services
+
+| Service | Type | Start command | 역할 |
+|---|---|---|---|
+| `whalescope-pipeline` | Cron Job 또는 Worker | `python -m src.main` | 온체인 수집, 시그널 생성, LLM 브리핑, Sheets 저장, 브리핑 발송 |
+| `whalescope-bot` | Background Worker | `python scripts/run_bot.py` | Telegram 사용자 명령 처리 |
+| `whalescope-listener` | Background Worker | `TG_CHANNEL=@whale_alert_io python scripts/run_listener.py` | 공개 Telegram 채널 이벤트 수신 |
+
+Render에는 `.env.example`의 Python backend 값을 등록합니다. 최소 필수값은 `ETHERSCAN_API_KEY`, `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELEGRAM_BOT_TOKEN`, 그리고 LLM provider key 중 1개입니다. listener를 켜려면 `TELETHON_API_ID`, `TELETHON_API_HASH`, `TELETHON_SESSION`, `TG_CHANNEL`도 필요합니다.
+
+### Vercel dashboard
+
+| Setting | Value |
+|---|---|
+| Root Directory | `apps/dashboard` |
+| Install Command | `npm install` |
+| Build Command | `npm run build` |
+
+Vercel에는 dashboard server-only env만 등록합니다.
+
+| Variable | 설명 |
+|---|---|
+| `GOOGLE_SHEET_ID` | Google Spreadsheet ID |
+| `GOOGLE_CREDENTIALS_JSON` | Google service account JSON |
+| `NEXT_PUBLIC_APP_NAME` | 선택 표시값 |
+
+대시보드는 읽기 전용입니다. 데이터가 비어 있으면 Vercel 문제가 아니라 Render pipeline 또는 Google Sheets 데이터 적재 상태를 먼저 확인합니다.
 
 ## GitHub Actions
+
+GitHub Actions는 선택적 스케줄러/백업 경로입니다. 현재 권장 production 경로는 Render worker와 Vercel dashboard입니다.
 
 ### Daily Whale Brief
 
@@ -609,7 +700,9 @@ pytest tests/test_rules/test_rules.py -q
 10. `python -m src.main`
 11. `python scripts/run_bot.py`를 long-running 프로세스로 실행
 12. `TG_CHANNEL=@whale_alert_io python scripts/run_listener.py`를 별도 long-running 프로세스로 실행
-13. GitHub Actions secrets 등록 후 daily/weekly workflow 수동 실행
+13. Render에 pipeline, bot, listener 서비스를 분리 등록
+14. Vercel에 `apps/dashboard` dashboard 배포
+15. 필요하면 GitHub Actions secrets 등록 후 daily/weekly workflow를 백업 경로로 수동 실행
 
 ## 트러블슈팅
 
