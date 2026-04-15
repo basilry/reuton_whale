@@ -4,6 +4,7 @@ import { MetricCard } from "@/components/metric-card";
 import { SignalsTable, type SignalRow } from "@/components/signals-table";
 import { SystemLogPanel, type SystemLogRow } from "@/components/system-log-panel";
 import { TransactionsTable, type TransactionRow } from "@/components/transactions-table";
+import { DashboardConfigError } from "@/lib/env";
 import { getDashboardData } from "@/lib/metrics";
 
 export const runtime = "nodejs";
@@ -348,7 +349,9 @@ async function loadDashboardData(): Promise<DashboardData | null> {
       source: "google_sheets",
     };
   } catch (error) {
-    console.error("Dashboard data load failed", error);
+    if (!(error instanceof DashboardConfigError)) {
+      console.error("Dashboard data load failed", error);
+    }
     return null;
   }
 }

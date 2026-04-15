@@ -35,7 +35,7 @@ Do not merge the Python workers into this Vercel app. Vercel should only serve t
 
 ## Environment
 
-Create `apps/dashboard/.env.local` from the example file before running the app.
+Create `apps/dashboard/.env.local` from the example file before running the app if you want dashboard-specific local env values. For local convenience, the app also falls back to the repository root `.env` when `apps/dashboard/.env.local` is missing.
 
 From the repository root:
 
@@ -65,7 +65,7 @@ Reserved values for planned auth/run-trigger extensions:
 | `RENDER_PIPELINE_WEBHOOK_URL` | No | server-only | Future manual pipeline trigger |
 | `RENDER_PIPELINE_WEBHOOK_SECRET` | No | server-only | Future webhook signing secret |
 
-Do not prefix Google credentials with `NEXT_PUBLIC_`. Do not run `source .env.local` for `GOOGLE_CREDENTIALS_JSON`; shell parsing can strip JSON quotes. Next.js loads `.env.local` directly.
+Do not prefix Google credentials with `NEXT_PUBLIC_`. Do not run `source .env.local` or `source ../../.env` for `GOOGLE_CREDENTIALS_JSON`; shell parsing can strip JSON quotes. Next.js loads `.env.local`, and this app can read the repository root `.env` directly on the server side during local development.
 
 ## Local Development
 
@@ -144,6 +144,8 @@ Keep `GOOGLE_CREDENTIALS_JSON` as a server-only environment variable. The servic
 ### Dashboard shows fallback data
 
 Check that `GOOGLE_SHEET_ID` and `GOOGLE_CREDENTIALS_JSON` exist in `.env.local` or Vercel env. Also verify the service account email has access to the Spreadsheet.
+
+For local development, these values may also live in the repository root `.env`. If you changed env values while `next dev` is running, restart the dev server.
 
 ### `GOOGLE_CREDENTIALS_JSON must contain valid service account JSON`
 

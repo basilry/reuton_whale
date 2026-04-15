@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+
 import { TAB_HEADERS, type SheetTabName } from "./schema";
 
 export const SHEETS_SCOPES = [
@@ -20,10 +23,102 @@ export interface DashboardEnv {
   credentials: GoogleServiceAccountCredentials;
 }
 
+type EnvMap = Record<string, string>;
+
 function missingEnvError(keys: string[]): DashboardConfigError {
   return new DashboardConfigError(
     `Missing required environment variable${keys.length > 1 ? "s" : ""}: ${keys.join(", ")}`
   );
+}
+
+function stripEnvQuotes(value: string): string {
+  const trimmed = value.trim();
+  const quote = trimmed[0];
+
+  if (
+    trimmed.length >= 2 &&
+    (quote === "\"" || quote === "'") &&
+    trimmed[trimmed.length - 1] === quote
+  ) {
+    return trimmed.slice(1, -1);
+  }
+
+  return trimmed;
+}
+
+function parseEnvFile(path: string): EnvMap {
+  if (!existsSync(path)) {
+    return {};
+  }
+
+  const values: EnvMap = {};
+  const contents = readFileSync(path, "utf8");
+
+  for (const line of contents.split(/\r?\n/)) {
+    const trimmed = line.trim();
+
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const key = trimmed.slice(0, separatorIndex).trim();
+    const value = stripEnvQuotes(trimmed.slice(separatorIndex + 1));
+
+    if (key && values[key] === undefined) {
+      values[key] = value;
+    }
+  }
+
+  return values;
+}
+
+function candidateEnvFiles(): string[] {
+  const cwd = resolve(process.cwd());
+  const dirs = new Set<string>();
+  const files = new Set<string>();
+  const addForDir = (dir: string) => {
+    dirs.add(dir);
+    files.add(join(dir, ".env.local"));
+    files.add(join(dir, ".env"));
+  };
+
+  addForDir(cwd);
+
+  const appFromRepoRoot = join(cwd, "apps", "dashboard");
+  if (existsSync(join(appFromRepoRoot, "package.json"))) {
+    addForDir(appFromRepoRoot);
+  }
+
+  const repoRootFromApp = resolve(cwd, "..", "..");
+  if (
+    !dirs.has(repoRootFromApp) &&
+    existsSync(join(repoRootFromApp, "apps", "dashboard", "package.json"))
+  ) {
+    addForDir(repoRootFromApp);
+  }
+
+  return [...files];
+}
+
+function readEnvValue(key: string): string | undefined {
+  const processValue = process.env[key]?.trim();
+  if (processValue) {
+    return processValue;
+  }
+
+  for (const file of candidateEnvFiles()) {
+    const fileValue = parseEnvFile(file)[key]?.trim();
+    if (fileValue) {
+      return fileValue;
+    }
+  }
+
+  return undefined;
 }
 
 function parseCredentialsJson(raw: string): GoogleServiceAccountCredentials {
@@ -70,8 +165,8 @@ function parseCredentialsJson(raw: string): GoogleServiceAccountCredentials {
 }
 
 export function getDashboardEnv(): DashboardEnv {
-  const sheetId = process.env.GOOGLE_SHEET_ID?.trim();
-  const credentialsJson = process.env.GOOGLE_CREDENTIALS_JSON?.trim();
+  const sheetId = readEnvValue("GOOGLE_SHEET_ID");
+  const credentialsJson = readEnvValue("GOOGLE_CREDENTIALS_JSON");
   const missing: string[] = [];
 
   if (!sheetId) {

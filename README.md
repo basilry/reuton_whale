@@ -20,13 +20,18 @@ Next.js Dashboard 개발 계획: [docs/nextjs-dashboard-development-plan.md](doc
 
 `apps/dashboard`는 Vercel 배포용 Next.js App Router 대시보드입니다. 현재 구현은 Google Sheets를 읽기 전용 데이터 소스로 사용해 거래, 시그널, 일일 브리핑, 시스템 로그를 보여줍니다. 앱 단독 실행 안내는 [apps/dashboard/README.md](apps/dashboard/README.md), 배포 설계는 [docs/nextjs-dashboard-development-plan.md](docs/nextjs-dashboard-development-plan.md)를 기준으로 봅니다.
 
-로컬 개발과 빌드는 루트 워크스페이스 명령으로 실행합니다. `GOOGLE_CREDENTIALS_JSON`은 JSON 문자열이므로 shell에서 `source`하지 말고, Next.js가 `apps/dashboard/.env.local`을 직접 읽게 두는 것을 권장합니다.
+로컬 개발과 빌드는 루트 워크스페이스 명령으로 실행합니다. dashboard는 `apps/dashboard/.env.local`을 우선 읽고, 없으면 로컬 편의를 위해 repo 루트 `.env`도 fallback으로 읽습니다. `GOOGLE_CREDENTIALS_JSON`은 JSON 문자열이므로 shell에서 `source`하지 마세요.
 
 ```bash
-cp apps/dashboard/.env.example apps/dashboard/.env.local
 npm install
 npm run dashboard:dev
 npm run dashboard:build
+```
+
+루트 `.env`를 쓰지 않고 dashboard 전용 env를 분리하려면 아래처럼 생성합니다.
+
+```bash
+cp apps/dashboard/.env.example apps/dashboard/.env.local
 ```
 
 현재 dashboard API는 다음 route handler로 제공됩니다.
@@ -173,6 +178,8 @@ cp apps/dashboard/.env.example apps/dashboard/.env.local
 npm install
 npm run dashboard:dev
 ```
+
+이미 repo 루트 `.env`에 `GOOGLE_SHEET_ID`와 `GOOGLE_CREDENTIALS_JSON`이 있으면 `apps/dashboard/.env.local` 생성은 생략할 수 있습니다.
 
 대시보드가 비어 있으면 먼저 `transactions`, `signals`, `daily_brief`, `system_log` 시트에 데이터가 쌓였는지 확인합니다. Next.js dashboard는 데이터를 직접 수집하지 않고 Google Sheets snapshot을 읽습니다.
 
