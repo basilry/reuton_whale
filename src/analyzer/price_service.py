@@ -42,6 +42,7 @@ class PriceService:
     def __init__(self) -> None:
         # {symbol: (price_usd, fetched_at)}
         self._cache: dict[str, tuple[float, float]] = {}
+        self._miss_cache: dict[str, float] = {}
         self._unknown_counts: dict[str, int] = {}
 
     def get_usd(self, symbol: str, ts: int | None = None) -> Optional[float]:
@@ -52,6 +53,9 @@ class PriceService:
             price, fetched_at = cached
             if time.time() - fetched_at < _TTL:
                 return price
+        missed_at = self._miss_cache.get(sym)
+        if missed_at is not None and time.time() - missed_at < _TTL:
+            return cached[0] if cached else None
 
         coin_id = _COINGECKO_IDS.get(sym)
         if not coin_id:
@@ -69,9 +73,11 @@ class PriceService:
             price = data.get(coin_id, {}).get("usd")
             if price is not None:
                 self._cache[sym] = (float(price), time.time())
+                self._miss_cache.pop(sym, None)
                 return float(price)
         except Exception as e:
             logger.warning("CoinGecko price fetch failed symbol=%s: %s", sym, e)
+            self._miss_cache[sym] = time.time()
 
         return cached[0] if cached else None
 

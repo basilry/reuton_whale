@@ -12,6 +12,8 @@ from telegram.ext import (
     Application,
     CommandHandler,
     ContextTypes,
+    MessageHandler,
+    filters,
 )
 
 from src.distributor.formatters import (
@@ -27,6 +29,15 @@ logger = get_logger("telegram_bot")
 
 
 class WhaleScopeBot:
+    _COMMAND_HELP_TEXT = (
+        "WhaleScope 봇 사용법\n\n"
+        "/start - 구독을 시작하고 알림을 등록합니다.\n"
+        "/watchlist - 관심 코인을 확인하거나 설정합니다. 예: /watchlist ETH BTC SOL\n"
+        "/pause - 알림을 일시중지합니다.\n"
+        "/status - 현재 구독 상태를 확인합니다.\n"
+        "/help - 사용 가능한 명령을 다시 안내합니다."
+    )
+
     def __init__(
         self,
         token: str,
@@ -48,6 +59,8 @@ class WhaleScopeBot:
         self._app.add_handler(CommandHandler("watchlist", self.handle_watchlist))
         self._app.add_handler(CommandHandler("pause", self.handle_pause))
         self._app.add_handler(CommandHandler("status", self.handle_status))
+        self._app.add_handler(CommandHandler("help", self.handle_help))
+        self._app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
         return self._app
 
     async def send_daily_brief(
@@ -275,3 +288,16 @@ class WhaleScopeBot:
             f"최근 브리프: {last_brief}"
         )
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+
+    async def handle_help(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        await update.message.reply_text(self._command_help_text(), parse_mode=ParseMode.HTML)
+
+    async def handle_text(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        await update.message.reply_text(self._command_help_text(), parse_mode=ParseMode.HTML)
+
+    def _command_help_text(self) -> str:
+        return self._COMMAND_HELP_TEXT

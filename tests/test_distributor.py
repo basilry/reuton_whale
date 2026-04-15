@@ -161,7 +161,7 @@ class TestWhaleScopeBot:
         from src.distributor.telegram_bot import WhaleScopeBot
         bot = WhaleScopeBot(token="test-token", sheets_client=MagicMock(spec=SheetsClient))
         bot.build()
-        assert mock_app.add_handler.call_count == 4
+        assert mock_app.add_handler.call_count == 6
 
     @patch("src.distributor.telegram_bot.Application")
     @pytest.mark.asyncio
@@ -550,3 +550,39 @@ class TestWhaleScopeBot:
         await bot.handle_status(update, context)
         reply_text = update.message.reply_text.call_args[0][0]
         assert "구독" in reply_text
+
+    @pytest.mark.asyncio
+    async def test_handle_help_shows_command_guide(self):
+        from src.distributor.telegram_bot import WhaleScopeBot
+        sheets_mock = MagicMock(spec=SheetsClient)
+        bot = WhaleScopeBot(token="test-token", sheets_client=sheets_mock)
+
+        update = MagicMock()
+        update.message.reply_text = AsyncMock()
+        context = MagicMock()
+
+        await bot.handle_help(update, context)
+        reply_text = update.message.reply_text.call_args[0][0]
+        assert "/start" in reply_text
+        assert "/watchlist" in reply_text
+        assert "/pause" in reply_text
+        assert "/status" in reply_text
+        assert "/help" in reply_text
+
+    @pytest.mark.asyncio
+    async def test_handle_text_guides_to_start(self):
+        from src.distributor.telegram_bot import WhaleScopeBot
+        sheets_mock = MagicMock(spec=SheetsClient)
+        bot = WhaleScopeBot(token="test-token", sheets_client=sheets_mock)
+
+        update = MagicMock()
+        update.message.reply_text = AsyncMock()
+        context = MagicMock()
+
+        await bot.handle_text(update, context)
+        reply_text = update.message.reply_text.call_args[0][0]
+        assert "/start" in reply_text
+        assert "/watchlist" in reply_text
+        assert "/pause" in reply_text
+        assert "/status" in reply_text
+        assert "/help" in reply_text

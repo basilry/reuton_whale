@@ -45,10 +45,21 @@ def _get_with_backoff(url: str, params: dict) -> requests.Response:
 
 
 class EtherscanCollector:
-    def __init__(self, api_key: str, rate_limit_per_sec: float = 3.0) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        rate_limit_per_sec: float = 3.0,
+        page_size: int = 100,
+        max_pages: int = 2,
+        use_startblock: bool = True,
+    ) -> None:
         self._api_key = api_key
         self._interval = 1.0 / rate_limit_per_sec
         self._last_call: float = 0.0
+        self._page_size = page_size
+        self._max_pages = max_pages
+        self._use_startblock = use_startblock
+        self._startblock_cache: dict[tuple[int, int], int] = {}
 
     def fetch(
         self,
@@ -93,30 +104,77 @@ class EtherscanCollector:
         return events
 
     def _fetch_page(self, addr: str, action: str, chain_id: int, since_ts: int) -> list[dict]:
+        recent_rows: list[dict] = []
+        startblock = self._start_block_for_since(chain_id, since_ts)
+        for page in range(1, self._max_pages + 1):
+            self._rate_limit()
+            params = {
+                "chainid": chain_id,
+                "module": "account",
+                "action": action,
+                "address": addr,
+                "startblock": startblock,
+                "endblock": 99999999,
+                "page": page,
+                "offset": self._page_size,
+                "sort": "desc",
+                "apikey": self._api_key,
+            }
+            resp = _get_with_backoff(_BASE_URL, params)
+            data = resp.json()
+            if data.get("status") == "0":
+                msg = data.get("message", "")
+                if "No transactions found" in msg or "No records found" in msg:
+                    return recent_rows
+                raise EtherscanError(f"API error: {msg}")
+
+            result = data.get("result", [])
+            if not isinstance(result, list):
+                raise EtherscanError(f"Unexpected result type: {type(result)}")
+
+            recent_rows.extend(
+                row for row in result if int(row.get("timeStamp", 0)) >= since_ts
+            )
+            if len(result) < self._page_size:
+                break
+            if any(int(row.get("timeStamp", 0)) < since_ts for row in result):
+                break
+
+        return recent_rows
+
+    def _start_block_for_since(self, chain_id: int, since_ts: int) -> int:
+        if not self._use_startblock or since_ts <= 0:
+            return 0
+        key = (chain_id, since_ts)
+        if key in self._startblock_cache:
+            return self._startblock_cache[key]
+
         self._rate_limit()
         params = {
             "chainid": chain_id,
-            "module": "account",
-            "action": action,
-            "address": addr,
-            "startblock": 0,
-            "endblock": 99999999,
-            "sort": "desc",
+            "module": "block",
+            "action": "getblocknobytime",
+            "timestamp": since_ts,
+            "closest": "before",
             "apikey": self._api_key,
         }
-        resp = _get_with_backoff(_BASE_URL, params)
-        data = resp.json()
-        if data.get("status") == "0":
-            msg = data.get("message", "")
-            if "No transactions found" in msg or "No records found" in msg:
-                return []
-            raise EtherscanError(f"API error: {msg}")
+        try:
+            resp = _get_with_backoff(_BASE_URL, params)
+            data = resp.json()
+            if data.get("status") == "1":
+                block = int(data.get("result", 0))
+                self._startblock_cache[key] = block
+                return block
+        except Exception as exc:
+            logger.warning(
+                "Etherscan startblock lookup failed chain_id=%s since_ts=%s: %s",
+                chain_id,
+                since_ts,
+                exc,
+            )
 
-        result = data.get("result", [])
-        if not isinstance(result, list):
-            raise EtherscanError(f"Unexpected result type: {type(result)}")
-
-        return [row for row in result if int(row.get("timeStamp", 0)) >= since_ts]
+        self._startblock_cache[key] = 0
+        return 0
 
     def _rate_limit(self) -> None:
         now = time.monotonic()
