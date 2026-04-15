@@ -173,6 +173,7 @@ class TestRunDailyPipeline:
         mock_config.return_value = _mock_config()
         mock_sheets = MagicMock()
         mock_sheets.append_transactions.return_value = 1
+        mock_sheets.append_address_activity.return_value = 1
         mock_sheets_cls.return_value = mock_sheets
 
         mock_bot = MagicMock()
@@ -202,7 +203,12 @@ class TestRunDailyPipeline:
             mock_enrich_cls.return_value = mock_enrich
 
             mock_analyzer = MagicMock()
-            mock_analyzer.analyze_batch.side_effect = Exception("Claude down")
+            def _fail_after_storage(_filtered):
+                assert mock_sheets.append_transactions.called
+                assert mock_sheets.append_address_activity.called
+                raise Exception("Claude down")
+
+            mock_analyzer.analyze_batch.side_effect = _fail_after_storage
             mock_analyzer.generate_daily_brief.return_value = "fallback brief"
             mock_analyzer_cls.return_value = mock_analyzer
 
@@ -219,11 +225,84 @@ class TestRunDailyPipeline:
         errors = json.loads(result["errors"])
         assert any("analyze_batch" in e for e in errors)
         assert result["status"] == "completed_with_errors"
+        mock_sheets.append_address_activity.assert_called_once()
+        mock_sheets.append_transactions.assert_called_once()
 
         briefs_arg = mock_sheets.save_daily_brief.call_args[0][1]
         top_txs = json.loads(briefs_arg[0]["top_transactions"])
         assert top_txs[0]["importance_score"] == 6
         assert top_txs[0]["type"] == "unknown"
+
+    @patch("src.main.WhaleScopeBot")
+    @patch("src.main.SheetsClient")
+    @patch("src.main.load_config")
+    async def test_generate_daily_brief_failure_still_persists_raw_data(
+        self, mock_config, mock_sheets_cls, mock_bot_cls
+    ):
+        mock_config.return_value = _mock_config()
+        mock_sheets = MagicMock()
+        mock_sheets.append_transactions.return_value = 1
+        mock_sheets.append_address_activity.return_value = 1
+        mock_sheets_cls.return_value = mock_sheets
+
+        mock_bot = MagicMock()
+        mock_bot.send_daily_brief = AsyncMock(return_value={"sent": 0, "failed": 0, "blocked": 0})
+        mock_bot_cls.return_value = mock_bot
+
+        evt = _sample_event("h1", 10_000_000)
+        events = [evt]
+        analyzed_item = {
+            "hash": evt.tx_hash,
+            "symbol": evt.token,
+            "amount_usd": evt.amount_usd,
+            "importance_score": 7,
+            "type": "accumulation",
+            "interpretation": "",
+        }
+
+        mock_sheets.list_watched_addresses.return_value = {"0xaaa": {"address": "0xaaa", "chain": "ETH", "category": "exchange"}}
+        with patch("src.main.EtherscanCollector") as mock_eth_cls, \
+             patch("src.main.SolscanCollector") as mock_sol_cls, \
+             patch("src.main.PriceService"), \
+             patch("src.main.CoinGeckoEnricher") as mock_enrich_cls, \
+             patch("src.main.ClaudeAnalyzer") as mock_analyzer_cls, \
+             patch("src.main.TransactionScorer") as mock_scorer_cls:
+
+            mock_eth = MagicMock()
+            mock_eth.fetch.return_value = events
+            mock_eth_cls.return_value = mock_eth
+            mock_sol = MagicMock()
+            mock_sol.fetch.return_value = []
+            mock_sol_cls.return_value = mock_sol
+
+            mock_enrich = MagicMock()
+            mock_enrich.enrich_transactions.side_effect = lambda txs: txs
+            mock_enrich_cls.return_value = mock_enrich
+
+            mock_analyzer = MagicMock()
+            mock_analyzer.analyze_batch.return_value = [analyzed_item]
+
+            def _brief_after_storage(_signals):
+                assert mock_sheets.append_transactions.called
+                assert mock_sheets.append_address_activity.called
+                raise Exception("LLM timeout")
+
+            mock_analyzer.generate_daily_brief.side_effect = _brief_after_storage
+            mock_analyzer_cls.return_value = mock_analyzer
+
+            mock_scorer = MagicMock()
+            mock_scorer.pre_filter.side_effect = lambda txs: txs
+            mock_scorer.rank_by_importance.return_value = [analyzed_item]
+            mock_scorer_cls.return_value = mock_scorer
+
+            from src.main import run_daily_pipeline
+            result = await run_daily_pipeline()
+
+        assert result["status"] == "completed_with_errors"
+        errors = json.loads(result["errors"])
+        assert any("generate_daily_brief" in e for e in errors)
+        mock_sheets.append_address_activity.assert_called_once()
+        mock_sheets.append_transactions.assert_called_once()
 
     @patch("src.main.WhaleScopeBot")
     @patch("src.main.SheetsClient")
@@ -234,6 +313,7 @@ class TestRunDailyPipeline:
         mock_config.return_value = _mock_config()
         mock_sheets = MagicMock()
         mock_sheets.append_transactions.return_value = 1
+        mock_sheets.append_address_activity.return_value = 1
         mock_sheets.list_watched_addresses.return_value = {
             "0xaaa": {"address": "0xaaa", "chain": "ETH", "category": "exchange"}
         }
@@ -300,6 +380,9 @@ class TestRunDailyPipeline:
         mock_baselines.assert_called_once()
         assert mock_engine.run.call_args.kwargs["baselines"] == {"default": {"out_mean_usd": 1.0}}
         assert mock_bot_cls.call_args.kwargs["personalize_fn"] == mock_engine.personalize
+        mock_sheets.append_address_activity.assert_called_once()
+        mock_sheets.append_transactions.assert_called_once()
+        mock_sheets.append_signal.assert_called_once()
 
         briefs_arg = mock_sheets.save_daily_brief.call_args[0][1]
         top_txs = json.loads(briefs_arg[0]["top_transactions"])
@@ -320,6 +403,77 @@ class TestRunDailyPipeline:
             "window_start": "2024-01-01T00:00:00+00:00",
             "window_end": "2024-01-01T00:00:00+00:00",
         }]
+
+    @patch("src.main.WhaleScopeBot")
+    @patch("src.main.SheetsClient")
+    @patch("src.main.load_config")
+    async def test_legacy_fallback_skips_batch_for_large_candidate_set(
+        self, mock_config, mock_sheets_cls, mock_bot_cls
+    ):
+        mock_config.return_value = _mock_config()
+        mock_sheets = MagicMock()
+        mock_sheets.append_transactions.return_value = 4
+        mock_sheets.append_address_activity.return_value = 4
+        mock_sheets_cls.return_value = mock_sheets
+
+        mock_bot = MagicMock()
+        mock_bot.send_daily_brief = AsyncMock(return_value={"sent": 1, "failed": 0, "blocked": 0})
+        mock_bot_cls.return_value = mock_bot
+
+        events = [_sample_event(f"h{i}", 10_000_000 + i) for i in range(4)]
+        analyzed = [
+            {
+                "hash": e.tx_hash,
+                "symbol": e.token,
+                "amount_usd": e.amount_usd,
+                "base_score": 10 - idx,
+            }
+            for idx, e in enumerate(events)
+        ]
+
+        mock_sheets.list_watched_addresses.return_value = {"0xaaa": {"address": "0xaaa", "chain": "ETH", "category": "exchange"}}
+        with patch("src.main.EtherscanCollector") as mock_eth_cls, \
+             patch("src.main.SolscanCollector") as mock_sol_cls, \
+             patch("src.main.PriceService"), \
+             patch("src.main.CoinGeckoEnricher") as mock_enrich_cls, \
+             patch("src.main.ClaudeAnalyzer") as mock_analyzer_cls, \
+             patch("src.main.TransactionScorer") as mock_scorer_cls:
+
+            mock_eth = MagicMock()
+            mock_eth.fetch.return_value = events
+            mock_eth_cls.return_value = mock_eth
+            mock_sol = MagicMock()
+            mock_sol.fetch.return_value = []
+            mock_sol_cls.return_value = mock_sol
+
+            mock_enrich = MagicMock()
+            mock_enrich.enrich_transactions.side_effect = lambda txs: txs
+            mock_enrich_cls.return_value = mock_enrich
+
+            mock_analyzer = MagicMock()
+            mock_analyzer.analyze_batch.return_value = analyzed
+            mock_analyzer.generate_daily_brief.return_value = "brief"
+            mock_analyzer_cls.return_value = mock_analyzer
+
+            def _rank(items):
+                return sorted(items, key=lambda x: x.get("importance_score", 0), reverse=True)[:5]
+
+            mock_scorer = MagicMock()
+            mock_scorer.pre_filter.side_effect = lambda txs: [
+                {**tx, "base_score": 10 - idx} for idx, tx in enumerate(txs)
+            ]
+            mock_scorer.rank_by_importance.side_effect = _rank
+            mock_scorer_cls.return_value = mock_scorer
+
+            from src.main import run_daily_pipeline
+            result = await run_daily_pipeline()
+
+        assert result["status"] == "completed"
+        mock_analyzer.analyze_batch.assert_not_called()
+        briefs_arg = mock_sheets.save_daily_brief.call_args[0][1]
+        top_txs = json.loads(briefs_arg[0]["top_transactions"])
+        assert len(top_txs) == 4
+        assert top_txs[0]["importance_score"] == 10
 
     @patch("src.main.WhaleScopeBot")
     @patch("src.main.SheetsClient")

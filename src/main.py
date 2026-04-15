@@ -198,6 +198,22 @@ def _signals_to_top5(signals: list[Signal], events: list[Event]) -> list[dict]:
     return [_signal_to_top_item(sig, events) for sig in top_signals]
 
 
+def _signal_to_sheet_dict(signal: Signal) -> dict:
+    return {
+        "signal_id": signal.signal_id,
+        "rule": signal.rule,
+        "severity": signal.severity,
+        "score": signal.score,
+        "confidence": signal.confidence,
+        "source": signal.source,
+        "evidence_tx_hashes": signal.evidence_tx_hashes,
+        "window_start": signal.window_start.isoformat(),
+        "window_end": signal.window_end.isoformat(),
+        "summary": signal.summary,
+        "extra": signal.extra,
+    }
+
+
 def _dict_to_event(d: dict) -> Event:
     """Deserialize Event from fixture JSON dict."""
     from datetime import timezone as tz
@@ -305,6 +321,24 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
     transactions = [_event_to_dict(e) for e in raw_events]
     logger.info("[%s] Collected %d events / %d tx dicts", run_id, len(raw_events), len(transactions))
 
+    if not dry_run and transactions:
+        try:
+            address_activity_rows = [_event_to_address_activity(e) for e in raw_events]
+            if address_activity_rows:
+                stored_activity = sheets.append_address_activity(address_activity_rows)
+                logger.info("[%s] Stored %d address activity rows", run_id, stored_activity)
+        except Exception as e:
+            errors.append(f"append_address_activity: {e}")
+            logger.error("[%s] Failed to store address activity: %s", run_id, e)
+
+        try:
+            stored_count = sheets.append_transactions(transactions)
+            result["transactions_count"] = stored_count
+            logger.info("[%s] Stored %d transactions", run_id, stored_count)
+        except Exception as e:
+            errors.append(f"append_transactions: {e}")
+            logger.error("[%s] Failed to store transactions: %s", run_id, e)
+
     unknown_price_symbols = price_svc.drain_unknown_report()
     if not dry_run and isinstance(unknown_price_symbols, list) and unknown_price_symbols:
         try:
@@ -390,26 +424,49 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
             logger.info("[%s] No candidates. Pipeline done.", run_id)
             return result
 
+        def _legacy_rank(items: list[dict]) -> list[dict]:
+            ranked: list[dict] = []
+            for tx in items:
+                tx_copy = dict(tx)
+                tx_copy["importance_score"] = float(tx_copy.get("base_score", 0))
+                tx_copy.setdefault("type", "unknown")
+                tx_copy.setdefault("interpretation", "(AI 분석 생략, 규칙 기반 점수로 대체)")
+                tx_copy.setdefault("confidence", "low")
+                ranked.append(tx_copy)
+            return scorer.rank_by_importance(ranked)
+
         # Stage 7: Analyze batch (legacy fallback path)
         logger.info("[%s] Stage 7/10: Analyzing %d candidates", run_id, len(filtered))
-        try:
-            analyzed = analyzer.analyze_batch(filtered)
-            logger.info("[%s] Analyzed %d transactions", run_id, len(analyzed))
-        except Exception as e:
-            errors.append(f"analyze_batch: {e}")
-            logger.error("[%s] analyze_batch failed: %s", run_id, e)
-            analyzed = []
-            for tx in filtered:
-                tx_copy = dict(tx)
-                tx_copy["importance_score"] = int(tx.get("base_score", 0))
-                tx_copy["type"] = "unknown"
-                tx_copy["interpretation"] = "(AI 분석 실패, 규칙 기반 점수로 대체)"
-                tx_copy["confidence"] = "low"
-                analyzed.append(tx_copy)
+        if len(filtered) > 3:
+            logger.info(
+                "[%s] Skipping batch analysis for %d candidates; using rule-based fallback",
+                run_id,
+                len(filtered),
+            )
+            analyzed = _legacy_rank(filtered)
+        else:
+            try:
+                analyzed = analyzer.analyze_batch(filtered)
+                logger.info("[%s] Analyzed %d transactions", run_id, len(analyzed))
+            except Exception as e:
+                errors.append(f"analyze_batch: {e}")
+                logger.error("[%s] analyze_batch failed: %s", run_id, e)
+                analyzed = _legacy_rank(filtered)
 
         # Rank top 5
         top5 = scorer.rank_by_importance(analyzed)
         logger.info("[%s] Selected top %d transactions", run_id, len(top5))
+
+    if not dry_run and signals:
+        try:
+            stored_signals = 0
+            for signal in signals:
+                sheets.append_signal(_signal_to_sheet_dict(signal))
+                stored_signals += 1
+            logger.info("[%s] Stored %d signals", run_id, stored_signals)
+        except Exception as e:
+            errors.append(f"append_signal: {e}")
+            logger.error("[%s] Failed to store signals: %s", run_id, e)
 
     # Stage 8: Generate daily brief
     logger.info("[%s] Stage 8/10: Generating daily brief", run_id)
@@ -444,23 +501,6 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
     # Stage 9: Store results
     logger.info("[%s] Stage 9/10: Storing to Google Sheets", run_id)
     if not dry_run:
-        try:
-            address_activity_rows = [_event_to_address_activity(e) for e in raw_events]
-            if address_activity_rows:
-                stored_activity = sheets.append_address_activity(address_activity_rows)
-                logger.info("[%s] Stored %d address activity rows", run_id, stored_activity)
-        except Exception as e:
-            errors.append(f"append_address_activity: {e}")
-            logger.error("[%s] Failed to store address activity: %s", run_id, e)
-
-        try:
-            stored_count = sheets.append_transactions(transactions)
-            result["transactions_count"] = stored_count
-            logger.info("[%s] Stored %d transactions", run_id, stored_count)
-        except Exception as e:
-            errors.append(f"append_transactions: {e}")
-            logger.error("[%s] Failed to store transactions: %s", run_id, e)
-
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         if brief_text:
             try:

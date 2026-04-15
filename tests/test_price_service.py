@@ -27,3 +27,13 @@ class TestPriceServiceUnknownSymbolReporting:
             assert svc.get_usd("ETH") == 1234.56
 
         assert svc.drain_unknown_report() == []
+
+    def test_supported_symbol_network_failure_is_negative_cached(self):
+        svc = PriceService()
+
+        with patch("src.analyzer.price_service.time.time", return_value=100.0), \
+             patch("src.analyzer.price_service.requests.get", side_effect=RuntimeError("boom")) as mock_get:
+            assert svc.get_usd("ETH") is None
+            assert svc.get_usd("ETH") is None
+
+        assert mock_get.call_count == 1

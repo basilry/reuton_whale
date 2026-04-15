@@ -39,7 +39,7 @@ class TestEtherscanCollector:
             "status": "1",
             "result": [_etherscan_row()],
         })
-        collector = EtherscanCollector(api_key="test")
+        collector = EtherscanCollector(api_key="test", use_startblock=False)
         events = collector.fetch(["0xaaa"], "ETH", since_ts=0)
         assert len(events) >= 1
         assert all(isinstance(e, Event) for e in events)
@@ -49,7 +49,7 @@ class TestEtherscanCollector:
     def test_dedup_across_txlist_and_tokentx(self, mock_get):
         row = _etherscan_row(hash_val="0xdup")
         mock_get.return_value = _mock_resp({"status": "1", "result": [row]})
-        collector = EtherscanCollector(api_key="test")
+        collector = EtherscanCollector(api_key="test", use_startblock=False)
         events = collector.fetch(["0xaaa"], "ETH", since_ts=0)
         # Same hash from txlist and tokentx → 2 events (one per action), not deduplicated
         # because they represent different data (native tx vs token tx)
@@ -77,6 +77,54 @@ class TestEtherscanCollector:
         hashes = [e.tx_hash for e in events]
         assert "0xnew" in hashes
         assert "0xold" not in hashes
+
+    @patch("src.ingestion.etherscan.requests.get")
+    def test_fetch_page_uses_bounded_recent_pagination(self, mock_get):
+        page1 = [_etherscan_row(hash_val=f"0xnew{i}", ts=2000000000 + i) for i in range(2)]
+        page2 = [_etherscan_row(hash_val="0xold", ts=1000)]
+        mock_get.side_effect = [
+            _mock_resp({"status": "1", "result": page1}),
+            _mock_resp({"status": "1", "result": page2}),
+        ]
+
+        collector = EtherscanCollector(
+            api_key="test",
+            rate_limit_per_sec=float("inf"),
+            page_size=2,
+            max_pages=5,
+            use_startblock=False,
+        )
+        rows = collector._fetch_page("0xaaa", "txlist", 1, since_ts=1_999_999_999)
+
+        assert len(rows) == 2
+        assert mock_get.call_count == 2
+        first_params = mock_get.call_args_list[0].kwargs["params"]
+        second_params = mock_get.call_args_list[1].kwargs["params"]
+        assert first_params["page"] == 1
+        assert first_params["offset"] == 2
+        assert second_params["page"] == 2
+
+    @patch("src.ingestion.etherscan.requests.get")
+    def test_fetch_page_uses_startblock_from_timestamp_lookup(self, mock_get):
+        row = _etherscan_row(hash_val="0xrecent", ts=2000000000)
+        mock_get.side_effect = [
+            _mock_resp({"status": "1", "result": "19000000"}),
+            _mock_resp({"status": "1", "result": [row]}),
+        ]
+
+        collector = EtherscanCollector(
+            api_key="test",
+            rate_limit_per_sec=float("inf"),
+            page_size=100,
+            max_pages=1,
+        )
+        rows = collector._fetch_page("0xaaa", "txlist", 1, since_ts=1_999_999_999)
+
+        assert len(rows) == 1
+        block_params = mock_get.call_args_list[0].kwargs["params"]
+        tx_params = mock_get.call_args_list[1].kwargs["params"]
+        assert block_params["action"] == "getblocknobytime"
+        assert tx_params["startblock"] == 19000000
 
     @patch("src.ingestion.etherscan.requests.get")
     def test_api_error_raises_etherscan_error(self, mock_get):
