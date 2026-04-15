@@ -6,13 +6,18 @@ from __future__ import annotations
 import os
 import sys
 
+from dotenv import load_dotenv
+
+sys.path.insert(0, ".")
+load_dotenv()
+
 from src.llm.anthropic_provider import AnthropicProvider
 from src.llm.gemini_provider import GeminiProvider
 from src.llm.groq_provider import GroqProvider
 
 _PROBES = [
     ("ANTHROPIC_API_KEY", AnthropicProvider, "claude-3-5-haiku-latest"),
-    ("GEMINI_API_KEY", GeminiProvider, "gemini-1.5-flash"),
+    ("GEMINI_API_KEY", GeminiProvider, "gemini-2.5-flash"),
     ("GROQ_API_KEY", GroqProvider, "llama-3.3-70b-versatile"),
 ]
 

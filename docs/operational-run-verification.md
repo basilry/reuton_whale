@@ -7,12 +7,12 @@
 ## 현재 기준
 
 - 기준 브랜치: `main`
-- 기준 커밋: `b21bb35`
+- 기준 커밋: 검증 시점의 `main` HEAD
 - 실행 명령: `python -m src.main`
 - 대시보드 실행: `streamlit run streamlit_app.py`
 - 운영 저장소: Google Sheets
 - 운영 발송 채널: Telegram Bot
-- 검증된 자동 테스트: `pytest -q` 기준 `264 passed`
+- 검증된 자동 테스트: `pytest -q` 기준 `265 passed`
 
 ## 검증 목표
 

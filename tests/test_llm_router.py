@@ -1,9 +1,11 @@
 """Tests for LLMRouter: preferred success, fallback, and full failure."""
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+import yaml
 
 from src.llm.base import LLMProvider, LLMResult
 from src.llm.router import LLMRouter
@@ -115,3 +117,13 @@ def test_all_candidates_fail_raises_router_error():
 
     with pytest.raises(LLMRouterError):
         router.call_task("test_task", "sys", "user")
+
+
+def test_production_routes_keep_groq_after_gemini_fallback():
+    routing_path = Path(__file__).resolve().parents[1] / "config" / "llm_routing.yaml"
+    routing = yaml.safe_load(routing_path.read_text())
+
+    for task in ("daily_brief", "weekly_trend", "nl_intent"):
+        fallback = routing["tasks"][task]["fallback"]
+        assert "gemini/gemini-2.5-flash" in fallback
+        assert "groq/llama-3.3-70b-versatile" in fallback

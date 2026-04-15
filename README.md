@@ -21,7 +21,7 @@ One Pager: [docs/one-pager.md](docs/one-pager.md)
 - LLM 호출은 자체 `LLMRouter`가 Anthropic, Gemini, Groq provider를 preferred/fallback 방식으로 라우팅합니다.
 - Google Sheets는 MVP 영구 저장소로 사용하며 `Storage` Protocol을 통해 이후 SQLite/Postgres 전환 여지를 둡니다.
 - Telegram 발송은 429, timeout, network error에 대해 재시도하며, 구독자별 관심 규칙 기반 개인화를 지원합니다.
-- 로컬 기준 검증 결과: `pytest -q` 238 passed, `python scripts/smoke_pipeline.py` SMOKE OK.
+- 로컬 기준 검증 결과: `pytest -q` 265 passed, `python scripts/smoke_pipeline.py` SMOKE OK.
 
 ## 아키텍처
 
@@ -552,7 +552,7 @@ pytest -q
 현재 로컬 기준:
 
 ```text
-238 passed, 5 warnings
+265 passed, 6 warnings
 ```
 
 주요 targeted 테스트:
