@@ -80,6 +80,21 @@ class TelethonListener:
         self._channel = channel
         self._phone = phone
         self._session_string = session_string
+        self._last_message_at: datetime | None = None
+        self._message_count: int = 0
+        self._error_count: int = 0
+
+    def health_status(self) -> dict:
+        now = datetime.now(timezone.utc)
+        last = self._last_message_at
+        staleness = (now - last).total_seconds() if last else None
+        return {
+            "status": "healthy" if staleness is not None and staleness < 900 else "stale",
+            "last_message_at": last.isoformat() if last else None,
+            "staleness_seconds": staleness,
+            "message_count": self._message_count,
+            "error_count": self._error_count,
+        }
 
     async def run(self) -> None:
         try:
@@ -110,17 +125,6 @@ class TelethonListener:
                 )
 
         await client.connect()
-        logger.info("Listening on channel=%r", self._channel)
-        await self._record_system_log(
-            "info",
-            "telethon_listener",
-            {
-                "event": "listener_start",
-                "channel": self._channel,
-                "session": self._session,
-                "session_string": "set" if self._session_string else "unset",
-            },
-        )
         try:
             if not await client.is_user_authorized():
                 await self._record_system_log(
@@ -158,11 +162,25 @@ class TelethonListener:
                         "Do not use a leading local 0 or hyphens."
                     ) from exc
 
+            logger.info("Listening on channel=%r", self._channel)
+            await self._record_system_log(
+                "info",
+                "telethon_listener",
+                {
+                    "event": "listener_start",
+                    "channel": self._channel,
+                    "session": self._session,
+                    "session_string": "set" if self._session_string else "unset",
+                },
+            )
             await client.run_until_disconnected()
         finally:
             await client.disconnect()
 
     async def _handle_message(self, msg_id: int, msg_date, text: str) -> None:
+        self._last_message_at = datetime.now(timezone.utc)
+        self._message_count += 1
+
         parsed = parse_tg_message(text)
         confidence = "high"
 
@@ -219,6 +237,7 @@ class TelethonListener:
                 },
             )
         except Exception as exc:
+            self._error_count += 1
             logger.error("Storage failed msg_id=%s: %s", msg_id, exc)
             await self._record_system_log(
                 "error",

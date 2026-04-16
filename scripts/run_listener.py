@@ -99,6 +99,16 @@ async def _run():
         config.telethon_session,
         "set" if config.telethon_session_string else "unset",
     )
+
+    async def _heartbeat_loop():
+        while True:
+            await asyncio.sleep(300)
+            status = listener.health_status()
+            logger.info("Listener health: %s", status)
+            if status["status"] == "stale":
+                logger.warning("Listener stale for %ss", status["staleness_seconds"])
+
+    asyncio.get_event_loop().create_task(_heartbeat_loop())
     await listener.run()
 
 
