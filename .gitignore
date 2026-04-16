@@ -19,3 +19,4 @@ node_modules/
 apps/dashboard/.env.local
 apps/dashboard/.vercel/
 .dmux/
+.claude/worktrees/
