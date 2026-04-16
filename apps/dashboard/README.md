@@ -1,28 +1,42 @@
 # WhaleScope Dashboard
 
-Next.js App Router dashboard for the WhaleScope Google Sheets backend. This app is the Vercel deployment target for the Product Engineer assignment and replaces Streamlit as the primary presentation surface.
+Next.js App Router dashboards for the WhaleScope Google Sheets backend. This package covers two routes:
+
+- `/` for the operations/admin dashboard
+- `/insights` for the user-facing insight dashboard
+
+This app is the Vercel deployment target for the Product Engineer assignment and replaces Streamlit as the primary presentation surface.
+
+The HTML references in `docs/demo_pic/admin_dashboard.html` and `docs/demo_pic/user_dashboard.html` were used as design inputs for the split.
 
 ## What It Shows
 
-The dashboard is read-only. It does not collect blockchain data by itself. It reads the sheets populated by the Python workers and renders:
+The dashboards are read-only. They do not collect blockchain data by themselves. They read the sheets populated by the Python workers and render:
 
 - overview metrics from `transactions`, `signals`, `daily_brief`, `subscribers`, and `system_log`
 - latest Korean daily brief
 - recent whale transactions
 - rule-based signal outputs
 - latest pipeline/system log events
+- Telegram listener health from `system_log` heartbeat rows, with latest `tg_whale_events` as a fallback, not from generic Sheets connectivity
 
 ## Runtime Boundary
 
 | Part | Runtime | Responsibility |
 |---|---|---|
-| Dashboard UI | Vercel / Next.js | Render operational view and API route handlers |
+| Dashboard UI | Vercel / Next.js | Render `/` admin operations view and `/insights` user-facing view |
 | Data source | Google Sheets | MVP persistent store |
 | Pipeline | Render Cron Job or Worker | Run `python -m src.main` and write Sheets |
 | Telegram bot | Render Worker | Handle user commands |
 | Telegram listener | Render Worker | Listen to public whale alert channels |
 
-Do not merge the Python workers into this Vercel app. Vercel should only serve the dashboard and server-side read APIs.
+Do not merge the Python workers into this Vercel app. Vercel should only serve the dashboards and server-side read APIs.
+
+## Route Purpose
+
+`/` is the operator-facing view. It is meant for checking pipeline health, Sheets-backed snapshots, and the latest operational state. The Telegram listener card is based on `system_log` rows where `run_type=telethon_listener`, and falls back to the latest `tg_whale_events` timestamp only when no listener heartbeat exists. It can show waiting, auth-required, attention-needed, or healthy states independently from Google Sheets connectivity.
+
+`/insights` is the user-facing view. It is meant for human-readable briefings and signal summaries, not raw worker logs or JSON payloads.
 
 ## Requirements
 
@@ -56,12 +70,12 @@ Current required values:
 | `GOOGLE_SHEET_ID` | Yes | server-only | Spreadsheet ID, not the full URL |
 | `GOOGLE_CREDENTIALS_JSON` | Yes | server-only | Full service account JSON as a single-line string |
 | `NEXT_PUBLIC_APP_NAME` | No | public | Display-only app name |
+| `DASHBOARD_PASSWORD` | No | server-only | Enables operator API auth when set. Use `Authorization: Bearer <password>` in production; `x-dashboard-password` stays for local/manual checks. |
 
-Reserved values for planned auth/run-trigger extensions:
+Reserved values for planned run-trigger extensions:
 
 | Variable | Required Now | Scope | Description |
 |---|---:|---|---|
-| `DASHBOARD_PASSWORD` | No | server-only | Future dashboard access control |
 | `RENDER_PIPELINE_WEBHOOK_URL` | No | server-only | Future manual pipeline trigger |
 | `RENDER_PIPELINE_WEBHOOK_SECRET` | No | server-only | Future webhook signing secret |
 

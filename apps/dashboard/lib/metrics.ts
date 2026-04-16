@@ -10,12 +10,15 @@ import {
   type DailyBriefRow,
   type SignalRow,
   type SystemLogRow,
+  type TgWhaleEventRow,
   type TransactionRow,
 } from "./schema";
 import {
   readDashboardSnapshot,
   readSheetRows,
 } from "./sheets";
+
+export const LISTENER_STALE_MINUTES = 15;
 
 export interface RowCounts {
   transactions: number;
@@ -49,6 +52,14 @@ export interface DashboardMetrics {
   errorCount: number;
 }
 
+export interface ListenerHealth {
+  status: "ok" | "waiting" | "auth_required" | "attention" | "unknown";
+  label: string;
+  message: string;
+  updatedAt?: string;
+  event?: string;
+}
+
 export interface DashboardBrief {
   date?: string;
   generatedAt?: string;
@@ -76,6 +87,7 @@ export interface DashboardData {
     errorCount: number;
     updatedAt: string;
   }) | null;
+  listenerHealth: ListenerHealth;
   systemLogs: Array<{
     id: string;
     timestamp: string;
@@ -96,6 +108,26 @@ function latestSystemLog(rows: SystemLogRow[]): SystemLogRow | null {
   })[0] ?? null;
 }
 
+function latestPipelineLog(rows: SystemLogRow[]): SystemLogRow | null {
+  const pipelineRows = rows.filter((row) => row.run_type === "daily_brief");
+  return latestSystemLog(pipelineRows);
+}
+
+function latestListenerLog(rows: SystemLogRow[]): SystemLogRow | null {
+  const listenerRows = rows.filter((row) => row.run_type === "telethon_listener");
+  return latestSystemLog(listenerRows);
+}
+
+function latestTgWhaleEvent(rows: TgWhaleEventRow[]): TgWhaleEventRow | null {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return newestFirst(rows, (row) => {
+    return parseDateTimeSafe(row.collected_at) ?? parseDateTimeSafe(row.tg_date);
+  })[0] ?? null;
+}
+
 function latestBrief(rows: DailyBriefRow[]): DailyBriefRow | null {
   if (rows.length === 0) {
     return null;
@@ -104,6 +136,123 @@ function latestBrief(rows: DailyBriefRow[]): DailyBriefRow | null {
   return newestFirst(rows, (row) => {
     return parseDateTimeSafe(row.created_at) ?? parseDateTimeSafe(row.date);
   })[0] ?? null;
+}
+
+function detailsPayload(row: SystemLogRow | null): Record<string, unknown> {
+  if (!row) {
+    return {};
+  }
+
+  const parsed = parseJsonSafe<Record<string, unknown>>(row.details);
+  if (!parsed || typeof parsed !== "object") {
+    return {};
+  }
+
+  const payload = parsed.payload;
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    return payload as Record<string, unknown>;
+  }
+
+  return parsed;
+}
+
+function normalizeListenerHealth(
+  systemLogs: SystemLogRow[],
+  tgEvents: TgWhaleEventRow[],
+  generatedAt: string
+): ListenerHealth {
+  const latest = latestListenerLog(systemLogs);
+  if (!latest) {
+    const latestEvent = latestTgWhaleEvent(tgEvents);
+    if (!latestEvent) {
+      return {
+        status: "unknown",
+        label: "확인 필요",
+        message: "Telegram listener heartbeat 또는 tg_whale_events 기록이 아직 없습니다.",
+      };
+    }
+
+    const updatedAt = latestEvent.collected_at || latestEvent.tg_date || generatedAt;
+    const updatedAtMs = parseDateTimeSafe(updatedAt);
+    const ageMinutes = updatedAtMs == null ? null : (Date.now() - updatedAtMs) / 60000;
+
+    if (ageMinutes != null && ageMinutes > LISTENER_STALE_MINUTES) {
+      return {
+        status: "attention",
+        label: "확인 필요",
+        message: `listener heartbeat는 없지만 최신 tg_whale_events 기록이 ${LISTENER_STALE_MINUTES}분을 넘었습니다.`,
+        updatedAt,
+        event: "tg_whale_events",
+      };
+    }
+
+    return {
+      status: "ok",
+      label: "정상",
+      message: "listener heartbeat는 없지만 최신 tg_whale_events 기록으로 활동이 확인됩니다.",
+      updatedAt,
+      event: "tg_whale_events",
+    };
+  }
+
+  const updatedAt = latest.finished_at || latest.started_at || generatedAt;
+  const updatedAtMs = parseDateTimeSafe(updatedAt);
+  const ageMinutes = updatedAtMs == null ? null : (Date.now() - updatedAtMs) / 60000;
+  const payload = detailsPayload(latest);
+  const event = compactString(payload.event);
+  const reason = compactString(payload.reason);
+
+  if (latest.status === "error" && (event === "auth_error" || reason.includes("auth"))) {
+    return {
+      status: "auth_required",
+      label: "인증 필요",
+      message: "Telethon 세션 인증이 필요합니다. TELETHON_SESSION_STRING 또는 최초 로그인 상태를 확인하세요.",
+      updatedAt,
+      event,
+    };
+  }
+
+  if (latest.status === "error") {
+    return {
+      status: "attention",
+      label: "확인 필요",
+      message: "Telegram listener 처리 중 오류가 기록되었습니다. Render 로그와 system_log를 확인하세요.",
+      updatedAt,
+      event,
+    };
+  }
+
+  if (ageMinutes != null && ageMinutes > LISTENER_STALE_MINUTES) {
+    return {
+      status: "attention",
+      label: "확인 필요",
+      message: `최근 ${LISTENER_STALE_MINUTES}분 이내 listener heartbeat가 없습니다.`,
+      updatedAt,
+      event,
+    };
+  }
+
+  if (event === "message_processed") {
+    const symbol = compactString(payload.symbol);
+    const chain = compactString(payload.blockchain);
+    return {
+      status: "ok",
+      label: "정상",
+      message: [symbol, chain].filter(Boolean).length
+        ? `최근 ${[symbol, chain].filter(Boolean).join(" / ")} 이벤트를 수집했습니다.`
+        : "최근 Telegram whale 이벤트를 수집했습니다.",
+      updatedAt,
+      event,
+    };
+  }
+
+  return {
+    status: "waiting",
+    label: "대기 중",
+    message: "Telegram listener가 실행 중이며 채널 메시지를 기다리고 있습니다.",
+    updatedAt,
+    event,
+  };
 }
 
 function normalizeLatestRun(row: SystemLogRow): LatestRunSummary {
@@ -209,6 +358,7 @@ export async function getDashboardData(options?: {
   signalLimit?: number;
   systemLogLimit?: number;
 }): Promise<DashboardData> {
+  const generatedAt = new Date().toISOString();
   const snapshot = await readDashboardSnapshot();
   const transactionLimit = options?.transactionLimit ?? 20;
   const signalLimit = options?.signalLimit ?? 20;
@@ -222,11 +372,12 @@ export async function getDashboardData(options?: {
     return parseDateTimeSafe(row.created_at);
   }).slice(0, signalLimit);
 
-  const systemLogs = newestFirst(snapshot.system_log, (row) => {
+  const sortedSystemLogs = newestFirst(snapshot.system_log, (row) => {
     return parseDateTimeSafe(row.finished_at) ?? parseDateTimeSafe(row.started_at);
-  }).slice(0, systemLogLimit);
+  });
+  const systemLogs = sortedSystemLogs.slice(0, systemLogLimit);
 
-  const currentLatestRunRow = latestSystemLog(systemLogs);
+  const currentLatestRunRow = latestPipelineLog(sortedSystemLogs);
   const currentLatestRun = currentLatestRunRow
     ? normalizeLatestRun(currentLatestRunRow)
     : null;
@@ -236,7 +387,7 @@ export async function getDashboardData(options?: {
   const latestRunUpdatedAt = currentLatestRun?.finished_at || currentLatestRun?.started_at || undefined;
 
   return {
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     source: "google_sheets",
     latestBrief: normalizeBrief(currentLatestBrief),
     recentTransactions,
@@ -253,6 +404,7 @@ export async function getDashboardData(options?: {
           updatedAt: latestRunUpdatedAt ?? new Date().toISOString(),
         }
       : null,
+    listenerHealth: normalizeListenerHealth(sortedSystemLogs, snapshot.tg_whale_events, generatedAt),
     systemLogs: normalizeSystemLogRows(systemLogs),
     metrics: {
       transactionCount: snapshot.transactions.length,

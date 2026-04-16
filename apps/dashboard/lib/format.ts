@@ -69,6 +69,20 @@ export function parseJsonSafe<T = unknown>(value: string): T | null {
   }
 }
 
+export function cleanGeneratedBrief(value: string): string {
+  return value
+    .replace(/[📊🐳⚠️]/gu, "")
+    .replace(/\*\*/g, "")
+    .replace(/今日/g, "오늘")
+    .replace(/دولار/g, "달러")
+    .replace(/検出/g, "감지")
+    .replace(/교환소/g, "거래소")
+    .replace(/CEX 입금_spike/g, "거래소 유입 급증")
+    .replace(/CEX 출금_spike/g, "거래소 유출 급증")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function rowHasContent(row: object): boolean {
   return Object.values(row as Record<string, unknown>).some((value) => compactString(value) !== "");
 }

@@ -3,6 +3,7 @@ export const TAB_DAILY_BRIEF = "daily_brief" as const;
 export const TAB_SIGNALS = "signals" as const;
 export const TAB_SYSTEM_LOG = "system_log" as const;
 export const TAB_SUBSCRIBERS = "subscribers" as const;
+export const TAB_TG_WHALE_EVENTS = "tg_whale_events" as const;
 
 export const TRANSACTIONS_HEADERS = [
   "raw_response_hash",
@@ -66,6 +67,22 @@ export const SUBSCRIBERS_HEADERS = [
   "last_brief_at",
 ] as const;
 
+export const TG_WHALE_EVENTS_HEADERS = [
+  "tg_msg_id",
+  "tg_date",
+  "blockchain",
+  "symbol",
+  "amount",
+  "amount_usd",
+  "from_owner_type",
+  "from_owner",
+  "to_owner_type",
+  "to_owner",
+  "raw_text",
+  "parsed_confidence",
+  "collected_at",
+] as const;
+
 export interface TransactionRow {
   raw_response_hash: string;
   hash: string;
@@ -118,6 +135,22 @@ export interface SystemLogRow {
   details: string;
 }
 
+export interface TgWhaleEventRow {
+  tg_msg_id: string;
+  tg_date: string;
+  blockchain: string;
+  symbol: string;
+  amount: string;
+  amount_usd: string;
+  from_owner_type: string;
+  from_owner: string;
+  to_owner_type: string;
+  to_owner: string;
+  raw_text: string;
+  parsed_confidence: string;
+  collected_at: string;
+}
+
 export interface SubscriberRow {
   chat_id: string;
   username: string;
@@ -134,6 +167,7 @@ export interface SheetRowMap {
   signals: SignalRow;
   system_log: SystemLogRow;
   subscribers: SubscriberRow;
+  tg_whale_events: TgWhaleEventRow;
 }
 
 export type SheetTabName = keyof SheetRowMap;
@@ -144,6 +178,7 @@ export const TAB_HEADERS = {
   signals: SIGNALS_HEADERS,
   system_log: SYSTEM_LOG_HEADERS,
   subscribers: SUBSCRIBERS_HEADERS,
+  tg_whale_events: TG_WHALE_EVENTS_HEADERS,
 } as const satisfies Record<SheetTabName, readonly string[]>;
 
 export const DASHBOARD_TABS = [
@@ -152,6 +187,7 @@ export const DASHBOARD_TABS = [
   TAB_SIGNALS,
   TAB_SYSTEM_LOG,
   TAB_SUBSCRIBERS,
+  TAB_TG_WHALE_EVENTS,
 ] as const;
 
 export type DashboardTabName = (typeof DASHBOARD_TABS)[number];
