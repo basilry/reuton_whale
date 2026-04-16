@@ -36,6 +36,77 @@ def _sample_event(tx_hash="h1", amount_usd=5_000_000.0):
     )
 
 
+def test_tg_row_to_event_uses_safe_labels_and_infers_inflow():
+    from src.main import _tg_row_to_event
+
+    row = {
+        "tg_msg_id": "77",
+        "tg_date": "2026-04-15T10:00:00+00:00",
+        "collected_at": "2026-04-15T10:02:00+00:00",
+        "blockchain": "ethereum",
+        "symbol": "USDT",
+        "amount": "1,250,000",
+        "amount_usd": "1,251,500",
+        "from_owner_type": "unknown",
+        "from_owner": "unknown",
+        "to_owner_type": "exchange",
+        "to_owner": "Binance",
+    }
+
+    evt = _tg_row_to_event(row)
+
+    assert evt.source == "tg"
+    assert evt.tx_hash is None
+    assert evt.chain == "ETH"
+    assert evt.direction == "in"
+    assert evt.counterparty_category == "cex"
+    assert evt.from_addr == "unknown"
+    assert evt.to_addr == "Binance"
+    assert evt.amount_token == 1_250_000.0
+    assert evt.amount_usd == 1_251_500.0
+
+
+def test_tg_row_to_event_exchange_to_exchange_keeps_outflow_policy():
+    from src.main import _tg_row_to_event
+
+    row = {
+        "tg_msg_id": "88",
+        "tg_date": "2026-04-15T10:00:00+00:00",
+        "collected_at": "2026-04-15T10:02:00+00:00",
+        "blockchain": "bitcoin",
+        "symbol": "BTC",
+        "amount": "12",
+        "amount_usd": "900000",
+        "from_owner_type": "exchange",
+        "from_owner": "Binance",
+        "to_owner_type": "exchange",
+        "to_owner": "Kraken",
+    }
+
+    evt = _tg_row_to_event(row)
+
+    assert evt.direction == "out"
+    assert evt.counterparty_category == "cex"
+
+
+def test_safe_float_logs_warning_on_parse_failure(caplog):
+    from src.main import _safe_float
+
+    with caplog.at_level("WARNING"):
+        value = _safe_float("not-a-number")
+
+    assert value == 0.0
+    assert any("Failed to parse float value='not-a-number'" in record.message for record in caplog.records)
+
+
+def test_run_listener_login_hint_only_for_auth_errors():
+    from scripts.run_listener import _should_show_login_hint
+
+    assert _should_show_login_hint(RuntimeError("Telethon session is not authenticated"))
+    assert _should_show_login_hint(RuntimeError("Invalid TELETHON_PHONE."))
+    assert not _should_show_login_hint(RuntimeError("telethon is not installed"))
+
+
 @pytest.mark.asyncio
 class TestRunDailyPipeline:
     @patch("src.main.WhaleScopeBot")
@@ -161,6 +232,100 @@ class TestRunDailyPipeline:
             assert required_keys.issubset(tx.keys())
         assert top_txs[0]["symbol"] == "BTC"
         assert top_txs[0]["importance_score"] == 8
+
+    @patch("src.main.WhaleScopeBot")
+    @patch("src.main.SheetsClient")
+    @patch("src.main.load_config")
+    async def test_tg_rows_are_merged_into_signal_engine_input(
+        self, mock_config, mock_sheets_cls, mock_bot_cls
+    ):
+        mock_config.return_value = _mock_config()
+        mock_sheets = MagicMock()
+        mock_sheets.append_transactions.return_value = 1
+        mock_sheets.append_address_activity.return_value = 1
+        mock_sheets.list_watched_addresses.return_value = {
+            "0xaaa": {"address": "0xaaa", "chain": "ETH", "category": "exchange"}
+        }
+        mock_sheets.list_tg_whale_events.return_value = [
+            {
+                "tg_msg_id": "77",
+                "tg_date": "2024-01-01T01:30:00+00:00",
+                "blockchain": "ethereum",
+                "symbol": "USDT",
+                "amount": "1000000",
+                "amount_usd": "2000000",
+                "from_owner_type": "unknown",
+                "from_owner": "unknown",
+                "to_owner_type": "exchange",
+                "to_owner": "Binance",
+                "raw_text": "sample",
+                "parsed_confidence": "high",
+                "collected_at": "2024-01-01T01:35:00+00:00",
+            }
+        ]
+        mock_sheets_cls.return_value = mock_sheets
+
+        mock_bot = MagicMock()
+        mock_bot.send_daily_brief = AsyncMock(return_value={"sent": 1, "failed": 0, "blocked": 0})
+        mock_bot_cls.return_value = mock_bot
+
+        chain_evt = _sample_event("h-chain", 5_000_000)
+        sig = Signal(
+            signal_id="sig1",
+            rule="cex_inflow_spike",
+            severity="medium",
+            score=7.0,
+            confidence="medium",
+            source="both",
+            evidence_tx_hashes=["h-chain"],
+            window_start=chain_evt.block_time,
+            window_end=chain_evt.block_time,
+            summary="Corroborated",
+        )
+
+        with patch("src.main.EtherscanCollector") as mock_eth_cls, \
+             patch("src.main.SolscanCollector") as mock_sol_cls, \
+             patch("src.main.PriceService"), \
+             patch("src.main.CoinGeckoEnricher") as mock_enrich_cls, \
+             patch("src.main.ClaudeAnalyzer") as mock_analyzer_cls, \
+             patch("src.main.SignalEngine") as mock_engine_cls, \
+             patch("src.main.TransactionScorer") as mock_scorer_cls, \
+             patch("src.main.build_chain_baselines") as mock_baselines:
+
+            mock_eth = MagicMock()
+            mock_eth.fetch.return_value = [chain_evt]
+            mock_eth_cls.return_value = mock_eth
+            mock_sol = MagicMock()
+            mock_sol.fetch.return_value = []
+            mock_sol_cls.return_value = mock_sol
+
+            mock_enrich = MagicMock()
+            mock_enrich.enrich_transactions.side_effect = lambda txs: txs
+            mock_enrich_cls.return_value = mock_enrich
+
+            mock_analyzer = MagicMock()
+            mock_analyzer.generate_daily_brief.return_value = "brief"
+            mock_analyzer_cls.return_value = mock_analyzer
+
+            mock_engine = MagicMock()
+            mock_engine.run.return_value = [sig]
+            mock_engine.personalize.side_effect = lambda signals, interests: signals
+            mock_engine_cls.return_value = mock_engine
+            mock_baselines.return_value = {"default": {"out_mean_usd": 1.0}}
+
+            mock_scorer = MagicMock()
+            mock_scorer_cls.return_value = mock_scorer
+
+            from src.main import run_daily_pipeline
+            result = await run_daily_pipeline()
+
+        assert result["status"] == "completed"
+        assert mock_sheets.list_tg_whale_events.called
+        engine_events = mock_engine.run.call_args[0][0]
+        assert len(engine_events) == 2
+        assert any(evt.source == "tg" for evt in engine_events)
+        assert mock_sheets.append_transactions.call_args[0][0][0]["hash"] == "h-chain"
+        assert len(mock_sheets.append_transactions.call_args[0][0]) == 1
 
         mock_bot.send_daily_brief.assert_called_once()
 

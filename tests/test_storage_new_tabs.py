@@ -1,6 +1,7 @@
 """Tests for TRACK 2 storage methods: watched_addresses, address_activity,
 tg_whale_events, signals, weekly_trend, user_interests."""
 import json
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -185,6 +186,27 @@ class TestTgWhaleEvents:
 
         client.append_tg_whale_event({"tg_msg_id": "42", "symbol": "BTC"})
         mock_ws.append_row.assert_not_called()
+
+    def test_list_tg_whale_events_filters_since(self):
+        client, mock_ss = _make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+
+        old_row = [""] * len(TG_WHALE_EVENTS_HEADERS)
+        old_row[TG_WHALE_EVENTS_HEADERS.index("tg_msg_id")] = "1"
+        old_row[TG_WHALE_EVENTS_HEADERS.index("tg_date")] = "2026-04-14T10:00:00+00:00"
+
+        new_row = [""] * len(TG_WHALE_EVENTS_HEADERS)
+        new_row[TG_WHALE_EVENTS_HEADERS.index("tg_msg_id")] = "2"
+        new_row[TG_WHALE_EVENTS_HEADERS.index("tg_date")] = "2026-04-16T10:00:00+00:00"
+
+        mock_ws.get_all_values.return_value = [TG_WHALE_EVENTS_HEADERS, old_row, new_row]
+
+        since = datetime(2026, 4, 15, 0, 0, tzinfo=timezone.utc)
+        result = client.list_tg_whale_events(since=since)
+
+        assert len(result) == 1
+        assert result[0]["tg_msg_id"] == "2"
 
 
 # ---------------------------------------------------------------------------

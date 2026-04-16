@@ -8,6 +8,7 @@ Usage:
 
 Environment variables required (non-dry-run):
     TELETHON_API_ID, TELETHON_API_HASH, TELETHON_SESSION
+    TELETHON_PHONE for first local login, or TELETHON_SESSION_STRING for workers
     TG_CHANNEL
     One LLM provider key: ANTHROPIC_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY
     GOOGLE_SHEET_ID, GOOGLE_CREDENTIALS_JSON (storage)
@@ -29,6 +30,19 @@ from src.storage.sheets_client import SheetsClient
 from src.utils.logger import get_logger
 
 logger = get_logger("run_listener")
+
+
+def _should_show_login_hint(exc: RuntimeError) -> bool:
+    message = str(exc).lower()
+    return any(
+        token in message
+        for token in (
+            "session is not authenticated",
+            "invalid telethon_phone",
+            "telethon phone",
+            "phone number invalid",
+        )
+    )
 
 
 async def _dry_run():
@@ -58,6 +72,13 @@ async def _run():
         logger.error("TG_CHANNEL env var not set (e.g. export TG_CHANNEL=@some_channel)")
         sys.exit(1)
 
+    if config.telethon_phone and not config.telethon_phone.startswith("+"):
+        logger.error(
+            "TELETHON_PHONE must use international E.164 format, "
+            "for example +821012345678. Do not use a leading local 0."
+        )
+        sys.exit(1)
+
     sheets = SheetsClient(config.sheet_id, config.google_credentials)
     router = _build_router(config)  # LLM fallback for NL-intent parsing
 
@@ -68,12 +89,15 @@ async def _run():
         storage=sheets,
         router=router,
         channel=channel,
+        phone=config.telethon_phone,
+        session_string=config.telethon_session_string,
     )
 
     logger.info(
-        "Starting TelethonListener channel=%s session=%s",
+        "Starting TelethonListener channel=%s session=%s session_string=%s",
         channel,
         config.telethon_session,
+        "set" if config.telethon_session_string else "unset",
     )
     await listener.run()
 
@@ -83,10 +107,21 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Test parser without connecting")
     args = parser.parse_args()
 
-    if args.dry_run:
-        asyncio.run(_dry_run())
-    else:
-        asyncio.run(_run())
+    try:
+        if args.dry_run:
+            asyncio.run(_dry_run())
+        else:
+            asyncio.run(_run())
+    except KeyboardInterrupt:
+        logger.info("Listener stopped by user")
+    except RuntimeError as exc:
+        logger.error("%s", exc)
+        if _should_show_login_hint(exc):
+            logger.error(
+                "First local login example: "
+                "TELETHON_PHONE=+821012345678 TG_CHANNEL=@whale_alert_io python scripts/run_listener.py"
+            )
+        sys.exit(1)
 
 
 if __name__ == "__main__":

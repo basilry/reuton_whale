@@ -193,6 +193,27 @@ class TestCorroborationHeuristicPath:
         corr_sigs = [s for s in signals if s.rule == "corroborated_move"]
         assert len(corr_sigs) == 0
 
+    def test_tg_event_does_not_trigger_chain_only_cex_rule(self):
+        """TG rows merged into raw_events must not masquerade as chain CEX spikes."""
+        engine = _make_engine()
+        tg_ev = _evt(
+            source="tg",
+            tx_hash=None,
+            direction="in",
+            amount_usd=10_000_000,
+            counterparty_category="cex",
+            block_time=NOW - timedelta(minutes=5),
+            collected_at=NOW - timedelta(minutes=5),
+        )
+
+        signals = engine.run(
+            [tg_ev],
+            NOW,
+            baselines={"default": {"in_mean_usd": 0.0, "in_std_usd": 1.0}},
+        )
+
+        assert [s for s in signals if s.rule == "cex_inflow_spike"] == []
+
 
 class TestCorroborationEdgeCases:
     """Edge cases for Path 3 filter logic."""

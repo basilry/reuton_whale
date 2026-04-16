@@ -5,6 +5,8 @@ __pycache__/
 credentials.json
 *.pem
 *.key
+*.session
+*.session-journal
 .venv/
 venv/
 dist/
@@ -16,3 +18,4 @@ node_modules/
 *.tsbuildinfo
 apps/dashboard/.env.local
 apps/dashboard/.vercel/
+.dmux/

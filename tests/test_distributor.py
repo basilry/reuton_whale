@@ -387,12 +387,54 @@ class TestWhaleScopeBot:
         sent_texts = [call.kwargs["text"] for call in mock_app.bot.send_message.call_args_list]
         assert "generic brief" in sent_texts[0]
         assert "generic brief" in sent_texts[1]
-        assert "<b>관심 시그널</b>" in sent_texts[0]
-        assert "<b>관심 시그널</b>" in sent_texts[1]
+        assert "<b>내 관심 항목</b>" in sent_texts[0]
+        assert "<b>내 관심 항목</b>" in sent_texts[1]
         assert "cex_outflow_spike summary" in sent_texts[0]
         assert "cold_to_hot_transfer summary" in sent_texts[1]
         sheets_mock.list_user_interests.assert_any_call("111")
         sheets_mock.list_user_interests.assert_any_call("222")
+
+    @patch("src.distributor.telegram_bot.Application")
+    @pytest.mark.asyncio
+    async def test_send_daily_brief_watchlist_personalization_preserves_llm_brief(
+        self, mock_app_cls
+    ):
+        mock_app = MagicMock()
+        mock_builder = MagicMock()
+        mock_builder.token.return_value = mock_builder
+        mock_builder.build.return_value = mock_app
+        mock_app_cls.builder.return_value = mock_builder
+        mock_app.bot.send_message = AsyncMock()
+
+        sheets_mock = MagicMock(spec=SheetsClient)
+        sheets_mock.get_active_subscribers.return_value = [
+            {"chat_id": 111, "watchlist": ["ETH"]},
+        ]
+        sheets_mock.list_user_interests.return_value = [
+            {"dimension": "rule", "value": "cex_outflow_spike", "weight": "1.0"}
+        ]
+
+        from src.distributor.telegram_bot import WhaleScopeBot
+        bot = WhaleScopeBot(
+            token="test-token",
+            sheets_client=sheets_mock,
+            personalize_fn=lambda signals, interests: signals,
+        )
+        bot.build()
+
+        brief_text = "AI 브리프 원문\n- 500 ETH transfer\n- 10 BTC transfer"
+        result = await bot.send_daily_brief(
+            brief_text,
+            signals=[_signal("cex_outflow_spike")],
+        )
+
+        assert result == {"sent": 1, "failed": 0, "blocked": 0}
+        sent_text = mock_app.bot.send_message.call_args.kwargs["text"]
+        assert "AI 브리프 원문" in sent_text
+        assert "- 10 BTC transfer" in sent_text
+        assert "\u2b50 - 500 ETH transfer" in sent_text
+        assert "<b>내 관심 항목</b>" in sent_text
+        assert "cex_outflow_spike summary" in sent_text
 
     @patch("src.distributor.telegram_bot.Application")
     @pytest.mark.asyncio

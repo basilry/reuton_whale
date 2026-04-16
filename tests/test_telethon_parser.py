@@ -1,6 +1,8 @@
 """Tests for TelethonListener message parsing."""
+import sys
+import types
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -70,6 +72,11 @@ class TestTelethonListenerHandleMessage:
         row = mock_storage.append_tg_whale_event.call_args[0][0]
         assert row["symbol"] == "USDT"
         assert row["parsed_confidence"] == "high"
+        mock_storage.append_system_log.assert_called_once()
+        log_args = mock_storage.append_system_log.call_args[0]
+        assert log_args[0] == "info"
+        assert log_args[1] == "telethon_listener"
+        assert log_args[2]["event"] == "message_processed"
 
     @pytest.mark.asyncio
     async def test_skips_unparseable_without_router(self):
@@ -97,6 +104,28 @@ class TestTelethonListenerHandleMessage:
         row = mock_storage.append_tg_whale_event.call_args[0][0]
         assert row["parsed_confidence"] == "low"
         assert row["symbol"] == "ETH"
+        mock_storage.append_system_log.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_to_thread_offloads_router_and_storage(self):
+        mock_storage = MagicMock()
+        mock_router = MagicMock()
+        mock_result = MagicMock()
+        mock_result.text = '{"symbol":"ETH","amount":1,"amount_usd":2,"from_owner":"unknown","to_owner":"Binance","from_owner_type":"unknown","to_owner_type":"exchange","blockchain":"ethereum"}'
+        mock_router.call_task.return_value = mock_result
+
+        listener = TelethonListener(12345, "hash", "session", mock_storage, router=mock_router)
+
+        with patch(
+            "src.ingestion.telethon_listener.asyncio.to_thread",
+            side_effect=lambda fn, *args, **kwargs: fn(*args, **kwargs),
+        ) as mock_to_thread:
+            await listener._handle_message(6, datetime.now(timezone.utc), "some unusual alert text")
+
+        threaded_functions = [call.args[0] for call in mock_to_thread.call_args_list]
+        assert mock_router.call_task in threaded_functions
+        assert mock_storage.append_tg_whale_event in threaded_functions
+        assert mock_storage.append_system_log in threaded_functions
 
     @pytest.mark.asyncio
     async def test_llm_fallback_failure_skips_storage(self):
@@ -112,6 +141,79 @@ class TestTelethonListenerHandleMessage:
     async def test_storage_error_does_not_raise(self):
         mock_storage = MagicMock()
         mock_storage.append_tg_whale_event.side_effect = Exception("Storage down")
+        mock_storage.append_system_log = MagicMock()
         listener = TelethonListener(12345, "hash", "session", mock_storage)
         # Should not raise
         await listener._handle_message(5, datetime.now(timezone.utc), _SAMPLE_MSG)
+        mock_storage.append_system_log.assert_called()
+        log_args = mock_storage.append_system_log.call_args[0]
+        assert log_args[0] == "error"
+        assert log_args[1] == "telethon_listener"
+        assert log_args[2]["stage"] == "storage"
+
+
+class TestTelethonListenerRun:
+    @pytest.mark.asyncio
+    async def test_listener_start_logged_after_connect(self):
+        mock_storage = MagicMock()
+        mock_storage.append_system_log = MagicMock()
+
+        calls = []
+
+        class FakeClient:
+            def __init__(self, session, api_id, api_hash):
+                self.session = session
+                self.api_id = api_id
+                self.api_hash = api_hash
+
+            def on(self, _event):
+                def decorator(fn):
+                    return fn
+
+                return decorator
+
+            async def connect(self):
+                calls.append("connect")
+
+            async def is_user_authorized(self):
+                calls.append("authorized")
+                return True
+
+            async def run_until_disconnected(self):
+                calls.append("run")
+
+            async def disconnect(self):
+                calls.append("disconnect")
+
+        fake_telethon = types.ModuleType("telethon")
+        fake_telethon.TelegramClient = FakeClient
+        fake_events = types.SimpleNamespace(NewMessage=lambda chats=None: ("new_message", chats))
+        fake_telethon.events = fake_events
+
+        fake_errors = types.ModuleType("telethon.errors")
+        fake_errors.PhoneNumberInvalidError = RuntimeError
+        fake_sessions = types.ModuleType("telethon.sessions")
+        fake_sessions.StringSession = lambda value: value
+
+        with patch.dict(
+            sys.modules,
+            {
+                "telethon": fake_telethon,
+                "telethon.errors": fake_errors,
+                "telethon.sessions": fake_sessions,
+            },
+        ), patch("src.ingestion.telethon_listener.asyncio.to_thread", side_effect=lambda fn, *args, **kwargs: fn(*args, **kwargs)):
+            listener = TelethonListener(12345, "hash", "session", mock_storage, channel="@whale")
+            await listener.run()
+
+        assert calls[:2] == ["connect", "authorized"]
+        mock_storage.append_system_log.assert_any_call(
+            "info",
+            "telethon_listener",
+            {
+                "event": "listener_start",
+                "channel": "@whale",
+                "session": "session",
+                "session_string": "unset",
+            },
+        )
