@@ -1,0 +1,1268 @@
+/* ── Page Shell ── */
+.page {
+  position: relative;
+  min-height: 100vh;
+  color: #151c22;
+  background: #f6faff;
+}
+
+/* ── Top NavBar (fixed, glass) ── */
+.topNav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(24px);
+  box-shadow: 0 20px 40px rgba(0, 65, 106, 0.06);
+}
+
+.topNavBrand {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+
+.topNavLogo {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #0c4a6e;
+  letter-spacing: -0.04em;
+}
+
+.topNavLinks {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.topNavLink {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+  color: #64748b;
+  text-decoration: none;
+  padding-bottom: 4px;
+  border-bottom: 2px solid transparent;
+  transition: color 200ms ease;
+}
+
+.topNavLink:hover {
+  color: #0369a1;
+}
+
+.topNavLinkActive {
+  color: #0369a1;
+  border-bottom-color: #0ea5e9;
+}
+
+.topNavRight {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.telegramToggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid rgba(192, 199, 210, 0.3);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.telegramToggle .materialIcon {
+  color: #005e97;
+}
+
+.telegramToggleLabel {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.toggleTrack {
+  position: relative;
+  width: 40px;
+  height: 20px;
+  border-radius: 999px;
+  background: #c0c7d2;
+  cursor: pointer;
+  transition: background 200ms ease;
+}
+
+.toggleTrack[data-enabled="true"] {
+  background: #00691e;
+}
+
+.toggleKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #ffffff;
+  transition: transform 200ms ease;
+}
+
+.toggleTrack[data-enabled="true"] .toggleKnob {
+  transform: translateX(20px);
+}
+
+.navIconGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.navIconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  border-radius: 8px;
+  transition: color 200ms ease;
+}
+
+.navIconBtn:hover {
+  color: #0369a1;
+}
+
+/* ── Main Layout ── */
+.mainLayout {
+  display: flex;
+  gap: 32px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 112px 16px 80px;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  display: none;
+  flex-direction: column;
+  width: 288px;
+  min-width: 288px;
+  position: sticky;
+  top: 112px;
+  padding: 40px 24px;
+  gap: 16px;
+  height: calc(100vh - 140px);
+  border-radius: 0 2rem 2rem 0;
+  background: rgba(248, 250, 252, 0.9);
+  backdrop-filter: blur(24px);
+}
+
+.sidebarBrand {
+  margin-bottom: 32px;
+}
+
+.sidebarTitle {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #0c4a6e;
+}
+
+.sidebarSubtitle {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.sidebarNav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebarLink {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-decoration: none;
+  border-radius: 12px;
+  transition: background 200ms ease, color 200ms ease;
+}
+
+.sidebarLink:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.sidebarLinkActive {
+  color: #0369a1;
+  background: rgba(224, 242, 254, 0.6);
+  border-left: 4px solid #93f993;
+  padding-left: 12px;
+}
+
+.upgradeCard {
+  margin-top: auto;
+  padding: 24px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #005e97, #0077be);
+  color: #ffffff;
+  box-shadow: 0 12px 32px rgba(0, 94, 151, 0.3);
+}
+
+.upgradeCard p:first-of-type {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.upgradeCard p:last-of-type {
+  margin: 0;
+  font-size: 0.75rem;
+  opacity: 0.8;
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+
+.upgradeBtn {
+  display: block;
+  width: 100%;
+  padding: 8px 0;
+  background: #ffffff;
+  color: #005e97;
+  font-weight: 700;
+  font-size: 0.75rem;
+  border: none;
+  border-radius: 999px;
+  text-align: center;
+  text-decoration: none;
+  transition: transform 100ms ease;
+}
+
+.upgradeBtn:active {
+  transform: scale(0.95);
+}
+
+/* ── Content Area ── */
+.content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* ── Page Header ── */
+.pageHeader {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.pageTitle {
+  margin: 0;
+  font-size: 1.875rem;
+  font-weight: 800;
+  color: #151c22;
+  letter-spacing: -0.02em;
+}
+
+.pageSubtitle {
+  margin: 4px 0 0;
+  color: #404751;
+  font-weight: 500;
+}
+
+.assignmentBadge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 2px solid rgba(0, 94, 151, 0.1);
+}
+
+.badgeLabel {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #005e97;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+}
+
+.badgeText {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #151c22;
+}
+
+/* ── Bento Grid ── */
+.bentoGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+}
+
+/* ── Hero Brief Card (8-col) ── */
+.heroCard {
+  position: relative;
+  overflow: hidden;
+  background: rgba(224, 242, 254, 0.4);
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 20px 40px rgba(0, 65, 106, 0.06);
+}
+
+.heroCardGlow {
+  position: absolute;
+  top: -80px;
+  right: -80px;
+  width: 256px;
+  height: 256px;
+  border-radius: 999px;
+  background: rgba(0, 94, 151, 0.05);
+  filter: blur(48px);
+  pointer-events: none;
+  transition: background 300ms ease;
+}
+
+.heroCard:hover .heroCardGlow {
+  background: rgba(0, 94, 151, 0.1);
+}
+
+.heroCardInner {
+  position: relative;
+  z-index: 1;
+}
+
+.heroTopline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.labelPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(0, 94, 151, 0.1);
+  color: #005e97;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.dateMuted {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #404751;
+}
+
+.heroTitle {
+  margin: 0 0 16px;
+  font-size: 2.25rem;
+  font-weight: 800;
+  color: #151c22;
+  letter-spacing: -0.04em;
+}
+
+.heroSummary {
+  margin: 0 0 32px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #0369a1;
+  line-height: 1.7;
+}
+
+.analysisItems {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.analysisItem {
+  display: flex;
+  gap: 16px;
+}
+
+.analysisIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.analysisIcon .materialIcon {
+  color: #005e97;
+}
+
+.analysisItemTitle {
+  margin: 0;
+  font-weight: 700;
+  color: #151c22;
+}
+
+.analysisItemDesc {
+  margin: 4px 0 0;
+  font-size: 0.875rem;
+  color: #404751;
+  line-height: 1.6;
+}
+
+.riskBanner {
+  padding: 16px;
+  background: rgba(255, 218, 214, 0.2);
+  border-left: 4px solid rgba(186, 26, 26, 0.2);
+  border-radius: 8px;
+}
+
+.riskBannerText {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #93000a;
+  line-height: 1.6;
+}
+
+/* ── Market Mood Card (4-col) ── */
+.moodCard {
+  background: #edf4fc;
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.moodLabel {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #404751;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin-bottom: 24px;
+}
+
+.moodGauge {
+  position: relative;
+  width: 192px;
+  height: 192px;
+  margin-bottom: 24px;
+}
+
+.moodGauge svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.moodGaugeBg {
+  fill: transparent;
+  stroke: #dce3eb;
+  stroke-width: 12;
+}
+
+.moodGaugeFill {
+  fill: transparent;
+  stroke: #455f87;
+  stroke-width: 12;
+  stroke-dasharray: 502;
+  stroke-dashoffset: 150;
+}
+
+.moodGaugeCenter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.moodGaugeCenter .materialIcon {
+  font-size: 2.25rem;
+  color: #455f87;
+  font-variation-settings: "FILL" 1;
+}
+
+.moodToneLabel {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #455f87;
+}
+
+.moodTitle {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #151c22;
+}
+
+.moodDesc {
+  margin: 8px 0 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #404751;
+}
+
+/* ── Key Signals (3-col) ── */
+.signalSection {
+  grid-column: 1 / -1;
+}
+
+.signalSectionTitle {
+  margin: 0 0 24px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #151c22;
+  padding: 0 8px;
+}
+
+.signalGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.signalCard {
+  padding: 24px;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 200ms ease;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.signalCard:hover {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+}
+
+.signalCard[data-tone="critical"] {
+  background: rgba(254, 242, 242, 0.7);
+}
+
+.signalCard[data-tone="watch"] {
+  background: rgba(240, 249, 255, 0.7);
+}
+
+.signalCard[data-tone="positive"] {
+  background: rgba(240, 253, 244, 0.7);
+}
+
+.signalCard[data-tone="neutral"] {
+  background: rgba(248, 250, 252, 0.7);
+}
+
+.signalCardTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+
+.signalCardTop .materialIcon {
+  font-variation-settings: "FILL" 1;
+}
+
+.signalCard[data-tone="critical"] .signalCardTop .materialIcon {
+  color: #ba1a1a;
+}
+
+.signalCard[data-tone="watch"] .signalCardTop .materialIcon {
+  color: #005e97;
+}
+
+.signalCard[data-tone="positive"] .signalCardTop .materialIcon {
+  color: #00691e;
+}
+
+.signalCard[data-tone="neutral"] .signalCardTop .materialIcon {
+  color: #64748b;
+}
+
+.signalToneBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.signalCard[data-tone="critical"] .signalToneBadge {
+  background: #ffdad6;
+  color: #ba1a1a;
+}
+
+.signalCard[data-tone="watch"] .signalToneBadge {
+  background: #cfe5ff;
+  color: #005e97;
+}
+
+.signalCard[data-tone="positive"] .signalToneBadge {
+  background: #93f993;
+  color: #005316;
+}
+
+.signalCard[data-tone="neutral"] .signalToneBadge {
+  background: #e2e9f1;
+  color: #404751;
+}
+
+.signalCardTitle {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.signalCardDesc {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #404751;
+  line-height: 1.7;
+  flex: 1;
+}
+
+.signalCardLink {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #005e97;
+  text-decoration: none;
+  margin-top: auto;
+}
+
+.signalCardLink:hover {
+  text-decoration: underline;
+}
+
+/* ── Empty Signal Card ── */
+.emptyCard {
+  grid-column: 1 / -1;
+  padding: 32px;
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.7);
+  border: 1px dashed rgba(192, 199, 210, 0.4);
+}
+
+.emptyCard h4 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+}
+
+.emptyCard p {
+  margin: 0;
+  color: #404751;
+  line-height: 1.7;
+}
+
+/* ── Watchlist + Stories row ── */
+.watchStoryRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+}
+
+/* ── Watchlist ── */
+.watchlistCard {
+  background: #edf4fc;
+  border-radius: 16px;
+  padding: 24px;
+}
+
+.watchlistTitle {
+  margin: 0 0 24px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #151c22;
+}
+
+.watchlistItems {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.watchItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.watchItem[data-highlight="true"] {
+  border: 2px solid rgba(0, 94, 151, 0.2);
+}
+
+.watchItemLeft {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.watchAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #005e97;
+  background: #edf4fc;
+}
+
+.watchItem[data-highlight="true"] .watchAvatar {
+  background: rgba(0, 94, 151, 0.1);
+}
+
+.watchSymbol {
+  margin: 0;
+  font-weight: 700;
+}
+
+.watchNote {
+  margin: 2px 0 0;
+  font-size: 0.75rem;
+  color: #404751;
+}
+
+.watchNote[data-tone="critical"] {
+  color: #ba1a1a;
+  font-weight: 500;
+}
+
+.watchItemRight .materialIcon {
+  color: #cbd5e1;
+}
+
+.watchItem[data-highlight="true"] .watchItemRight .materialIcon {
+  color: #005e97;
+  font-variation-settings: "FILL" 1;
+}
+
+/* ── Whale Stories ── */
+.storiesCard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.storiesTitle {
+  margin: 0 0 8px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #151c22;
+}
+
+.storyItem {
+  padding: 24px;
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid transparent;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  transition: background 200ms ease, border-color 200ms ease;
+}
+
+.storyItem:hover {
+  background: #ffffff;
+  border-color: rgba(0, 94, 151, 0.1);
+}
+
+.storyItemInner {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.storyDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+
+.storyDot[data-tone="critical"] {
+  background: #ba1a1a;
+}
+
+.storyDot[data-tone="watch"] {
+  background: #455f87;
+}
+
+.storyDot[data-tone="positive"] {
+  background: #00691e;
+}
+
+.storyDot[data-tone="neutral"] {
+  background: #94a3b8;
+}
+
+.storyBody {
+  margin: 0;
+  color: #151c22;
+  line-height: 1.7;
+}
+
+.storyMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.storyMeta span + span::before {
+  content: " \00B7 ";
+  margin: 0 4px;
+  color: #c0c7d2;
+}
+
+/* ── Telegram CTA ── */
+.telegramCta {
+  grid-column: 1 / -1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 48px;
+  border-radius: 16px;
+  background: linear-gradient(to right, #0c4a6e, #005e97);
+  color: #ffffff;
+}
+
+.telegramCtaContent {
+  position: relative;
+  z-index: 1;
+  max-width: 560px;
+}
+
+.telegramCtaTitle {
+  margin: 0 0 16px;
+  font-size: 1.875rem;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.telegramCtaDesc {
+  margin: 0;
+  opacity: 0.8;
+  font-size: 1.1rem;
+  line-height: 1.6;
+}
+
+.telegramCtaBtn {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 32px;
+  background: #ffffff;
+  color: #005e97;
+  font-weight: 900;
+  border-radius: 999px;
+  border: none;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+  text-decoration: none;
+  transition: transform 100ms ease;
+  white-space: nowrap;
+}
+
+.telegramCtaBtn:hover {
+  transform: scale(1.05);
+}
+
+.telegramCtaBtn:active {
+  transform: scale(0.95);
+}
+
+/* ── AI Explainability ── */
+.explainSection {
+  grid-column: 1 / -1;
+  padding: 48px 0;
+}
+
+.explainTitle {
+  text-align: center;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #404751;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  margin: 0 0 48px;
+}
+
+.explainFlow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  max-width: 896px;
+  margin: 0 auto;
+}
+
+.explainStep {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.explainStepIcon {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.explainStepIcon .materialIcon {
+  font-size: 1.875rem;
+  color: #005e97;
+}
+
+.explainStepIconHighlight {
+  border: 2px solid #005e97;
+}
+
+.explainStepIconFilled {
+  background: #005e97;
+}
+
+.explainStepIconFilled .materialIcon {
+  color: #ffffff;
+  font-variation-settings: "FILL" 1;
+}
+
+.explainStepLabel {
+  font-weight: 700;
+}
+
+.explainStepLabelHighlight {
+  color: #005e97;
+}
+
+.explainConnector {
+  display: none;
+  height: 1px;
+  flex: 1;
+  background: #dce3eb;
+  position: relative;
+}
+
+.explainConnectorDot {
+  position: absolute;
+  right: 0;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #005e97;
+}
+
+/* ── Risk Card ── */
+.riskCard {
+  padding: 24px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(192, 199, 210, 0.24);
+}
+
+.riskCard h3 {
+  margin: 0 0 12px;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.riskCard p {
+  margin: 0 0 8px;
+  color: #404751;
+  line-height: 1.75;
+}
+
+.riskMeta {
+  font-size: 0.92rem;
+  color: #64748b;
+}
+
+/* ── Footer ── */
+.footer {
+  padding: 48px 32px;
+  background: #edf4fc;
+}
+
+.footerInner {
+  max-width: 1280px;
+  margin: 0 auto;
+  border-top: 1px solid rgba(192, 199, 210, 0.2);
+  padding-top: 32px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
+.footerBrand {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #0c4a6e;
+  letter-spacing: -0.04em;
+  margin: 0 0 16px;
+}
+
+.footerDesc {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #404751;
+  max-width: 400px;
+  line-height: 1.7;
+}
+
+.footerRight {
+  text-align: right;
+}
+
+.footerRight p {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #404751;
+  font-weight: 500;
+  line-height: 1.7;
+}
+
+/* ── Connection Status ── */
+.connectionChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(192, 199, 210, 0.3);
+  font-size: 0.8rem;
+  color: #404751;
+}
+
+.connectionDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #37b4e3;
+}
+
+/* ── Material Icon helper ── */
+.materialIcon {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  font-size: 1.25rem;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  direction: ltr;
+  -webkit-font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+/* ── Floating badge ── */
+.floatingBadge {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: #ffffff;
+  border-radius: 999px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(192, 199, 210, 0.1);
+  z-index: 60;
+}
+
+.floatingBadgeDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #005e97;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.floatingBadgeText {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #151c22;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ── Responsive ── */
+@media (min-width: 768px) {
+  .mainLayout {
+    padding: 112px 32px 80px;
+  }
+
+  .bentoGrid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .heroCard {
+    grid-column: span 8;
+  }
+
+  .moodCard {
+    grid-column: span 4;
+  }
+
+  .signalSection {
+    grid-column: span 12;
+  }
+
+  .watchlistCard {
+    grid-column: span 5;
+  }
+
+  .storiesCard {
+    grid-column: span 7;
+  }
+
+  .watchStoryRow {
+    grid-template-columns: 5fr 7fr;
+  }
+
+  .telegramCta {
+    flex-direction: row;
+    grid-column: span 12;
+  }
+
+  .explainSection {
+    grid-column: span 12;
+  }
+
+  .explainFlow {
+    flex-direction: row;
+  }
+
+  .explainConnector {
+    display: block;
+  }
+
+  .signalGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .sidebar {
+    display: flex;
+  }
+
+  .topNavLinks {
+    display: flex;
+  }
+}
+
+@media (max-width: 1023px) {
+  .topNavLinks {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .topNav {
+    padding: 0 16px;
+    height: 64px;
+  }
+
+  .mainLayout {
+    padding: 80px 12px 48px;
+  }
+
+  .heroCard {
+    padding: 24px;
+  }
+
+  .heroTitle {
+    font-size: 1.75rem;
+  }
+
+  .heroSummary {
+    font-size: 1rem;
+  }
+
+  .signalGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .footerInner {
+    grid-template-columns: 1fr;
+  }
+
+  .footerRight {
+    text-align: left;
+  }
+
+  .telegramCta {
+    padding: 32px 24px;
+    text-align: center;
+  }
+
+  .telegramCtaTitle {
+    font-size: 1.5rem;
+  }
+
+  .explainFlow {
+    gap: 24px;
+  }
+
+  .floatingBadge {
+    bottom: 12px;
+    right: 12px;
+  }
+}
