@@ -70,6 +70,21 @@ def _normalize_subscriber(row_dict: dict) -> dict:
     }
 
 
+def _parse_dt(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_event_time(row: dict) -> datetime | None:
+    return _parse_dt(row.get("tg_date") or row.get("collected_at"))
+
+
 class SheetsClient:
     def __init__(self, sheet_id: str, credentials_json: str):
         try:
@@ -561,6 +576,31 @@ class SheetsClient:
             logger.info("Appended tg_whale_event: %s", target)
         except gspread.exceptions.APIError as e:
             raise StorageError(f"Failed to append tg_whale_event: {e}") from e
+
+    @retry(max_retries=3, base_delay=2.0)
+    def list_tg_whale_events(self, since: datetime | None = None) -> list[dict]:
+        try:
+            ws = self._worksheet(TAB_TG_WHALE_EVENTS)
+            all_values = ws.get_all_values()
+            if len(all_values) <= 1:
+                return []
+
+            rows = [row_to_dict(row, TG_WHALE_EVENTS_HEADERS) for row in all_values[1:]]
+            if since is None:
+                return rows
+
+            filtered: list[dict] = []
+            for row in rows:
+                row_time = _normalize_event_time(row)
+                if row_time is None:
+                    continue
+                if row_time.tzinfo is None and since.tzinfo is not None:
+                    row_time = row_time.replace(tzinfo=since.tzinfo)
+                if row_time >= since:
+                    filtered.append(row)
+            return filtered
+        except gspread.exceptions.APIError as e:
+            raise StorageError(f"Failed to list tg whale events: {e}") from e
 
     # --- signals ---
 

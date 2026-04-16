@@ -1,6 +1,7 @@
 """Telethon listener with regex parse + LLM fallback for on-chain alert channels."""
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from datetime import datetime, timezone
@@ -68,6 +69,8 @@ class TelethonListener:
         storage,
         router=None,
         channel: str = "",
+        phone: str = "",
+        session_string: str = "",
     ) -> None:
         self._api_id = api_id
         self._api_hash = api_hash
@@ -75,22 +78,89 @@ class TelethonListener:
         self._storage = storage
         self._router = router
         self._channel = channel
+        self._phone = phone
+        self._session_string = session_string
 
     async def run(self) -> None:
         try:
             from telethon import TelegramClient, events  # noqa: PLC0415
+            from telethon.errors import PhoneNumberInvalidError  # noqa: PLC0415
+            from telethon.sessions import StringSession  # noqa: PLC0415
         except ImportError as exc:
             raise RuntimeError("telethon is not installed") from exc
 
-        client = TelegramClient(self._session, self._api_id, self._api_hash)
+        session = StringSession(self._session_string) if self._session_string else self._session
+        client = TelegramClient(session, self._api_id, self._api_hash)
 
         @client.on(events.NewMessage(chats=self._channel))
         async def _handler(event):
-            await self._handle_message(event.id, event.date, event.raw_text or "")
+            try:
+                await self._handle_message(event.id, event.date, event.raw_text or "")
+            except Exception as exc:  # pragma: no cover - defensive logging path
+                logger.exception("Unhandled listener error msg_id=%s: %s", event.id, exc)
+                await self._record_system_log(
+                    "error",
+                    "telethon_listener",
+                    {
+                        "event": "message_error",
+                        "stage": "handler",
+                        "msg_id": event.id,
+                        "error": str(exc),
+                    },
+                )
 
+        await client.connect()
         logger.info("Listening on channel=%r", self._channel)
-        async with client:
+        await self._record_system_log(
+            "info",
+            "telethon_listener",
+            {
+                "event": "listener_start",
+                "channel": self._channel,
+                "session": self._session,
+                "session_string": "set" if self._session_string else "unset",
+            },
+        )
+        try:
+            if not await client.is_user_authorized():
+                await self._record_system_log(
+                    "error",
+                    "telethon_listener",
+                    {
+                        "event": "auth_error",
+                        "reason": "session_not_authenticated",
+                        "channel": self._channel,
+                    },
+                )
+                if not self._phone:
+                    raise RuntimeError(
+                        "Telethon session is not authenticated. "
+                        "Run once with TELETHON_PHONE in international format, "
+                        "for example TELETHON_PHONE=+821012345678, or provide "
+                        "TELETHON_SESSION_STRING for non-interactive workers."
+                    )
+
+                try:
+                    await client.start(phone=self._phone)
+                except PhoneNumberInvalidError as exc:
+                    await self._record_system_log(
+                        "error",
+                        "telethon_listener",
+                        {
+                            "event": "auth_error",
+                            "reason": "invalid_phone",
+                            "channel": self._channel,
+                        },
+                    )
+                    raise RuntimeError(
+                        "Invalid TELETHON_PHONE. Use international E.164 format "
+                        "with country code, for example +821012345678. "
+                        "Do not use a leading local 0 or hyphens."
+                    ) from exc
+
             await client.run_until_disconnected()
+        finally:
+            await client.disconnect()
 
     async def _handle_message(self, msg_id: int, msg_date, text: str) -> None:
         parsed = parse_tg_message(text)
@@ -98,7 +168,8 @@ class TelethonListener:
 
         if parsed is None and self._router is not None:
             try:
-                result = self._router.call_task(
+                result = await asyncio.to_thread(
+                    self._router.call_task,
                     "nl_intent",
                     system=(
                         "Extract whale transaction details from a Telegram message. "
@@ -134,6 +205,41 @@ class TelethonListener:
         }
 
         try:
-            self._storage.append_tg_whale_event(event_row)
+            await asyncio.to_thread(self._storage.append_tg_whale_event, event_row)
+            await self._record_system_log(
+                "info",
+                "telethon_listener",
+                {
+                    "event": "message_processed",
+                    "msg_id": msg_id,
+                    "symbol": event_row["symbol"],
+                    "blockchain": event_row["blockchain"],
+                    "confidence": confidence,
+                    "stored": True,
+                },
+            )
         except Exception as exc:
             logger.error("Storage failed msg_id=%s: %s", msg_id, exc)
+            await self._record_system_log(
+                "error",
+                "telethon_listener",
+                {
+                    "event": "message_error",
+                    "stage": "storage",
+                    "msg_id": msg_id,
+                    "error": str(exc),
+                },
+            )
+
+    async def _record_system_log(self, level: str, category: str, payload: dict) -> None:
+        if self._storage is None:
+            return
+        try:
+            await asyncio.to_thread(self._storage.append_system_log, level, category, payload)
+        except Exception as exc:
+            logger.warning(
+                "System log append failed level=%s category=%s: %s",
+                level,
+                category,
+                exc,
+            )

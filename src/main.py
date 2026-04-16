@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -36,6 +36,21 @@ _EVM_CHAINS = ("ETH", "ARB", "BASE", "BSC", "POLYGON")
 
 _CONFIG_DIR = Path(__file__).parent.parent / "config"
 _FIXTURES_PATH = Path(__file__).parent.parent / "tests" / "fixtures" / "sample_events.json"
+_TG_CHAIN_MAP = {
+    "bitcoin": "BTC",
+    "btc": "BTC",
+    "ethereum": "ETH",
+    "eth": "ETH",
+    "bsc": "BSC",
+    "bnb": "BSC",
+    "binance smart chain": "BSC",
+    "polygon": "POLYGON",
+    "matic": "POLYGON",
+    "solana": "SOL",
+    "sol": "SOL",
+    "tron": "TRX",
+    "trx": "TRX",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -90,6 +105,80 @@ def _event_to_dict(e: Event) -> dict:
         "blockchain": e.chain,
         "raw_response_hash": e.tx_hash or "",
     }
+
+
+def _parse_dt(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_float(value: object) -> float:
+    try:
+        return float(str(value).replace(",", ""))
+    except (TypeError, ValueError):
+        logger.warning("Failed to parse float value=%r; defaulting to 0.0", value)
+        return 0.0
+
+
+def _normalize_tg_chain(value: object) -> str:
+    raw = str(value or "unknown").strip().lower()
+    if not raw:
+        return "unknown"
+    if raw == "unknown":
+        return "unknown"
+    return _TG_CHAIN_MAP.get(raw, raw.upper())
+
+
+def _tg_owner_label(value: object, fallback: str = "unknown") -> str:
+    text = str(value or "").strip()
+    if not text:
+        return fallback
+    return text.lstrip("#")
+
+
+def _tg_direction(from_owner_type: str, to_owner_type: str) -> tuple[str, str | None]:
+    from_type = from_owner_type.lower()
+    to_type = to_owner_type.lower()
+    if from_type == "exchange" and to_type == "exchange":
+        # Exchange-to-exchange moves are treated as exchange outflow signals.
+        return "out", "cex"
+    if to_type == "exchange" and from_type != "exchange":
+        return "in", "cex"
+    if from_type == "exchange":
+        return "out", None
+    return "out", None
+
+
+def _tg_row_to_event(row: dict) -> Event:
+    block_time = _parse_dt(row.get("tg_date")) or _parse_dt(row.get("collected_at")) or datetime.now(timezone.utc)
+    collected_at = _parse_dt(row.get("collected_at")) or block_time
+    from_owner = _tg_owner_label(row.get("from_owner"))
+    to_owner = _tg_owner_label(row.get("to_owner"))
+    from_owner_type = str(row.get("from_owner_type") or "unknown").strip().lower() or "unknown"
+    to_owner_type = str(row.get("to_owner_type") or "unknown").strip().lower() or "unknown"
+    direction, counterparty_category = _tg_direction(from_owner_type, to_owner_type)
+
+    return Event(
+        source="tg",
+        chain=_normalize_tg_chain(row.get("blockchain")),
+        tx_hash=None,
+        watched_address=None,
+        from_addr=from_owner or from_owner_type or "unknown",
+        to_addr=to_owner or to_owner_type or "unknown",
+        direction=direction,
+        token=str(row.get("symbol") or "UNKNOWN").upper(),
+        amount_token=_safe_float(row.get("amount")),
+        amount_usd=_safe_float(row.get("amount_usd")),
+        counterparty_category=counterparty_category,
+        block_time=block_time,
+        collected_at=collected_at,
+    )
 
 
 def _event_to_address_activity(e: Event) -> dict:
@@ -290,7 +379,8 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
     else:
         try:
             watched_index = sheets.list_watched_addresses()
-            since_ts = int(datetime.now(timezone.utc).timestamp()) - 24 * 3600
+            since_dt = datetime.now(timezone.utc) - timedelta(hours=24)
+            since_ts = int(since_dt.timestamp())
             for chain in _EVM_CHAINS:
                 addrs = [
                     addr for addr, row in watched_index.items()
@@ -314,16 +404,31 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
                         watched_index=watched_index, price_service=price_svc,
                     )
                 )
+            try:
+                tg_rows = sheets.list_tg_whale_events(since=since_dt)
+                if isinstance(tg_rows, list) and tg_rows:
+                    tg_events = [_tg_row_to_event(row) for row in tg_rows if isinstance(row, dict)]
+                    raw_events.extend(tg_events)
+                    logger.info("[%s] Loaded %d tg events from Sheets", run_id, len(tg_events))
+            except Exception as e:
+                errors.append(f"list_tg_whale_events: {e}")
+                logger.error("[%s] Failed to load TG events: %s", run_id, e)
         except Exception as e:
             errors.append(f"fetch_transactions: {e}")
             logger.error("[%s] Failed to fetch transactions: %s", run_id, e)
 
-    transactions = [_event_to_dict(e) for e in raw_events]
-    logger.info("[%s] Collected %d events / %d tx dicts", run_id, len(raw_events), len(transactions))
+    chain_events = [e for e in raw_events if e.source == "chain"]
+    transactions = [_event_to_dict(e) for e in chain_events]
+    logger.info(
+        "[%s] Collected %d raw events / %d chain tx dicts",
+        run_id,
+        len(raw_events),
+        len(transactions),
+    )
 
     if not dry_run and transactions:
         try:
-            address_activity_rows = [_event_to_address_activity(e) for e in raw_events]
+            address_activity_rows = [_event_to_address_activity(e) for e in chain_events]
             if address_activity_rows:
                 stored_activity = sheets.append_address_activity(address_activity_rows)
                 logger.info("[%s] Stored %d address activity rows", run_id, stored_activity)
@@ -356,7 +461,7 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
             errors.append(f"price_unknown_symbols: {e}")
             logger.warning("[%s] Failed to log unknown price symbols: %s", run_id, e)
 
-    if not transactions:
+    if not raw_events:
         result.update(
             status="completed_empty",
             finished_at=now_iso(),

@@ -162,7 +162,7 @@ class WhaleScopeBot:
         ])
 
     def _format_signal_brief(self, signals: list[Signal]) -> str:
-        cards = ["<b>관심 시그널</b>"]
+        cards = ["<b>내 관심 항목</b>"]
         for sig in sorted(signals, key=lambda s: s.score, reverse=True):
             cards.append(
                 "\n".join([

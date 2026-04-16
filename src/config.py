@@ -14,6 +14,8 @@ class Config:
     telethon_api_id: int = 0
     telethon_api_hash: str = ""
     telethon_session: str = "whalescope"
+    telethon_phone: str = ""
+    telethon_session_string: str = ""
     gemini_api_key: str = ""
     groq_api_key: str = ""
 
@@ -52,5 +54,7 @@ def load_config() -> Config:
     values["telethon_api_id"] = int(raw_api_id) if raw_api_id.isdigit() else 0
     values["telethon_api_hash"] = os.getenv("TELETHON_API_HASH", "")
     values["telethon_session"] = os.getenv("TELETHON_SESSION", "whalescope")
+    values["telethon_phone"] = os.getenv("TELETHON_PHONE", "")
+    values["telethon_session_string"] = os.getenv("TELETHON_SESSION_STRING", "")
 
     return Config(**values)

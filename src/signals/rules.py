@@ -39,7 +39,8 @@ def _make_cex_outflow_spike(cfg: dict) -> Callable:
         cutoff = ctx.now - timedelta(hours=window_h)
         window_events = [
             e for e in events
-            if e.direction == "out"
+            if e.source == "chain"
+            and e.direction == "out"
             and e.counterparty_category == "cex"
             and e.block_time >= cutoff
         ]
@@ -85,7 +86,8 @@ def _make_cex_inflow_spike(cfg: dict) -> Callable:
         cutoff = ctx.now - timedelta(hours=window_h)
         window_events = [
             e for e in events
-            if e.direction == "in"
+            if e.source == "chain"
+            and e.direction == "in"
             and e.counterparty_category == "cex"
             and e.block_time >= cutoff
         ]
@@ -128,7 +130,8 @@ def _make_cold_to_hot_transfer(cfg: dict) -> Callable:
     def rule(events: list[Event], ctx: RuleContext) -> list[Signal]:
         hits = [
             e for e in events
-            if e.counterparty_category == "hot"
+            if e.source == "chain"
+            and e.counterparty_category == "hot"
             and e.direction == "out"
             and e.amount_usd >= min_usd
         ]
@@ -165,7 +168,8 @@ def _make_smart_money_accumulation(cfg: dict) -> Callable:
         cutoff = ctx.now - timedelta(hours=window_h)
         accumulating = [
             e for e in events
-            if e.direction == "in"
+            if e.source == "chain"
+            and e.direction == "in"
             and e.watched_address in ctx.watched_index
             and e.block_time >= cutoff
         ]
@@ -339,6 +343,7 @@ def _make_weekly_net_accumulation(cfg: dict) -> Callable:
         current_net = sum(
             e.amount_usd if e.direction == "in" else -e.amount_usd
             for e in week_events
+            if e.source == "chain"
         )
         if current_net <= 0:
             return []
