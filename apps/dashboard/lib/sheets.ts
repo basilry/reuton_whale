@@ -16,6 +16,7 @@ import {
   type SheetTabName,
   type SignalRow,
   type SystemLogRow,
+  type TgWhaleEventRow,
   type TransactionRow,
 } from "./schema";
 
@@ -42,6 +43,7 @@ export type DashboardSheetSnapshot = {
   signals: SignalRow[];
   system_log: SystemLogRow[];
   subscribers: SheetRowMap["subscribers"][];
+  tg_whale_events: TgWhaleEventRow[];
 };
 
 export interface ListRowsOptions {
@@ -201,6 +203,10 @@ class SheetsReadClient {
       const log = row as SystemLogRow;
       return parseDateTimeSafe(log.finished_at) ?? parseDateTimeSafe(log.started_at);
     }
+    if (tab === "tg_whale_events") {
+      const event = row as TgWhaleEventRow;
+      return parseDateTimeSafe(event.collected_at) ?? parseDateTimeSafe(event.tg_date);
+    }
     return null;
   }
 }
@@ -244,5 +250,6 @@ export async function readDashboardSnapshot(): Promise<DashboardSheetSnapshot> {
     signals: tabs.signals,
     system_log: tabs.system_log,
     subscribers: tabs.subscribers,
+    tg_whale_events: tabs.tg_whale_events,
   };
 }

@@ -1,20 +1,18 @@
 import { NextResponse } from "next/server";
 
+import { createGenericErrorResponse, requireDashboardAuth } from "@/lib/auth";
 import { parseLimitParam } from "@/lib/format";
 import { getTransactionsData } from "@/lib/metrics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function errorResponse(error: unknown) {
-  const message = error instanceof Error ? error.message : "Unknown transactions error";
-  return NextResponse.json(
-    { error: message },
-    { status: 500, headers: { "Cache-Control": "no-store" } }
-  );
-}
-
 export async function GET(request: Request) {
+  const unauthorized = requireDashboardAuth(request);
+  if (unauthorized) {
+    return unauthorized;
+  }
+
   try {
     const limit = parseLimitParam(new URL(request.url).searchParams.get("limit"), 20, 200);
     const data = await getTransactionsData(limit);
@@ -23,6 +21,6 @@ export async function GET(request: Request) {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
-    return errorResponse(error);
+    return createGenericErrorResponse(error, "Unable to load transactions.", "api/transactions");
   }
 }
