@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+
+<html class="light" lang="ko"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>WhaleScope Operations Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link as="style" crossorigin="" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-tint": "#00629e",
+                      "outline-variant": "#c0c7d2",
+                      "surface-container-low": "#edf4fc",
+                      "primary-fixed": "#cfe5ff",
+                      "on-secondary-fixed-variant": "#2d486d",
+                      "error-container": "#ffdad6",
+                      "surface-bright": "#f6faff",
+                      "on-surface": "#151c22",
+                      "inverse-on-surface": "#eaf1f9",
+                      "surface-container": "#e8eff7",
+                      "inverse-surface": "#2a3137",
+                      "on-primary-fixed-variant": "#004a79",
+                      "on-background": "#151c22",
+                      "surface": "#f6faff",
+                      "on-secondary-container": "#3e5980",
+                      "on-secondary-fixed": "#001c3b",
+                      "surface-container-lowest": "#ffffff",
+                      "on-primary": "#ffffff",
+                      "on-primary-container": "#f7f9ff",
+                      "on-error": "#ffffff",
+                      "on-surface-variant": "#404751",
+                      "tertiary-fixed-dim": "#77dc7a",
+                      "on-tertiary": "#ffffff",
+                      "secondary": "#455f87",
+                      "surface-container-highest": "#dce3eb",
+                      "on-tertiary-fixed": "#002105",
+                      "secondary-fixed": "#d5e3ff",
+                      "primary-fixed-dim": "#9acbff",
+                      "on-primary-fixed": "#001d34",
+                      "tertiary": "#00691e",
+                      "tertiary-container": "#18842e",
+                      "secondary-container": "#b5d0fd",
+                      "on-tertiary-fixed-variant": "#005316",
+                      "primary": "#005e97",
+                      "tertiary-fixed": "#93f993",
+                      "background": "#f6faff",
+                      "surface-variant": "#dce3eb",
+                      "surface-dim": "#d4dbe3",
+                      "on-error-container": "#93000a",
+                      "on-secondary": "#ffffff",
+                      "surface-container-high": "#e2e9f1",
+                      "inverse-primary": "#9acbff",
+                      "secondary-fixed-dim": "#adc8f5",
+                      "outline": "#707882",
+                      "on-tertiary-container": "#eaffe3",
+                      "primary-container": "#0077be",
+                      "error": "#ba1a1a"
+              },
+              "borderRadius": {
+                      "DEFAULT": "1rem",
+                      "lg": "2rem",
+                      "xl": "3rem",
+                      "full": "9999px"
+              },
+              "fontFamily": {
+                      "headline": ["Manrope", "Pretendard", "sans-serif"],
+                      "body": ["Pretendard", "sans-serif"],
+                      "label": ["Pretendard", "sans-serif"]
+              }
+            },
+          },
+        }
+      </script>
+<style>
+        body { font-family: 'Pretendard', sans-serif; background-color: #f6faff; color: #151c22; -webkit-font-smoothing: antialiased; }
+        .font-manrope { font-family: 'Manrope', 'Pretendard', sans-serif; }
+        .glass-card { 
+            background: rgba(255, 255, 255, 0.7); 
+            backdrop-filter: blur(20px); 
+            border: 1px solid rgba(255, 255, 255, 0.4);
+        }
+        .material-symbols-outlined { font-size: 20px; vertical-align: middle; }
+        .wave-bg {
+            background-image: radial-gradient(at 0% 0%, rgba(0, 94, 151, 0.05) 0px, transparent 50%),
+                              radial-gradient(at 100% 100%, rgba(24, 132, 46, 0.03) 0px, transparent 50%);
+        }
+    </style>
+</head>
+<body class="wave-bg min-h-screen">
+<!-- TopNavBar -->
+<header class="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-[0_20px_40px_rgba(0,65,106,0.06)] sticky top-0 z-50 tonal-transition bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100">
+<div class="flex justify-between items-center w-full px-8 py-4 max-w-[1920px] mx-auto">
+<div class="flex items-center gap-6">
+<div class="text-2xl font-black text-sky-800 dark:text-sky-100 italic font-manrope tracking-tight">WhaleScope</div>
+<div class="hidden md:flex items-center gap-2">
+<span class="px-3 py-1 bg-surface-container-lowest text-on-surface text-[10px] font-bold tracking-widest uppercase rounded-full shadow-sm border border-outline-variant/20">뤼튼 과제 전형</span>
+<p class="text-xs text-slate-500 max-w-xs leading-tight font-medium">뤼튼 테크놀로지스 Product Engineer 과제 제출용 데모</p>
+</div>
+</div>
+<nav class="hidden lg:flex items-center gap-8 font-manrope tracking-tight font-bold text-lg">
+<a class="text-sky-700 dark:text-sky-400 border-b-2 border-teal-400 pb-1 hover:bg-sky-50/50 dark:hover:bg-sky-900/30 transition-all" href="#">대시보드</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-sky-600 hover:bg-sky-50/50 dark:hover:bg-sky-900/30 transition-all" href="#">파이프라인</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-sky-600 hover:bg-sky-50/50 dark:hover:bg-sky-900/30 transition-all" href="#">시그널</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-sky-600 hover:bg-sky-50/50 dark:hover:bg-sky-900/30 transition-all" href="#">리포트</a>
+</nav>
+<div class="flex items-center gap-4">
+<div class="text-right hidden sm:block">
+<div class="text-xs font-bold text-on-surface">운영자 프로필</div>
+<div class="text-[10px] text-slate-500">시스템 관리자</div>
+</div>
+<div class="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-white overflow-hidden ring-2 ring-white">
+<img alt="운영자 프로필" class="w-full h-full object-cover" data-alt="close-up profile portrait of a professional engineer in a modern office with soft blue lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAZdYOk86LYS6pLQyE6VNvJuK-zQQratk62p3cJlVezKp_bMyDwhYw2cQYV51nfMBC6oP3-m-YkXmzCbnIzV7Z8GpWBEI3GN3wQpUfDoaO4zv-_lf1G7u62PTxB3P1pi9JiKbbfwHBrqTL9N-sYx1CxZAgk_NbtXmp-BmAoealvmBq8e2HV-xPO9FIOg7JOiENJfvb5bRZtUZntRXyukLAV2W9Ltk-9WhsiyMrZeZJFEy2LUo_cAVyF0hAXsa5MyYgWfoIoTa4ZtlA8"/>
+</div>
+</div>
+</div>
+</header>
+<main class="max-w-[1920px] mx-auto px-8 py-8 grid grid-cols-12 gap-8">
+<!-- Hero Summary Section -->
+<section class="col-span-12">
+<div class="glass-card rounded-lg p-8 relative overflow-hidden">
+<div class="absolute top-0 right-0 p-12 opacity-10 pointer-events-none">
+<span class="material-symbols-outlined text-9xl text-primary" data-icon="waves">waves</span>
+</div>
+<div class="relative z-10">
+<h1 class="text-4xl font-manrope font-extrabold text-on-surface tracking-tight mb-4">WhaleScope 운영 대시보드</h1>
+<div class="flex items-center gap-4 bg-primary/5 p-4 rounded-xl border border-primary/10 max-w-3xl">
+<span class="material-symbols-outlined text-primary" data-icon="auto_awesome">auto_awesome</span>
+<p class="text-lg font-medium text-on-surface/90 leading-relaxed">
+                            오늘 감지된 주요 고래 이동은 <span class="text-primary font-bold">4건</span>이며, CEX 유입 시그널 <span class="text-primary font-bold">2건</span>과 CEX 유출 시그널 <span class="text-primary font-bold">1건</span>이 확인되었습니다.
+                        </p>
+</div>
+</div>
+</div>
+</section>
+<!-- Service Health Row -->
+<section class="col-span-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<!-- Pipeline Worker -->
+<div class="glass-card rounded-lg p-6 flex flex-col justify-between">
+<div>
+<div class="flex justify-between items-start mb-4">
+<div class="w-10 h-10 rounded-full bg-tertiary/10 flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined" data-icon="dns">dns</span>
+</div>
+<span class="px-2 py-1 rounded-full bg-tertiary/10 text-tertiary text-[10px] font-bold uppercase tracking-wider">정상</span>
+</div>
+<h3 class="font-bold text-on-surface mb-1">정보수집 파이프라인 워커</h3>
+<p class="text-xs text-slate-500">최근 실행 완료, 브리핑 발송 성공</p>
+</div>
+<button class="mt-6 w-full py-2.5 px-4 rounded-full bg-primary text-white text-xs font-bold hover:opacity-90 transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm" data-icon="play_arrow">play_arrow</span> 지금 실행
+                </button>
+</div>
+<!-- Telegram Bot -->
+<div class="glass-card rounded-lg p-6 flex flex-col justify-between">
+<div>
+<div class="flex justify-between items-start mb-4">
+<div class="w-10 h-10 rounded-full bg-tertiary/10 flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined" data-icon="smart_toy">smart_toy</span>
+</div>
+<span class="px-2 py-1 rounded-full bg-tertiary/10 text-tertiary text-[10px] font-bold uppercase tracking-wider">정상</span>
+</div>
+<h3 class="font-bold text-on-surface mb-1">텔레그램 봇 워커</h3>
+<p class="text-xs text-slate-500">정상 작동 중, 142명의 구독자 활성</p>
+</div>
+<button class="mt-6 w-full py-2.5 px-4 rounded-full bg-surface-container-highest text-on-surface text-xs font-bold hover:bg-surface-container-high transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm" data-icon="list_alt">list_alt</span> 로그 보기
+                </button>
+</div>
+<!-- Telegram Listener -->
+<div class="glass-card rounded-lg p-6 flex flex-col justify-between">
+<div>
+<div class="flex justify-between items-start mb-4">
+<div class="w-10 h-10 rounded-full bg-error/10 flex items-center justify-center text-error">
+<span class="material-symbols-outlined" data-icon="settings_input_antenna">settings_input_antenna</span>
+</div>
+<span class="px-2 py-1 rounded-full bg-error/10 text-error text-[10px] font-bold uppercase tracking-wider">주의</span>
+</div>
+<h3 class="font-bold text-on-surface mb-1">텔레그램 리스너 워커</h3>
+<p class="text-xs text-slate-500">연결 대기 중. API 설정 확인 필요</p>
+</div>
+<button class="mt-6 w-full py-2.5 px-4 rounded-full bg-surface-container-highest text-on-surface text-xs font-bold hover:bg-surface-container-high transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm" data-icon="settings">settings</span> 설정
+                </button>
+</div>
+<!-- Next.js Dashboard -->
+<div class="glass-card rounded-lg p-6 flex flex-col justify-between">
+<div>
+<div class="flex justify-between items-start mb-4">
+<div class="w-10 h-10 rounded-full bg-tertiary/10 flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+</div>
+<span class="px-2 py-1 rounded-full bg-tertiary/10 text-tertiary text-[10px] font-bold uppercase tracking-wider">정상</span>
+</div>
+<h3 class="font-bold text-on-surface mb-1">Next.js 대시보드</h3>
+<p class="text-xs text-slate-500">Google Sheets 데이터 동기화 중</p>
+</div>
+<div class="mt-6 flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+<span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span> 시스템 활성 상태
+                </div>
+</div>
+</section>
+<!-- Middle Section (Daily Brief & Signals) -->
+<section class="col-span-12 lg:col-span-8">
+<div class="glass-card rounded-lg p-10 h-full">
+<div class="flex items-center justify-between mb-8 border-b border-slate-100 pb-6">
+<h2 class="text-2xl font-bold text-on-surface">오늘의 고래 브리핑</h2>
+<span class="text-xs text-slate-400 font-medium">마지막 업데이트: 2시간 전</span>
+</div>
+<article class="prose prose-slate max-w-none">
+<h1 class="text-3xl font-extrabold text-on-surface mb-6 leading-tight">비트코인 거래소 유입 증가와 기관 매집 징후</h1>
+<div class="aspect-video w-full rounded-lg mb-8 overflow-hidden bg-slate-100 shadow-inner">
+<img alt="가상자산 시장 분석 차트" class="w-full h-full object-cover" data-alt="modern abstract crypto market data visualization with flowing blue lines and glowing nodes on a clean white background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBif6hN0Uv2t9izqswr8zSOnt5cYN3CJ1xBTZLERCQkGfXGLC2WxUuSwA5s3xHCj-YKg7dnuJSF3_vp-dkh5Z1BYGbEeGGUdw3tfkffJiqeBkr10jeECHyT-VlxmmmHXi-IMxTBIeQZr19eb6zHWMnhXwC4XcsvqymBJ2vXf_2ywxva3tLfwQP5CJ0ugUW12tSAB4DnX5wIAE3RCkfmCPTaTLwcExfT4ahQ4ZHkoaC7k4XsoNaY-tFNUgJ0Kbx5Wy-PdSvx1_PId7Rp"/>
+</div>
+<p class="text-lg text-slate-600 leading-relaxed mb-6">
+                        오늘 주요 고래들의 지갑에서 거래소로 약 5,000 BTC가 이동되었습니다. 이는 단기적인 변동성을 유발할 수 있으나, 동시에 온체인 데이터는 특정 수탁 지갑에서의 대규모 유출을 함께 보여주고 있습니다.
+                    </p>
+<div class="grid md:grid-cols-2 gap-8 my-10">
+<div class="p-6 rounded-lg bg-surface-container-low border border-primary/5">
+<h4 class="font-bold text-primary mb-3 flex items-center gap-2">
+<span class="material-symbols-outlined" data-icon="search">search</span> 주목 시그널
+                            </h4>
+<ul class="space-y-2 text-sm text-on-surface-variant">
+<li>• 바이낸스로의 스테이블코인 대량 유입</li>
+<li>• 콜드월렛 이동 후 3시간 이상 정체</li>
+<li>• 파생상품 거래소의 롱 포지션 청산 급증</li>
+</ul>
+</div>
+<div class="p-6 rounded-lg bg-tertiary/5 border border-tertiary/5">
+<h4 class="font-bold text-tertiary mb-3 flex items-center gap-2">
+<span class="material-symbols-outlined" data-icon="trending_up">trending_up</span> 시장 시사점
+                            </h4>
+<p class="text-sm text-on-surface-variant leading-relaxed">
+                                현재의 움직임은 전형적인 '패닉 셀' 유도 이후 저점 매집 패턴을 보이고 있습니다. 대규모 유입에도 불구하고 거래소 가용 물량은 전일 대비 낮은 수준을 유지 중입니다.
+                            </p>
+</div>
+</div>
+<p class="text-xs text-slate-400 italic border-t border-slate-100 pt-6">
+                        본 콘텐츠는 정보 제공 목적으로만 작성되었으며, 투자 조언이 아닙니다. 모든 투자의 책임은 본인에게 있습니다.
+                    </p>
+</article>
+</div>
+</section>
+<!-- Right Side: Core Signals -->
+<section class="col-span-12 lg:col-span-4 flex flex-col gap-6">
+<div class="glass-card rounded-lg p-6">
+<h3 class="font-bold text-on-surface mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="emergency_home">emergency_home</span> 핵심 시그널
+                </h3>
+<div class="space-y-4">
+<!-- High Severity Signal -->
+<div class="p-5 rounded-xl bg-error/5 relative group hover:bg-error/[0.08] transition-all border border-error/10">
+<div class="flex justify-between items-start mb-2">
+<div class="flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-error animate-pulse"></span>
+<span class="text-[10px] font-bold text-error uppercase tracking-widest">위험 시그널</span>
+</div>
+<span class="text-[10px] text-slate-400 bg-white/50 px-1.5 py-0.5 rounded shadow-sm">14:22</span>
+</div>
+<h4 class="font-bold text-on-surface mb-2">거래소 유입 급증</h4>
+<p class="text-sm text-on-surface-variant leading-relaxed">
+                            약 3,680만 달러 상당의 ETH가 거래소로 이동했습니다. 단기 매도 압력 가능성.
+                        </p>
+<div class="absolute top-4 right-4 opacity-10 group-hover:opacity-20 transition-opacity">
+<span class="material-symbols-outlined text-3xl text-error" data-icon="warning">warning</span>
+</div>
+</div>
+<!-- Medium Severity Signal -->
+<div class="p-5 rounded-xl bg-primary/5 relative group hover:bg-primary/[0.08] transition-all border border-primary/10">
+<div class="flex justify-between items-start mb-2">
+<div class="flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+<span class="text-[10px] font-bold text-primary uppercase tracking-widest">중간 시그널</span>
+</div>
+<span class="text-[10px] text-slate-400 bg-white/50 px-1.5 py-0.5 rounded shadow-sm">12:05</span>
+</div>
+<h4 class="font-bold text-on-surface mb-2">스마트머니 동시 매집</h4>
+<p class="text-sm text-on-surface-variant leading-relaxed">
+                            특정 스마트머니 주소 3곳에서 동일한 자산을 매집 중입니다.
+                        </p>
+<div class="absolute top-4 right-4 opacity-10 group-hover:opacity-20 transition-opacity">
+<span class="material-symbols-outlined text-3xl text-primary" data-icon="info">info</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Operator Checklist -->
+<div class="glass-card rounded-lg p-6 bg-slate-900 text-white border-none shadow-xl">
+<h3 class="font-bold mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-teal-400" data-icon="checklist">checklist</span> 운영 체크리스트
+                </h3>
+<div class="space-y-4">
+<div class="flex items-center gap-3">
+<div class="w-5 h-5 rounded bg-teal-400 flex items-center justify-center">
+<span class="material-symbols-outlined text-[14px] text-slate-900 font-bold" data-icon="check">check</span>
+</div>
+<span class="text-sm text-slate-300">Google Sheets 초기화</span>
+<span class="ml-auto text-[10px] font-bold text-teal-400 uppercase">완료</span>
+</div>
+<div class="flex items-center gap-3">
+<div class="w-5 h-5 rounded bg-teal-400 flex items-center justify-center">
+<span class="material-symbols-outlined text-[14px] text-slate-900 font-bold" data-icon="check">check</span>
+</div>
+<span class="text-sm text-slate-300">감시 주소 등록</span>
+<span class="ml-auto text-[10px] font-bold text-teal-400 uppercase">완료</span>
+</div>
+<div class="flex items-center gap-3 opacity-60">
+<div class="w-5 h-5 rounded border-2 border-slate-700"></div>
+<span class="text-sm text-slate-400">파이프라인 실행</span>
+<span class="ml-auto text-[10px] font-bold text-slate-500 uppercase">대기 중</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Bottom Section: Timeline & Log -->
+<section class="col-span-12 lg:col-span-8">
+<div class="glass-card rounded-lg p-8">
+<h2 class="text-xl font-bold text-on-surface mb-8">고래 이동 타임라인</h2>
+<div class="space-y-6">
+<div class="flex items-start gap-4 p-4 rounded-xl hover:bg-surface-container-low transition-all border border-transparent hover:border-slate-100">
+<div class="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center flex-shrink-0 border border-slate-50">
+<span class="material-symbols-outlined text-primary" data-icon="eth" style="font-variation-settings: 'FILL' 1;">currency_exchange</span>
+</div>
+<div>
+<p class="text-sm font-medium text-on-surface leading-snug">
+<span class="font-bold text-primary">ETH 32개</span>가 알 수 없는 지갑에서 <span class="bg-primary/10 px-1.5 py-0.5 rounded text-[11px] font-bold text-primary-fixed-dim">Beacon Deposit</span> 주소로 이동했습니다.
+                            </p>
+<span class="text-[10px] text-slate-400 mt-1 block">5분 전 • Ethereum Mainnet</span>
+</div>
+</div>
+<div class="flex items-start gap-4 p-4 rounded-xl hover:bg-surface-container-low transition-all border border-transparent hover:border-slate-100">
+<div class="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center flex-shrink-0 border border-slate-50">
+<span class="material-symbols-outlined text-teal-600" data-icon="monetization_on">monetization_on</span>
+</div>
+<div>
+<p class="text-sm font-medium text-on-surface leading-snug">
+<span class="font-bold text-teal-600">USDC 5,138개</span>가 <span class="bg-teal-50 px-1.5 py-0.5 rounded text-[11px] font-bold text-teal-600">Balancer Vault</span>로 이동했습니다.
+                            </p>
+<span class="text-[10px] text-slate-400 mt-1 block">18분 전 • Polygon</span>
+</div>
+</div>
+<div class="flex items-start gap-4 p-4 rounded-xl hover:bg-surface-container-low transition-all border border-transparent hover:border-slate-100">
+<div class="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center flex-shrink-0 border border-slate-50">
+<span class="material-symbols-outlined text-orange-500" data-icon="currency_bitcoin">currency_bitcoin</span>
+</div>
+<div>
+<p class="text-sm font-medium text-on-surface leading-snug">
+<span class="font-bold text-orange-500">BTC 450개</span>가 <span class="bg-orange-50 px-1.5 py-0.5 rounded text-[11px] font-bold text-orange-600">Coinbase</span>에서 익명의 고래 지갑으로 출금되었습니다.
+                            </p>
+<span class="text-[10px] text-slate-400 mt-1 block">1시간 전 • Bitcoin</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Right Bottom: Operation Log -->
+<section class="col-span-12 lg:col-span-4">
+<div class="glass-card rounded-lg p-8 h-full">
+<h2 class="text-xl font-bold text-on-surface mb-8">운영 알림 센터</h2>
+<div class="space-y-4">
+<div class="flex gap-4 items-start">
+<div class="w-2 h-2 rounded-full bg-tertiary mt-2"></div>
+<div>
+<p class="text-sm text-on-surface-variant leading-relaxed">텔레그램 브리핑 1명에게 발송 완료, 실패 없음</p>
+<span class="text-[10px] text-slate-400 font-medium">오후 2:00</span>
+</div>
+</div>
+<div class="flex gap-4 items-start">
+<div class="w-2 h-2 rounded-full bg-error mt-2"></div>
+<div>
+<p class="text-sm text-on-surface-variant font-medium leading-relaxed italic">일부 토큰의 가격 정보를 찾지 못했습니다 (알림)</p>
+<span class="text-[10px] text-slate-400 font-medium">오후 1:45</span>
+</div>
+</div>
+<div class="flex gap-4 items-start">
+<div class="w-2 h-2 rounded-full bg-tertiary mt-2"></div>
+<div>
+<p class="text-sm text-on-surface-variant leading-relaxed">신규 고래 지갑 2건 자동 태깅 완료</p>
+<span class="text-[10px] text-slate-400 font-medium">오후 1:12</span>
+</div>
+</div>
+<div class="flex gap-4 items-start">
+<div class="w-2 h-2 rounded-full bg-primary mt-2"></div>
+<div>
+<p class="text-sm text-on-surface-variant leading-relaxed font-medium">파이프라인 워커 정기 점검 예약됨</p>
+<span class="text-[10px] text-slate-400 font-medium">오전 11:30</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Assignment Badge (Seal of Quality) -->
+<div class="fixed bottom-6 right-6 z-50">
+<div class="bg-surface-container-lowest/90 backdrop-blur shadow-lg px-4 py-2 rounded-full border border-outline-variant/30 flex items-center gap-3">
+<div class="text-xs font-bold text-slate-900 tracking-tighter">Wrtn Technologies</div>
+<div class="h-4 w-px bg-slate-200"></div>
+<div class="text-[10px] font-semibold text-slate-500">Official Assignment Demo</div>
+</div>
+</div>
+</body></html>
