@@ -43,6 +43,12 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
+# Extended subscribers header with "language" column appended to the right.
+# schema.py is intentionally not touched here -- this merged constant is used
+# locally so the rest of the codebase can opt into the new column without
+# changing the shared schema.
+SUBSCRIBERS_HEADERS_EXT = [*SUBSCRIBERS_HEADERS, "language"]
+
 
 def _parse_coins(raw: str) -> list[str]:
     if not raw:
@@ -60,7 +66,8 @@ def _normalize_subscriber(row_dict: dict) -> dict:
         chat_id = int(chat_id_raw) if chat_id_raw != "" else None
     except (TypeError, ValueError):
         chat_id = chat_id_raw
-    return {
+    language = row_dict.get("language", "")
+    result = {
         "chat_id": chat_id,
         "username": row_dict.get("username", ""),
         "status": row_dict.get("status", ""),
@@ -69,6 +76,9 @@ def _normalize_subscriber(row_dict: dict) -> dict:
         "updated_at": row_dict.get("updated_at", ""),
         "last_brief_at": row_dict.get("last_brief_at", ""),
     }
+    if language:
+        result["language"] = language
+    return result
 
 
 from src.utils.datetime_utils import parse_dt as _parse_dt  # noqa: E302
@@ -171,7 +181,7 @@ class SheetsClient:
     def _find_subscriber_row(self, all_values: list[list[str]], chat_id: int) -> int | None:
         if len(all_values) <= 1:
             return None
-        col = SUBSCRIBERS_HEADERS.index("chat_id")
+        col = SUBSCRIBERS_HEADERS_EXT.index("chat_id")
         target = str(chat_id)
         for i, row in enumerate(all_values[1:], start=2):
             if i - 2 < len(all_values) - 1 and col < len(row) and row[col] == target:
@@ -185,9 +195,9 @@ class SheetsClient:
             all_values = ws.get_all_values()
             if len(all_values) <= 1:
                 return []
-            status_col = SUBSCRIBERS_HEADERS.index("status")
+            status_col = SUBSCRIBERS_HEADERS_EXT.index("status")
             return [
-                _normalize_subscriber(row_to_dict(row, SUBSCRIBERS_HEADERS))
+                _normalize_subscriber(row_to_dict(row, SUBSCRIBERS_HEADERS_EXT))
                 for row in all_values[1:]
                 if status_col < len(row) and row[status_col].lower() == "active"
             ]
@@ -203,7 +213,7 @@ class SheetsClient:
             if row_idx is None:
                 return None
             return _normalize_subscriber(
-                row_to_dict(all_values[row_idx - 1], SUBSCRIBERS_HEADERS)
+                row_to_dict(all_values[row_idx - 1], SUBSCRIBERS_HEADERS_EXT)
             )
         except gspread.exceptions.APIError as e:
             raise StorageError(f"Failed to get subscriber info: {e}") from e
@@ -217,7 +227,7 @@ class SheetsClient:
             now = now_iso()
 
             if row_idx is not None:
-                existing = row_to_dict(all_values[row_idx - 1], SUBSCRIBERS_HEADERS)
+                existing = row_to_dict(all_values[row_idx - 1], SUBSCRIBERS_HEADERS_EXT)
                 entry = {
                     "chat_id": chat_id,
                     "username": username or existing.get("username", ""),
@@ -226,6 +236,7 @@ class SheetsClient:
                     "created_at": existing.get("created_at", "") or now,
                     "updated_at": now,
                     "last_brief_at": existing.get("last_brief_at", ""),
+                    "language": existing.get("language", ""),
                 }
                 self._write_subscriber_row(ws, row_idx, entry)
                 logger.info("Reactivated subscriber %d", chat_id)
@@ -238,9 +249,10 @@ class SheetsClient:
                     "created_at": now,
                     "updated_at": now,
                     "last_brief_at": "",
+                    "language": "",
                 }
                 ws.append_row(
-                    dict_to_row(entry, SUBSCRIBERS_HEADERS),
+                    dict_to_row(entry, SUBSCRIBERS_HEADERS_EXT),
                     value_input_option="RAW",
                 )
                 logger.info("Added subscriber %d", chat_id)
@@ -255,7 +267,7 @@ class SheetsClient:
             row_idx = self._find_subscriber_row(all_values, chat_id)
             if row_idx is None:
                 return []
-            entry = row_to_dict(all_values[row_idx - 1], SUBSCRIBERS_HEADERS)
+            entry = row_to_dict(all_values[row_idx - 1], SUBSCRIBERS_HEADERS_EXT)
             return _parse_coins(entry.get("watchlist_coins", ""))
         except gspread.exceptions.APIError as e:
             raise StorageError(f"Failed to get watchlist: {e}") from e
@@ -270,7 +282,7 @@ class SheetsClient:
             serialized = _serialize_coins(coins)
 
             if row_idx is not None:
-                existing = row_to_dict(all_values[row_idx - 1], SUBSCRIBERS_HEADERS)
+                existing = row_to_dict(all_values[row_idx - 1], SUBSCRIBERS_HEADERS_EXT)
                 entry = {
                     **existing,
                     "chat_id": chat_id,
@@ -288,9 +300,10 @@ class SheetsClient:
                     "created_at": now,
                     "updated_at": now,
                     "last_brief_at": "",
+                    "language": "",
                 }
                 ws.append_row(
-                    dict_to_row(entry, SUBSCRIBERS_HEADERS),
+                    dict_to_row(entry, SUBSCRIBERS_HEADERS_EXT),
                     value_input_option="RAW",
                 )
                 logger.info("Created subscriber %d via set_watchlist", chat_id)
@@ -307,7 +320,7 @@ class SheetsClient:
             row_idx = self._find_subscriber_row(all_values, chat_id)
             if row_idx is None:
                 raise StorageError(f"Subscriber {chat_id} not found")
-            existing = row_to_dict(all_values[row_idx - 1], SUBSCRIBERS_HEADERS)
+            existing = row_to_dict(all_values[row_idx - 1], SUBSCRIBERS_HEADERS_EXT)
             entry = {
                 **existing,
                 "chat_id": chat_id,
@@ -319,11 +332,57 @@ class SheetsClient:
         except gspread.exceptions.APIError as e:
             raise StorageError(f"Failed to set status: {e}") from e
 
+    @retry(max_retries=3, base_delay=2.0)
+    def update_subscriber_language(self, chat_id: int, language: str) -> None:
+        try:
+            ws = self._worksheet(TAB_SUBSCRIBERS)
+            all_values = ws.get_all_values()
+            row_idx = self._find_subscriber_row(all_values, chat_id)
+            now = now_iso()
+
+            if row_idx is not None:
+                existing = row_to_dict(all_values[row_idx - 1], SUBSCRIBERS_HEADERS_EXT)
+                entry = {
+                    **existing,
+                    "chat_id": chat_id,
+                    "language": language,
+                    "updated_at": now,
+                }
+                self._write_subscriber_row(ws, row_idx, entry)
+                logger.info("Updated subscriber %d language=%s", chat_id, language)
+            else:
+                entry = {
+                    "chat_id": chat_id,
+                    "username": "",
+                    "status": "active",
+                    "watchlist_coins": "",
+                    "created_at": now,
+                    "updated_at": now,
+                    "last_brief_at": "",
+                    "language": language,
+                }
+                ws.append_row(
+                    dict_to_row(entry, SUBSCRIBERS_HEADERS_EXT),
+                    value_input_option="RAW",
+                )
+                logger.info(
+                    "Created subscriber %d with language=%s", chat_id, language
+                )
+        except gspread.exceptions.APIError as e:
+            raise StorageError(f"Failed to update subscriber language: {e}") from e
+
     def _write_subscriber_row(
         self, ws: gspread.Worksheet, row_idx: int, entry: dict
     ) -> None:
-        row_data = dict_to_row(entry, SUBSCRIBERS_HEADERS)
-        last_col = chr(ord("A") + len(SUBSCRIBERS_HEADERS) - 1)
+        row_data = dict_to_row(entry, SUBSCRIBERS_HEADERS_EXT)
+        last_col_idx = len(SUBSCRIBERS_HEADERS_EXT) - 1
+        # Handle column names beyond 'Z' (not needed for 8 columns, but safe).
+        if last_col_idx < 26:
+            last_col = chr(ord("A") + last_col_idx)
+        else:
+            first = chr(ord("A") + (last_col_idx // 26) - 1)
+            second = chr(ord("A") + (last_col_idx % 26))
+            last_col = f"{first}{second}"
         cell_range = f"A{row_idx}:{last_col}{row_idx}"
         ws.update(cell_range, [row_data], value_input_option="RAW")
 

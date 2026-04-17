@@ -1,0 +1,9 @@
+Below is the list of whale signals detected as of {{date}}.
+
+Signal data (JSON):
+{{signals_json}}
+
+Analyze the signals above and write an English daily briefing following the format specified in the system prompt.
+- Prioritize signals with higher severity and score.
+- Emphasize signals whose source is "both" (detected on-chain AND via telegram), as they have higher reliability.
+- If there are 0 signals, output only "No notable whale movements detected today."

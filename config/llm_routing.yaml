@@ -13,6 +13,19 @@ tasks:
       - "groq/llama-3.3-70b-versatile"
     max_tokens: 1500
 
+  daily_brief_en:
+    preferred: "gemini/gemini-2.5-flash"
+    fallback:
+      - "anthropic/claude-3-5-sonnet-latest"
+      - "groq/llama-3.3-70b-versatile"
+    max_tokens: 1500
+
+  daily_brief_ja:
+    preferred: "anthropic/claude-3-5-sonnet-latest"
+    fallback:
+      - "gemini/gemini-2.5-flash"
+    max_tokens: 1500
+
   weekly_trend:
     preferred: "anthropic/claude-3-5-sonnet-latest"
     fallback:
