@@ -4,6 +4,18 @@
 **기간**: 7일 MVP (1인 개발)  
 **작성일**: 2026-04-13
 
+> **문서 상태 (2026-04-17 갱신)**: 본 문서는 2026-04-13 초기 설계 기준이며, 이후 구현이 다음과 같이 발산했습니다. 현재 구조는 루트 [README.md](../README.md)와 [one-pager.md](one-pager.md), [nextjs-dashboard-development-plan.md](nextjs-dashboard-development-plan.md)를 정본으로 봅니다.
+>
+> - **데이터 수집**: Whale Alert 유료 API 의존 제거 → Etherscan API v2 (ETH/ARB/BASE/BSC/POLYGON) + Solscan API v2 (SOL) + Telethon 공개 채널 수신 기반으로 전환.
+> - **시그널**: 단순 임계값 스코어링 대신 `SignalEngine`이 8개 규칙(`cex_outflow_spike`, `cold_to_hot_transfer`, `corroborated_move` 등)으로 시그널을 생성하고 legacy `TransactionScorer`는 fallback 전용으로 후퇴.
+> - **LLM**: Claude 단일 경로 대신 자체 `LLMRouter`가 Anthropic/Gemini/Groq를 preferred/fallback 방식으로 라우팅. `prompts/*.txt`는 brief/weekly/nl_intent로 분리.
+> - **Storage**: Google Sheets는 유지하되 탭이 5개에서 11개로 확장(`transactions`, `signals`, `daily_brief`, `analysis_log`, `system_log`, `subscribers`, `watched_addresses`, `address_activity`, `tg_whale_events`, `weekly_trend`, `user_interests`). `Storage` Protocol을 통해 SQLite/Postgres 전환 여지를 둠.
+> - **배포**: GitHub Actions 단일 cron 가정에서 Render(Python workers: pipeline/bot/listener) + Vercel(Next.js `apps/dashboard`) 분리 구조로 확장. GitHub Actions는 선택적 백업 경로로 좌천.
+> - **대시보드**: Streamlit 단독에서 Next.js App Router 기반 운영(`/`) + 인사이트(`/insights`) 대시보드 분리. Streamlit은 로컬 legacy 진단 용도로만 유지.
+> - **운영 가시성**: `scripts/run_listener.py`에 5분 주기 `_heartbeat_loop` + `TelethonListener.health_status()` 도입, `apps/dashboard/lib/metrics.ts`에 `humanizeLogMessage()` 도입(raw JSON 노출 제거), `src/utils/datetime_utils.py` 공용 파서로 `_parse_dt` 4곳 중복 제거.
+>
+> 본 문서의 아래 요구사항/다이어그램/프롬프트 설계는 원안의 스냅샷으로 유지하되, 최신 파이프라인 단계와 배포 구성은 README를 우선합니다.
+
 ---
 
 ## 1. Requirements

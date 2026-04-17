@@ -495,8 +495,9 @@ listener는 상시 프로세스입니다. GitHub Actions보다는 로컬, Render
 
 운영 상태 기록:
 
-- listener 시작 시 `system_log`에 `run_type=telethon_listener`, `event=listener_start`가 기록됩니다.
+- listener 시작 시 `system_log`에 `run_type=telethon_listener`, `event=listener_start`가 기록됩니다. `event=listener_start`는 `client.connect()`와 인증 성공 이후에 남기므로, 연결 실패 상태에서는 heartbeat가 기록되지 않습니다.
 - 메시지 저장 성공 시 `event=message_processed`가 기록되고, 운영 대시보드의 listener 카드가 이 heartbeat를 기준으로 `정상` 또는 `대기 중`을 표시합니다.
+- `scripts/run_listener.py`는 실행 중 별도 asyncio 태스크로 5분 간격 `_heartbeat_loop`을 돌립니다. 매 주기마다 `TelethonListener.health_status()`를 조회해 `status`, `last_message_at`, `staleness_seconds`, `message_count`, `error_count`를 로그로 남기고, 마지막 수신 이후 900초(15분) 이상 경과하면 `stale` 경고를 출력합니다.
 - heartbeat가 아직 없지만 `tg_whale_events`에 최신 수집 기록이 있으면, 대시보드는 이를 listener 활동의 fallback 근거로 사용합니다.
 - 세션 미인증이나 전화번호 형식 오류는 `event=auth_error`로 기록되며, 운영 대시보드에는 `인증 필요`로 표시됩니다.
 - 저장소/처리 오류는 `event=message_error`로 기록되며, 운영 대시보드에는 `확인 필요`로 표시됩니다.
@@ -700,6 +701,7 @@ src/
 │   ├── telegram_bot.py        # command handlers, send retry, personalization
 │   └── formatters.py
 └── utils/
+    ├── datetime_utils.py      # ISO 8601 parse_dt / parse_dt_strict 공용 유틸
     ├── errors.py
     ├── http_backoff.py
     ├── logger.py
