@@ -102,9 +102,9 @@ class LLMAnalyzer:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _load_prompt(self, name: str) -> tuple[str, str]:
+    def _load_prompt(self, name: str, lang: str = "ko") -> tuple[str, str]:
         from src.analyzer.prompt_loader import load_prompt
-        return load_prompt(name, base_dir=self._prompts_dir)
+        return load_prompt(name, base_dir=self._prompts_dir, lang=lang)
 
     def _make_hash(self, *parts: str) -> str:
         return hashlib.sha256("".join(parts).encode()).hexdigest()
@@ -167,9 +167,9 @@ class LLMAnalyzer:
     # Public API — new interface
     # ------------------------------------------------------------------
 
-    def generate_daily_brief(self, signals: "list[Signal]") -> str:
-        sys_prompt, sys_ver = self._load_prompt("daily_brief.system")
-        user_tmpl, user_ver = self._load_prompt("daily_brief.user")
+    def generate_daily_brief(self, signals: "list[Signal]", lang: str = "ko") -> str:
+        sys_prompt, sys_ver = self._load_prompt("daily_brief.system", lang=lang)
+        user_tmpl, user_ver = self._load_prompt("daily_brief.user", lang=lang)
 
         signals_json = json.dumps(
             [
@@ -196,13 +196,14 @@ class LLMAnalyzer:
             logger.info("Cache hit for daily_brief prompt_hash=%s", prompt_hash[:8])
             return cached
 
+        task_name = "daily_brief" if lang == "ko" else f"daily_brief_{lang}"
         t0 = time.perf_counter()
-        result = self._router.call_task("daily_brief", sys_prompt, user_content)
+        result = self._router.call_task(task_name, sys_prompt, user_content)
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
         prompt_version = f"{sys_ver}+{user_ver}"
         self._log_analysis({
-            "task": "daily_brief",
+            "task": task_name,
             "model_id": result.model_id,
             "prompt_version": prompt_version,
             "tokens_in": result.tokens_in,

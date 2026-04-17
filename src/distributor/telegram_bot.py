@@ -20,6 +20,7 @@ from src.distributor.formatters import (
     format_watchlist_confirmation,
     format_welcome_message,
 )
+from src.i18n import SUPPORTED_LANGUAGES, get_message
 from src.signals.models import Signal
 from src.utils.errors import DistributorError
 from src.utils.logger import get_logger
@@ -35,6 +36,7 @@ class WhaleScopeBot:
         "/watchlist - 관심 코인을 확인하거나 설정합니다. 예: /watchlist ETH BTC SOL\n"
         "/pause - 알림을 일시중지합니다.\n"
         "/status - 현재 구독 상태를 확인합니다.\n"
+        "/language - 언어를 변경합니다. 예: /language en\n"
         "/help - 사용 가능한 명령을 다시 안내합니다."
     )
 
@@ -59,6 +61,7 @@ class WhaleScopeBot:
         self._app.add_handler(CommandHandler("watchlist", self.handle_watchlist))
         self._app.add_handler(CommandHandler("pause", self.handle_pause))
         self._app.add_handler(CommandHandler("status", self.handle_status))
+        self._app.add_handler(CommandHandler("language", self.handle_language))
         self._app.add_handler(CommandHandler("help", self.handle_help))
         self._app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
         return self._app
@@ -68,6 +71,7 @@ class WhaleScopeBot:
         brief_text: str,
         signals: list[Signal] | None = None,
         brief_texts: dict[str, str] | None = None,
+        multilang_briefs: dict[str, str] | None = None,
     ) -> dict:
         if self._app is None:
             raise DistributorError("Bot not built. Call build() first.")
@@ -81,9 +85,16 @@ class WhaleScopeBot:
                 result["failed"] += 1
                 continue
 
+            lang = sub.get("language") or "ko"
+            localized_brief = (
+                (multilang_briefs or {}).get(lang, brief_text)
+                if multilang_briefs
+                else brief_text
+            )
+
             watchlist = sub.get("watchlist")
             text = self._brief_for_subscriber(
-                chat_id, brief_text, signals, watchlist, brief_texts,
+                chat_id, localized_brief, signals, watchlist, brief_texts,
             )
 
             try:
@@ -300,6 +311,38 @@ class WhaleScopeBot:
             f"최근 브리프: {last_brief}"
         )
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+
+    async def handle_language(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        chat_id = update.effective_chat.id
+        args = context.args or []
+
+        current_lang = "ko"
+        try:
+            info = self._sheets.get_subscriber_info(chat_id=chat_id)
+            if info and info.get("language"):
+                current_lang = info["language"]
+        except Exception as exc:
+            logger.warning(
+                "Failed to load language for %s: %s", chat_id, exc
+            )
+
+        if not args:
+            await update.message.reply_text(
+                get_message(current_lang, "language_usage")
+            )
+            return
+
+        code = args[0].lower()
+        if code not in SUPPORTED_LANGUAGES:
+            await update.message.reply_text(
+                get_message(current_lang, "language_invalid")
+            )
+            return
+
+        self._sheets.update_subscriber_language(chat_id=chat_id, language=code)
+        await update.message.reply_text(get_message(code, "language_set"))
 
     async def handle_help(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE

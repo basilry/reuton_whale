@@ -161,7 +161,7 @@ class TestWhaleScopeBot:
         from src.distributor.telegram_bot import WhaleScopeBot
         bot = WhaleScopeBot(token="test-token", sheets_client=MagicMock(spec=SheetsClient))
         bot.build()
-        assert mock_app.add_handler.call_count == 6
+        assert mock_app.add_handler.call_count == 7
 
     @patch("src.distributor.telegram_bot.Application")
     @pytest.mark.asyncio

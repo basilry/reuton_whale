@@ -1,3 +1,4 @@
+from src.i18n import get_message
 from src.utils.logger import get_logger
 
 logger = get_logger("formatters")
@@ -54,7 +55,27 @@ def format_daily_brief(
     return header + "\n" + "\n".join(cards)
 
 
-def format_welcome_message() -> str:
+def format_welcome_message(lang: str = "ko") -> str:
+    if lang == "en":
+        return (
+            "<b>🐋 Welcome to WhaleScope!</b>\n\n"
+            "Each morning at KST 08:00 you will receive the Top 5 whale trade briefing.\n\n"
+            "<b>Commands:</b>\n"
+            "/watchlist - configure watchlist coins\n"
+            "/pause - pause notifications\n"
+            "/status - check subscription status\n"
+            "/language - change language\n"
+        )
+    if lang == "ja":
+        return (
+            "<b>🐋 WhaleScopeへようこそ!</b>\n\n"
+            "毎朝KST 08:00にTop 5クジラ取引ブリーフィングをお届けします。\n\n"
+            "<b>コマンド:</b>\n"
+            "/watchlist - ウォッチリストコインの設定\n"
+            "/pause - 通知の一時停止\n"
+            "/status - 購読状態の確認\n"
+            "/language - 言語変更\n"
+        )
     return (
         "<b>🐋 WhaleScope에 오신 것을 환영합니다!</b>\n\n"
         "매일 아침 KST 08:00에 Top 5 고래 거래 브리핑이 전달됩니다.\n\n"
@@ -62,11 +83,20 @@ def format_welcome_message() -> str:
         "/watchlist - 관심 코인 설정\n"
         "/pause - 알림 일시중지\n"
         "/status - 구독 상태 확인\n"
+        "/language - 언어 변경\n"
     )
 
 
-def format_watchlist_confirmation(coins: list[str]) -> str:
+def format_watchlist_confirmation(coins: list[str], lang: str = "ko") -> str:
     if not coins:
+        if lang == "en":
+            return "Tracking all coins by default."
+        if lang == "ja":
+            return "デフォルトで全コインを追跡します。"
         return "모든 코인을 기본으로 추적합니다."
     formatted = ", ".join(f"<b>{c.upper()}</b>" for c in coins)
+    if lang == "en":
+        return f"Watchlist updated: {formatted}"
+    if lang == "ja":
+        return f"ウォッチリスト更新完了: {formatted}"
     return f"관심 코인 설정 완료: {formatted}"
