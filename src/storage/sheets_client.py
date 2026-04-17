@@ -586,6 +586,19 @@ class SheetsClient:
         since: datetime | None = None,
         limit: int | None = None,
     ) -> list[dict[str, object]]:
+        """Return TG whale events newer than ``since``, optionally capped.
+
+        Args:
+            since: Lower bound (inclusive) on event time. ``None`` returns all rows.
+            limit: Row-count cap applied AFTER the since filter.
+
+                * ``None`` (default): no cap -- return every matching row.
+                * ``0``:              return an empty list explicitly.
+                * ``> 0``:            return the last ``limit`` matching rows (tail slice).
+
+        Returns:
+            List of dict rows. Empty list when no data or sheet is missing.
+        """
         try:
             ws = self._worksheet(TAB_TG_WHALE_EVENTS)
             all_values = ws.get_all_values()
