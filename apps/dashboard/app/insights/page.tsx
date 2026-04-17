@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { TopNavbar } from "@/components/top-navbar";
 import { InsightsSidebar } from "@/components/insights-sidebar";
-import { LanguageSelector } from "@/components/language-selector";
 import { WatchlistEditor } from "@/components/watchlist-editor";
 import { cleanGeneratedBrief } from "@/lib/format";
 import { getDashboardData, type DashboardData } from "@/lib/metrics";
@@ -29,21 +27,6 @@ type BriefAnalysisItem = {
   description: string;
   tone: SignalTone;
 };
-
-const topNavLinks = [
-  { label: "시그널", href: "#signals", active: true },
-  { label: "포트폴리오", href: "#watchlist", active: false },
-  { label: "리포트", href: "#brief", active: false },
-  { label: "뉴스", href: "#", active: false },
-] as const;
-
-const sidebarLinks = [
-  { label: "대시보드", icon: "dashboard", href: "#brief", active: true },
-  { label: "분석", icon: "monitoring", href: "#signals", active: false },
-  { label: "고래 감시", icon: "water_drop", href: "#watchlist", active: false },
-  { label: "시그널 허브", icon: "sensors", href: "#signals", active: false },
-  { label: "설정", icon: "settings", href: "#risk", active: false },
-] as const;
 
 function safeText(value: unknown, fallback = ""): string {
   if (typeof value === "string") {
@@ -447,8 +430,6 @@ export default async function InsightsPage() {
 
   const connectedLabel = state.sourceConnected ? "Google Sheets 연결됨" : "데이터 연결 대기";
   const telegramSubscribers = data?.metrics.subscriberCount ?? 0;
-  const signalCount = data?.metrics.signalCount ?? 0;
-  const telegramToggleOn = telegramSubscribers > 0 || signalCount > 0;
 
   const signalIcons: Record<SignalTone, string> = {
     critical: "trending_up",
@@ -467,33 +448,6 @@ export default async function InsightsPage() {
       <div className={styles.layoutShell}>
         <InsightsSidebar />
 
-      {/* ── Main Layout ── */}
-      <div className={styles.mainLayout}>
-        {/* ── Sidebar ── */}
-        <aside className={styles.sidebar}>
-          <div className={styles.sidebarBrand}>
-            <h2 className={styles.sidebarTitle}>WhaleScope 프로</h2>
-            <p className={styles.sidebarSubtitle}>유동 지능 서비스</p>
-          </div>
-          <nav className={styles.sidebarNav}>
-            {sidebarLinks.map((item) => (
-              <a
-                key={item.label}
-                href={item.href}
-                className={`${styles.sidebarLink} ${item.active ? styles.sidebarLinkActive : ""}`}
-              >
-                <span className={styles.materialIcon}>{item.icon}</span>
-                {item.label}
-              </a>
-            ))}
-          </nav>
-          <div className={styles.upgradeCard}>
-            <p>심해 등급 업그레이드</p>
-            <p>고급 흐름 분석과 실시간 지갑 추적 기능을 잠금 해제하세요.</p>
-            <a className={styles.upgradeBtn} href="#telegram">지금 업그레이드</a>
-          </div>
-        </aside>
-
         {/* ── Content ── */}
         <div className={styles.content}>
           {/* ── Page Header ── */}
@@ -501,7 +455,7 @@ export default async function InsightsPage() {
             <div>
               <h1 className={styles.pageTitle}>시장 인텔리전스</h1>
               <p className={styles.pageSubtitle}>전략적 통찰을 위한 연구 중심 큐레이션</p>
-              <div className={styles.connectionChip} style={{ marginTop: 8 }}>
+              <div className={styles.connectionChip}>
                 <span className={styles.connectionDot} />
                 {connectedLabel}
               </div>
@@ -695,19 +649,19 @@ export default async function InsightsPage() {
                   <div className={styles.explainConnectorDot} />
                 </div>
                 <div className={styles.explainStep}>
-                  <div className={`${styles.explainStepIcon} ${styles.explainStepIconHighlight}`}>
+                  <div className={styles.explainStepIcon} data-highlight="true">
                     <span className={styles.materialIcon}>auto_awesome</span>
                   </div>
-                  <span className={styles.explainStepLabel}>AI 브리핑</span>
+                  <span className={styles.explainStepLabel} data-highlight="true">AI 브리핑</span>
                 </div>
                 <div className={styles.explainConnector}>
                   <div className={styles.explainConnectorDot} />
                 </div>
                 <div className={styles.explainStep}>
-                  <div className={`${styles.explainStepIcon} ${styles.explainStepIconFilled}`}>
-                    <span className={styles.materialIcon} style={{ fontVariationSettings: "'FILL' 1" }}>notifications_active</span>
+                  <div className={styles.explainStepIcon} data-highlight="filled">
+                    <span className={styles.materialIcon}>notifications_active</span>
                   </div>
-                  <span className={`${styles.explainStepLabel} ${styles.explainStepLabelHighlight}`}>실시간 알림</span>
+                  <span className={styles.explainStepLabel} data-highlight="true">실시간 알림</span>
                 </div>
               </div>
             </div>
@@ -726,7 +680,6 @@ export default async function InsightsPage() {
             {!state.sourceConnected ? <p className={styles.riskMeta}>데이터 연결을 확인 중입니다. 잠시 후 다시 시도하세요.</p> : null}
           </article>
         </div>
-      </div>
       </div>{/* layoutShell */}
 
       {/* ── Footer ── */}
