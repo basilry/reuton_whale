@@ -3,7 +3,6 @@ import { SignalActionCard } from "@/components/signal-action-card";
 import { SystemLogPanel, type SystemLogRow } from "@/components/system-log-panel";
 import { DashboardConfigError } from "@/lib/env";
 import {
-  badgeToneClass,
   chainIconColor,
   chainIconName,
   formatAmount,
@@ -16,13 +15,13 @@ import {
   humanizeLogMessage,
   humanizeSignal,
   humanizeTransaction,
-  iconToneClass,
   toneForListenerStatus,
   toneForStatus,
 } from "@/lib/humanize";
 import { getDashboardData } from "@/lib/metrics";
 import { normalizeDashboardData } from "@/lib/normalize";
 import type { DashboardData, NormalizedDashboard } from "@/lib/types";
+import styles from "./page.module.css";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -172,18 +171,18 @@ export default async function DashboardPage() {
     <>
       <TopNavbar />
 
-      <main className="main-content">
+      <main className={styles.main}>
         {/* Hero Summary Banner */}
-        <section className="col-span-12">
-          <div className="hero-banner glass-card">
-            <div className="hero-banner__wave-icon" aria-hidden="true">
+        <section className={styles.colSpan12}>
+          <div className={styles.hero}>
+            <div className={styles.heroWaveIcon} aria-hidden="true">
               <span className="material-symbols-outlined">waves</span>
             </div>
-            <div className="hero-banner__content">
-              <h1 className="hero-banner__title">WhaleScope 운영 대시보드</h1>
-              <div className="hero-banner__summary-box">
+            <div className={styles.heroContent}>
+              <h1 className={styles.heroTitle}>WhaleScope 운영 대시보드</h1>
+              <div className={styles.heroSummaryBox}>
                 <span className="material-symbols-outlined">auto_awesome</span>
-                <p className="hero-banner__summary-text">
+                <p className={styles.heroSummaryText}>
                   오늘 감지된 주요 고래 이동은 <strong>{formatCompactCount(data.metrics.transactionCount)}건</strong>이며,
                   CEX 유입 시그널 <strong>{formatCompactCount(data.metrics.signalCount)}건</strong>과
                   일일 브리핑 <strong>{formatCompactCount(data.metrics.dailyBriefCount)}건</strong>이 확인되었습니다.
@@ -194,36 +193,38 @@ export default async function DashboardPage() {
         </section>
 
         {/* Service Health Grid */}
-        <section className="col-span-12">
-          <div className="service-health-grid">
+        <section className={styles.colSpan12}>
+          <div className={styles.serviceGrid}>
             {serviceCards.map((card, idx) => {
               const action = SERVICE_ACTIONS[idx] ?? null;
               const icon = SERVICE_ICONS[idx] ?? "dns";
               return (
-                <div key={card.title} className="service-card glass-card">
+                <div key={card.title} className={styles.serviceCard}>
                   <div>
-                    <div className="service-card__header">
-                      <div className={`service-card__icon ${iconToneClass(card.tone)}`}>
+                    <div className={styles.serviceCardHeader}>
+                      <div className={styles.serviceIcon} data-tone={card.tone}>
                         <span className="material-symbols-outlined">{icon}</span>
                       </div>
-                      <span className={`service-card__status-badge ${badgeToneClass(card.tone)}`}>
+                      <span className={styles.serviceBadge} data-tone={card.tone}>
                         {card.status}
                       </span>
                     </div>
-                    <h3 className="service-card__title">{card.title}</h3>
-                    <p className="service-card__desc">{card.description}</p>
+                    <h3 className={styles.serviceTitle}>{card.title}</h3>
+                    <p className={styles.serviceDesc}>{card.description}</p>
                   </div>
                   {action ? (
                     <a
                       href={action.href}
-                      className={`service-card__action-btn service-card__action-btn--${action.variant}`}
+                      className={`${styles.serviceAction} ${
+                        action.variant === "primary" ? styles.serviceActionPrimary : styles.serviceActionSecondary
+                      }`}
                     >
                       <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>{action.icon}</span>
                       {action.label}
                     </a>
                   ) : (
-                    <div className="service-card__live-indicator">
-                      <span className="service-card__live-dot" />
+                    <div className={styles.serviceLive}>
+                      <span className={styles.serviceLiveDot} />
                       시스템 활성 상태
                     </div>
                   )}
@@ -234,63 +235,63 @@ export default async function DashboardPage() {
         </section>
 
         {/* Daily Brief (8 cols) */}
-        <section className="col-span-8" id="daily-brief">
-          <div className="brief-card glass-card">
-            <div className="brief-card__header">
-              <h2 className="brief-card__header-title">오늘의 고래 브리핑</h2>
-              <span className="brief-card__header-time">
+        <section className={styles.colSpan8} id="daily-brief">
+          <div className={styles.briefCard}>
+            <div className={styles.briefHeader}>
+              <h2 className={styles.briefHeaderTitle}>오늘의 고래 브리핑</h2>
+              <span className={styles.briefHeaderTime}>
                 마지막 업데이트: {formatTime(data.generatedAt, { dateStyle: "medium", timeStyle: "short" })}
               </span>
             </div>
 
             <article>
-              <h3 className="brief-card__article-title">
+              <h3 className={styles.briefArticleTitle}>
                 {data.latestBrief.summary.length > 60
                   ? data.latestBrief.summary.slice(0, 60).trim()
                   : data.latestBrief.summary}
               </h3>
 
-              <p className="brief-card__body-text">{data.latestBrief.summary}</p>
+              <p className={styles.briefBody}>{data.latestBrief.summary}</p>
 
-              <div className="brief-card__two-col">
-                <div className="brief-card__col-box brief-card__col-box--signals">
-                  <h4 className="brief-card__col-title brief-card__col-title--primary">
+              <div className={styles.briefTwoCol}>
+                <div className={`${styles.briefColBox} ${styles.briefColBoxSignals}`}>
+                  <h4 className={`${styles.briefColTitle} ${styles.briefColTitlePrimary}`}>
                     <span className="material-symbols-outlined">search</span> 주목 시그널
                   </h4>
                   {data.latestBrief.highlights && data.latestBrief.highlights.length > 0 ? (
-                    <ul className="brief-card__col-list">
+                    <ul className={styles.briefColList}>
                       {data.latestBrief.highlights.map((item) => (
                         <li key={item}>&#8226; {item}</li>
                       ))}
                     </ul>
                   ) : signals.length > 0 ? (
-                    <ul className="brief-card__col-list">
+                    <ul className={styles.briefColList}>
                       {signals.slice(0, 3).map((s) => (
                         <li key={s.id}>&#8226; {s.title}</li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="brief-card__col-text">아직 수집된 시그널이 없습니다.</p>
+                    <p className={styles.briefColText}>아직 수집된 시그널이 없습니다.</p>
                   )}
                 </div>
 
-                <div className="brief-card__col-box brief-card__col-box--insights">
-                  <h4 className="brief-card__col-title brief-card__col-title--tertiary">
+                <div className={`${styles.briefColBox} ${styles.briefColBoxInsights}`}>
+                  <h4 className={`${styles.briefColTitle} ${styles.briefColTitleTertiary}`}>
                     <span className="material-symbols-outlined">trending_up</span> 시장 시사점
                   </h4>
                   {data.latestBrief.signalThemes && data.latestBrief.signalThemes.length > 0 ? (
-                    <p className="brief-card__col-text">
+                    <p className={styles.briefColText}>
                       {data.latestBrief.signalThemes.join(", ")}
                     </p>
                   ) : (
-                    <p className="brief-card__col-text">
+                    <p className={styles.briefColText}>
                       {humanizeLogMessage(data.latestRun.message, data.latestRun.status)}
                     </p>
                   )}
                 </div>
               </div>
 
-              <p className="brief-card__disclaimer">
+              <p className={styles.briefDisclaimer}>
                 본 콘텐츠는 정보 제공 목적으로만 작성되었으며, 투자 조언이 아닙니다. 모든 투자의 책임은 본인에게 있습니다.
               </p>
             </article>
@@ -298,15 +299,15 @@ export default async function DashboardPage() {
         </section>
 
         {/* Right Side: Signals + Checklist (4 cols) */}
-        <section className="col-span-4" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+        <section className={`${styles.colSpan4} ${styles.rightColumn}`}>
           {/* Core Signals */}
-          <div className="signals-panel glass-card" id="signals">
-            <h3 className="signals-panel__title">
+          <div className={styles.signalsPanel} id="signals">
+            <h3 className={styles.signalsPanelTitle}>
               <span className="material-symbols-outlined">emergency_home</span> 핵심 시그널
             </h3>
 
             {signals.length > 0 ? (
-              <div>
+              <div className={styles.signalsPanelList}>
                 {signals.slice(0, 4).map((row) => (
                   <SignalActionCard
                     key={row.id}
@@ -323,30 +324,31 @@ export default async function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <div className="empty-state">
-                <p className="empty-state__title">시그널 없음</p>
-                <p className="empty-state__body">파이프라인 실행 후 시그널이 이 영역에 표시됩니다.</p>
+              <div className={styles.emptyState}>
+                <p className={styles.emptyStateTitle}>시그널 없음</p>
+                <p className={styles.emptyStateBody}>파이프라인 실행 후 시그널이 이 영역에 표시됩니다.</p>
               </div>
             )}
           </div>
 
           {/* Operator Checklist (dark) */}
-          <div className="checklist-dark-card" id="operator-checklist">
-            <h3 className="checklist-dark-card__title">
+          <div className={styles.checklistCard} id="operator-checklist">
+            <h3 className={styles.checklistCardTitle}>
               <span className="material-symbols-outlined">checklist</span> 운영 체크리스트
             </h3>
             <div>
               {operatorChecklist.map((item) => {
                 const isDone = item.tone === "good";
+                const checkedAttr = isDone ? "true" : "false";
                 return (
-                  <div key={item.label} className="checklist-item">
-                    <div className={`checklist-item__checkbox ${isDone ? "checklist-item__checkbox--checked" : "checklist-item__checkbox--unchecked"}`}>
+                  <div key={item.label} className={styles.checklistItem}>
+                    <div className={styles.checklistCheckbox} data-checked={checkedAttr}>
                       {isDone && <span className="material-symbols-outlined">check</span>}
                     </div>
-                    <span className={`checklist-item__label ${isDone ? "checklist-item__label--checked" : "checklist-item__label--unchecked"}`}>
+                    <span className={styles.checklistLabel} data-checked={checkedAttr}>
                       {item.label}
                     </span>
-                    <span className={`checklist-item__status ${isDone ? "checklist-item__status--done" : "checklist-item__status--pending"}`}>
+                    <span className={styles.checklistStatus} data-checked={checkedAttr}>
                       {item.status}
                     </span>
                   </div>
@@ -357,28 +359,28 @@ export default async function DashboardPage() {
         </section>
 
         {/* Whale Movement Timeline (8 cols) */}
-        <section className="col-span-8" id="transactions">
-          <div className="timeline-card glass-card">
-            <h2 className="timeline-card__title">고래 이동 타임라인</h2>
+        <section className={styles.colSpan8} id="transactions">
+          <div className={styles.timelineCard}>
+            <h2 className={styles.timelineCardTitle}>고래 이동 타임라인</h2>
             {transactions.length > 0 ? (
-              <div className="timeline-list">
+              <div className={styles.timelineList}>
                 {transactions.map((row) => (
-                  <div key={row.id} className="timeline-item">
-                    <div className="timeline-item__icon">
+                  <div key={row.id} className={styles.timelineItem}>
+                    <div className={styles.timelineItemIcon}>
                       <span className="material-symbols-outlined" style={{ color: chainIconColor(row.chain) }}>
                         {chainIconName(row.chain)}
                       </span>
                     </div>
-                    <div className="timeline-item__body">
-                      <p className="timeline-item__headline">
+                    <div className={styles.timelineItemBody}>
+                      <p className={styles.timelineItemHeadline}>
                         <strong style={{ color: chainIconColor(row.chain) }}>{row.symbol} {formatAmount(row.amount)}개</strong>
                         가 {row.fromLabel}에서{" "}
-                        <span className="timeline-item__direction-badge timeline-item__direction-badge--in">
+                        <span className={styles.timelineDirectionBadge} data-dir="in">
                           {row.toLabel}
                         </span>
                         {" "}로 이동했습니다.
                       </p>
-                      <span className="timeline-item__meta">
+                      <span className={styles.timelineItemMeta}>
                         {formatTime(row.timestamp, { hour: "2-digit", minute: "2-digit" })} 전 &#8226; {row.chainLabel}
                         {row.amountUsd > 0 ? ` &#8226; ${formatUsd(row.amountUsd)}` : ""}
                       </span>
@@ -387,17 +389,17 @@ export default async function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <div className="empty-state">
-                <p className="empty-state__title">아직 수집된 거래가 없습니다.</p>
-                <p className="empty-state__body">파이프라인을 실행하면 최신 거래가 타임라인에 표시됩니다.</p>
+              <div className={styles.emptyState}>
+                <p className={styles.emptyStateTitle}>아직 수집된 거래가 없습니다.</p>
+                <p className={styles.emptyStateBody}>파이프라인을 실행하면 최신 거래가 타임라인에 표시됩니다.</p>
               </div>
             )}
           </div>
         </section>
 
         {/* Operation Log (4 cols) */}
-        <section id="log" className="col-span-4 glass-card oplog-card">
-          <h2 className="oplog-card__title">운영 알림 센터</h2>
+        <section id="log" className={`${styles.colSpan4} ${styles.oplogCard}`}>
+          <h2 className={styles.oplogCardTitle}>운영 알림 센터</h2>
           <SystemLogPanel rows={logRows} />
         </section>
       </main>
