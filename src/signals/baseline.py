@@ -58,13 +58,13 @@ def build_chain_baselines(
         if direction not in ("in", "out"):
             continue
 
-        day = block_time.date().isoformat()
+        date_key = block_time.date().isoformat()
         chain = str(row.get("chain", "default") or "default").lower()
         amount_usd = safe_float(row.get("amount_usd"), field_name="amount_usd", logger=logger)
-        all_dates.add(day)
+        all_dates.add(date_key)
 
-        buckets["default"][day][direction] += amount_usd
-        buckets[chain][day][direction] += amount_usd
+        buckets["default"][date_key][direction] += amount_usd
+        buckets[chain][date_key][direction] += amount_usd
 
     if len(all_dates) < 7:
         return {}
@@ -74,8 +74,8 @@ def build_chain_baselines(
         chain_dates = sorted(daily)
         if len(chain_dates) < 7:
             continue
-        in_mean, in_std = _stats(daily[day]["in"] for day in chain_dates)
-        out_mean, out_std = _stats(daily[day]["out"] for day in chain_dates)
+        in_mean, in_std = _stats(daily[date_key]["in"] for date_key in chain_dates)
+        out_mean, out_std = _stats(daily[date_key]["out"] for date_key in chain_dates)
         result[chain] = {
             "in_mean_usd": round(in_mean, 6),
             "in_std_usd": round(max(in_std, 1.0), 6),
