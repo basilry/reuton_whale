@@ -3,12 +3,33 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 from datetime import datetime, timezone
 
 from src.utils.logger import get_logger
 
 logger = get_logger("telethon_listener")
+
+_DEFAULT_STALENESS_SECONDS = 900
+
+
+def _staleness_threshold_seconds() -> int:
+    """Read LISTENER_STALENESS_SECONDS with safe fallback.
+
+    Falls back to _DEFAULT_STALENESS_SECONDS when:
+      - the env var is unset or blank, or
+      - the value fails int() parsing, or
+      - the value is <= 0.
+    """
+    raw = os.getenv("LISTENER_STALENESS_SECONDS")
+    if raw is None or not raw.strip():
+        return _DEFAULT_STALENESS_SECONDS
+    try:
+        value = int(raw)
+    except ValueError:
+        return _DEFAULT_STALENESS_SECONDS
+    return value if value > 0 else _DEFAULT_STALENESS_SECONDS
 
 # Matches: "1,000,000 #USDT (1,012,450 USD) transferred from #Binance to #unknown"
 _MSG_RE = re.compile(
@@ -88,8 +109,10 @@ class TelethonListener:
         now = datetime.now(timezone.utc)
         last = self._last_message_at
         staleness = (now - last).total_seconds() if last else None
+        threshold = _staleness_threshold_seconds()
+        is_healthy = staleness is not None and staleness < threshold
         return {
-            "status": "healthy" if staleness is not None and staleness < 900 else "stale",
+            "status": "healthy" if is_healthy else "stale",
             "last_message_at": last.isoformat() if last else None,
             "staleness_seconds": staleness,
             "message_count": self._message_count,

@@ -1,4 +1,5 @@
 """Tests for TelethonListener message parsing."""
+import os
 import sys
 import types
 from datetime import datetime, timedelta, timezone
@@ -6,7 +7,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.ingestion.telethon_listener import TelethonListener, parse_tg_message
+from src.ingestion.telethon_listener import (
+    TelethonListener,
+    _DEFAULT_STALENESS_SECONDS,
+    _staleness_threshold_seconds,
+    parse_tg_message,
+)
 
 
 _SAMPLE_MSG = "🚨 1,000,000 #USDT (1,012,450 USD) transferred from #Binance to #unknown"
@@ -270,3 +276,23 @@ class TestTelethonListenerHealthStatus:
         await listener._handle_message(42, datetime.now(timezone.utc), _SAMPLE_MSG)
 
         assert listener._error_count == 1
+
+
+class TestStalenessThresholdEnv:
+    def test_unset_returns_default(self, monkeypatch):
+        monkeypatch.delenv("LISTENER_STALENESS_SECONDS", raising=False)
+        assert _staleness_threshold_seconds() == _DEFAULT_STALENESS_SECONDS
+
+    def test_blank_and_nonnumeric_fall_back(self, monkeypatch):
+        for raw in ("", "   ", "abc", "12.5"):
+            monkeypatch.setenv("LISTENER_STALENESS_SECONDS", raw)
+            assert _staleness_threshold_seconds() == _DEFAULT_STALENESS_SECONDS
+
+    def test_positive_value_is_returned(self, monkeypatch):
+        monkeypatch.setenv("LISTENER_STALENESS_SECONDS", "300")
+        assert _staleness_threshold_seconds() == 300
+
+    def test_zero_and_negative_fall_back(self, monkeypatch):
+        for raw in ("0", "-1", "-600"):
+            monkeypatch.setenv("LISTENER_STALENESS_SECONDS", raw)
+            assert _staleness_threshold_seconds() == _DEFAULT_STALENESS_SECONDS
