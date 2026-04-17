@@ -127,7 +127,7 @@ cp apps/dashboard/.env.example apps/dashboard/.env.local
 - LLM 호출은 자체 `LLMRouter`가 Anthropic, Gemini, Groq provider를 preferred/fallback 방식으로 라우팅합니다.
 - Google Sheets는 MVP 영구 저장소로 사용하며 `Storage` Protocol을 통해 이후 SQLite/Postgres 전환 여지를 둡니다.
 - Telegram 발송은 429, timeout, network error에 대해 재시도하며, 구독자별 관심 규칙 기반 개인화를 지원합니다.
-- 로컬 기준 검증 결과: `pytest -q` 265 passed, `python scripts/smoke_pipeline.py` SMOKE OK.
+- 로컬 기준 검증 결과: `pytest -q` 298 passed, `python scripts/smoke_pipeline.py` SMOKE OK.
 
 ## 아키텍처
 
@@ -703,8 +703,9 @@ src/
 └── utils/
     ├── datetime_utils.py      # ISO 8601 parse_dt / parse_dt_strict 공용 유틸
     ├── errors.py
-    ├── http_backoff.py
+    ├── http_backoff.py        # 공유 HTTP 백오프 (429/5xx 지수 재시도)
     ├── logger.py
+    ├── number_utils.py        # safe_float 공용 유틸
     └── retry.py               # sync/async retry helpers
 ```
 
@@ -762,7 +763,7 @@ pytest -q
 현재 로컬 기준:
 
 ```text
-265 passed, 6 warnings
+298 passed
 ```
 
 주요 targeted 테스트:
