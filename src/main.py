@@ -138,12 +138,18 @@ def _tg_direction(from_owner_type: str, to_owner_type: str) -> tuple[str, str | 
     from_type = from_owner_type.lower()
     to_type = to_owner_type.lower()
     if from_type == "exchange" and to_type == "exchange":
-        # Exchange-to-exchange moves are treated as exchange outflow signals.
-        return "out", "cex"
+        # Exchange-to-exchange moves are distinct from regular CEX outflows;
+        # surface the "cex_to_cex" category so downstream rules can treat them
+        # as venue-rebalance noise rather than genuine whale positioning.
+        return "out", "cex_to_cex"
     if to_type == "exchange" and from_type != "exchange":
         return "in", "cex"
     if from_type == "exchange":
         return "out", None
+    # Wallet-to-wallet / unknown fallback: TG events have no watched_address,
+    # so in/out is a convention. We default to "out" to keep the Event
+    # direction typing (Literal["in","out"]) consistent; counterparty_category
+    # stays None so signal rules can filter these as uncategorized transfers.
     return "out", None
 
 

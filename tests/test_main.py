@@ -86,7 +86,22 @@ def test_tg_row_to_event_exchange_to_exchange_keeps_outflow_policy():
     evt = _tg_row_to_event(row)
 
     assert evt.direction == "out"
-    assert evt.counterparty_category == "cex"
+    assert evt.counterparty_category == "cex_to_cex"
+
+
+def test_tg_direction_four_branches():
+    from src.main import _tg_direction
+
+    # exchange -> exchange: venue rebalance, distinct category
+    assert _tg_direction("exchange", "exchange") == ("out", "cex_to_cex")
+    # wallet -> exchange: exchange inflow (potential sell pressure)
+    assert _tg_direction("unknown", "exchange") == ("in", "cex")
+    assert _tg_direction("wallet", "exchange") == ("in", "cex")
+    # exchange -> wallet: exchange outflow (potential accumulation)
+    assert _tg_direction("exchange", "unknown") == ("out", None)
+    # wallet -> wallet / unknown fallback: no category, direction convention "out"
+    assert _tg_direction("unknown", "unknown") == ("out", None)
+    assert _tg_direction("wallet", "wallet") == ("out", None)
 
 
 def test_safe_float_logs_warning_on_parse_failure(caplog):
