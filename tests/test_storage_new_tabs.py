@@ -187,19 +187,19 @@ class TestTgWhaleEvents:
         client.append_tg_whale_event({"tg_msg_id": "42", "symbol": "BTC"})
         mock_ws.append_row.assert_not_called()
 
+    def _make_event_row(self, msg_id: str, tg_date: str) -> list[str]:
+        row = [""] * len(TG_WHALE_EVENTS_HEADERS)
+        row[TG_WHALE_EVENTS_HEADERS.index("tg_msg_id")] = msg_id
+        row[TG_WHALE_EVENTS_HEADERS.index("tg_date")] = tg_date
+        return row
+
     def test_list_tg_whale_events_filters_since(self):
         client, mock_ss = _make_client()
         mock_ws = MagicMock()
         mock_ss.worksheet.return_value = mock_ws
 
-        old_row = [""] * len(TG_WHALE_EVENTS_HEADERS)
-        old_row[TG_WHALE_EVENTS_HEADERS.index("tg_msg_id")] = "1"
-        old_row[TG_WHALE_EVENTS_HEADERS.index("tg_date")] = "2026-04-14T10:00:00+00:00"
-
-        new_row = [""] * len(TG_WHALE_EVENTS_HEADERS)
-        new_row[TG_WHALE_EVENTS_HEADERS.index("tg_msg_id")] = "2"
-        new_row[TG_WHALE_EVENTS_HEADERS.index("tg_date")] = "2026-04-16T10:00:00+00:00"
-
+        old_row = self._make_event_row("1", "2026-04-14T10:00:00+00:00")
+        new_row = self._make_event_row("2", "2026-04-16T10:00:00+00:00")
         mock_ws.get_all_values.return_value = [TG_WHALE_EVENTS_HEADERS, old_row, new_row]
 
         since = datetime(2026, 4, 15, 0, 0, tzinfo=timezone.utc)
@@ -207,6 +207,85 @@ class TestTgWhaleEvents:
 
         assert len(result) == 1
         assert result[0]["tg_msg_id"] == "2"
+
+    def test_list_tg_whale_events_since_none_returns_all(self):
+        client, mock_ss = _make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+
+        rows = [
+            self._make_event_row("1", "2026-04-14T10:00:00+00:00"),
+            self._make_event_row("2", "2026-04-16T10:00:00+00:00"),
+        ]
+        mock_ws.get_all_values.return_value = [TG_WHALE_EVENTS_HEADERS] + rows
+
+        result = client.list_tg_whale_events()
+
+        assert len(result) == 2
+        assert {r["tg_msg_id"] for r in result} == {"1", "2"}
+
+    def test_list_tg_whale_events_empty_sheet(self):
+        client, mock_ss = _make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [TG_WHALE_EVENTS_HEADERS]
+
+        result = client.list_tg_whale_events()
+
+        assert result == []
+
+    def test_list_tg_whale_events_since_after_all_rows(self):
+        client, mock_ss = _make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+
+        mock_ws.get_all_values.return_value = [
+            TG_WHALE_EVENTS_HEADERS,
+            self._make_event_row("1", "2026-04-14T10:00:00+00:00"),
+            self._make_event_row("2", "2026-04-14T11:00:00+00:00"),
+        ]
+
+        since = datetime(2026, 5, 1, 0, 0, tzinfo=timezone.utc)
+        result = client.list_tg_whale_events(since=since)
+
+        assert result == []
+
+    def test_list_tg_whale_events_tz_naive_row_matched_with_aware_since(self):
+        client, mock_ss = _make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+
+        # tz-naive tg_date row (no offset)
+        naive_row = self._make_event_row("1", "2026-04-16T10:00:00")
+        mock_ws.get_all_values.return_value = [TG_WHALE_EVENTS_HEADERS, naive_row]
+
+        since = datetime(2026, 4, 15, 0, 0, tzinfo=timezone.utc)
+        result = client.list_tg_whale_events(since=since)
+
+        # Naive row time should be treated as aware with since.tzinfo.
+        assert len(result) == 1
+        assert result[0]["tg_msg_id"] == "1"
+
+    def test_list_tg_whale_events_respects_limit(self):
+        client, mock_ss = _make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+
+        rows = [
+            self._make_event_row("1", "2026-04-14T10:00:00+00:00"),
+            self._make_event_row("2", "2026-04-15T10:00:00+00:00"),
+            self._make_event_row("3", "2026-04-16T10:00:00+00:00"),
+        ]
+        mock_ws.get_all_values.return_value = [TG_WHALE_EVENTS_HEADERS] + rows
+
+        result = client.list_tg_whale_events(limit=2)
+
+        # limit clamps to last N after filtering
+        assert len(result) == 2
+        assert [r["tg_msg_id"] for r in result] == ["2", "3"]
+
+        empty = client.list_tg_whale_events(limit=0)
+        assert empty == []
 
 
 # ---------------------------------------------------------------------------
