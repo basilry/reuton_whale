@@ -70,15 +70,7 @@ def _normalize_subscriber(row_dict: dict) -> dict:
     }
 
 
-def _parse_dt(value: object) -> datetime | None:
-    if isinstance(value, datetime):
-        return value
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except (TypeError, ValueError):
-        return None
+from src.utils.datetime_utils import parse_dt as _parse_dt  # noqa: E302
 
 
 def _normalize_event_time(row: dict) -> datetime | None:

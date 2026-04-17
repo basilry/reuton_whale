@@ -107,15 +107,7 @@ def _event_to_dict(e: Event) -> dict:
     }
 
 
-def _parse_dt(value: object) -> datetime | None:
-    if isinstance(value, datetime):
-        return value
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except (TypeError, ValueError):
-        return None
+from src.utils.datetime_utils import parse_dt as _parse_dt  # noqa: E302
 
 
 def _safe_float(value: object) -> float:
@@ -283,7 +275,8 @@ def _signal_to_top_item(signal: Signal, events: list[Event]) -> dict:
 
 
 def _signals_to_top5(signals: list[Signal], events: list[Event]) -> list[dict]:
-    top_signals = sorted(signals, key=lambda sig: sig.score, reverse=True)[:5]
+    valid = [sig for sig in signals if sig.score > 0]
+    top_signals = sorted(valid, key=lambda sig: sig.score, reverse=True)[:5]
     return [_signal_to_top_item(sig, events) for sig in top_signals]
 
 
@@ -305,9 +298,7 @@ def _signal_to_sheet_dict(signal: Signal) -> dict:
 
 def _dict_to_event(d: dict) -> Event:
     """Deserialize Event from fixture JSON dict."""
-    from datetime import timezone as tz
-    def _parse_dt(s: str) -> datetime:
-        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    from src.utils.datetime_utils import parse_dt_strict as _parse_dt_strict
     return Event(
         source=d.get("source", "chain"),
         chain=d.get("chain", "eth"),
@@ -320,8 +311,8 @@ def _dict_to_event(d: dict) -> Event:
         amount_token=float(d.get("amount_token", 0)),
         amount_usd=float(d.get("amount_usd", 0)),
         counterparty_category=d.get("counterparty_category"),
-        block_time=_parse_dt(d.get("block_time", "2024-01-01T00:00:00Z")),
-        collected_at=_parse_dt(d.get("collected_at", "2024-01-01T00:00:00Z")),
+        block_time=_parse_dt_strict(d.get("block_time", "2024-01-01T00:00:00Z")),
+        collected_at=_parse_dt_strict(d.get("collected_at", "2024-01-01T00:00:00Z")),
     )
 
 

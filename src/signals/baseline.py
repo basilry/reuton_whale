@@ -9,15 +9,7 @@ from typing import Iterable
 from src.storage.protocol import Storage
 
 
-def _parse_dt(value: object) -> datetime | None:
-    if isinstance(value, datetime):
-        return value
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
-        return None
+from src.utils.datetime_utils import parse_dt as _parse_dt  # noqa: E302
 
 
 def _safe_float(value: object) -> float:
