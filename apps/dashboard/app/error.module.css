@@ -1,0 +1,95 @@
+/* =============================================================================
+   Error page — full-viewport fallback when the dashboard crashes
+   Token-only: no hex / rgba / oklch literals
+   ========================================================================== */
+
+.page {
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--on-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xl);
+}
+
+.shell {
+  width: 100%;
+  max-width: 560px;
+}
+
+.panel {
+  background: var(--panel-glass);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-3);
+  padding: var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.eyebrow {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: var(--bad);
+  margin: 0;
+}
+
+.title {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+  margin: 0;
+  text-wrap: balance;
+}
+
+.message {
+  font-size: var(--text-sm);
+  color: var(--muted-strong);
+  margin: 0;
+}
+
+.digest {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  margin: 0;
+}
+
+.retry {
+  align-self: flex-start;
+  padding: var(--space-xs) var(--space-md);
+  background: var(--accent);
+  color: var(--on-accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  transition: var(--transition-bg), var(--transition-color);
+}
+
+.retry:hover {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+}
+
+.retry:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 var(--focus-ring-offset) var(--surface),
+    0 0 0 calc(var(--focus-ring-offset) + var(--focus-ring-width)) var(--focus-ring-color);
+}
+
+.retry:active {
+  transform: translateY(1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .retry {
+    transition-duration: 0.01ms;
+  }
+}

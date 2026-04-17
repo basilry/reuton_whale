@@ -1,0 +1,131 @@
+/* =============================================================================
+   Loading skeleton — dashboard shimmer placeholder
+   Token-only: no hex / rgba / oklch literals
+   ========================================================================== */
+
+.page {
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--on-surface);
+  padding: var(--space-xl);
+}
+
+.shell {
+  max-width: 1440px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.panel {
+  background: var(--panel-glass);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-2);
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.hero {
+  gap: var(--space-md);
+}
+
+.heroChips {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-xs);
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-md);
+}
+
+.metricCard {
+  background: var(--surface-container-low);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.primaryGrid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--space-lg);
+}
+
+.main,
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-sm);
+}
+
+.tableRows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+/* ── Skeleton primitives ── */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface-container) 0%,
+    var(--surface-container-high) 50%,
+    var(--surface-container) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: var(--radius-sm);
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.line {
+  height: 12px;
+  width: 100%;
+}
+
+.eyebrow { width: 120px; height: 10px; }
+.title { width: 60%; height: 24px; }
+.copy { width: 80%; height: 12px; }
+.chip { width: 96px; height: 28px; border-radius: var(--radius-full); }
+.metricLabel { width: 70%; height: 10px; }
+.metricValue { width: 50%; height: 22px; }
+.metricHint { width: 40%; height: 10px; }
+.sectionTitle { width: 40%; height: 18px; }
+.sectionCopy { width: 65%; height: 12px; }
+.card { height: 88px; border-radius: var(--radius-md); }
+.tableRow { height: 44px; }
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Responsive ── */
+@media (max-width: 960px) {
+  .primaryGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background: var(--surface-container);
+  }
+}

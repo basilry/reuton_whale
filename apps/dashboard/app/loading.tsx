@@ -1,65 +1,64 @@
+import styles from "./loading.module.css";
+
 export default function Loading() {
   return (
-    <main className="dashboard-page">
-      <div className="dashboard-page__backdrop dashboard-page__backdrop--left" />
-      <div className="dashboard-page__backdrop dashboard-page__backdrop--right" />
-
-      <div className="dashboard-shell">
-        <header className="hero-panel panel">
-          <div className="skeleton skeleton--line skeleton--eyebrow" />
-          <div className="skeleton skeleton--line skeleton--title" />
-          <div className="skeleton skeleton--line skeleton--copy" />
-          <div className="skeleton-row">
-            <div className="skeleton skeleton--chip" />
-            <div className="skeleton skeleton--chip" />
-            <div className="skeleton skeleton--chip" />
+    <main className={styles.page}>
+      <div className={styles.shell}>
+        <header className={`${styles.panel} ${styles.hero}`}>
+          <div className={`${styles.skeleton} ${styles.eyebrow}`} />
+          <div className={`${styles.skeleton} ${styles.title}`} />
+          <div className={`${styles.skeleton} ${styles.copy}`} />
+          <div className={styles.heroChips}>
+            <div className={`${styles.skeleton} ${styles.chip}`} />
+            <div className={`${styles.skeleton} ${styles.chip}`} />
+            <div className={`${styles.skeleton} ${styles.chip}`} />
           </div>
         </header>
 
-        <section className="metric-grid" aria-label="Loading metrics">
+        <section className={styles.metricGrid} aria-label="Loading metrics">
           {Array.from({ length: 5 }).map((_, index) => (
-            <article key={index} className="metric-card metric-card--neutral">
-              <div className="skeleton skeleton--line skeleton--metric-label" />
-              <div className="skeleton skeleton--line skeleton--metric-value" />
-              <div className="skeleton skeleton--line skeleton--metric-hint" />
+            <article key={index} className={styles.metricCard}>
+              <div className={`${styles.skeleton} ${styles.metricLabel}`} />
+              <div className={`${styles.skeleton} ${styles.metricValue}`} />
+              <div className={`${styles.skeleton} ${styles.metricHint}`} />
             </article>
           ))}
         </section>
 
-        <section className="dashboard-grid dashboard-grid--primary">
-          <div className="dashboard-grid__main">
-            <div className="panel">
-              <div className="skeleton skeleton--line skeleton--section-title" />
-              <div className="skeleton skeleton--line skeleton--section-copy" />
-              <div className="skeleton-grid">
+        <section className={styles.primaryGrid}>
+          <div className={styles.main}>
+            <div className={styles.panel}>
+              <div className={`${styles.skeleton} ${styles.sectionTitle}`} />
+              <div className={`${styles.skeleton} ${styles.sectionCopy}`} />
+              <div className={styles.cardGrid}>
                 {Array.from({ length: 4 }).map((_, index) => (
-                  <div key={index} className="skeleton skeleton--card" />
+                  <div key={index} className={`${styles.skeleton} ${styles.card}`} />
                 ))}
               </div>
             </div>
-            <div className="panel">
-              <div className="skeleton skeleton--line skeleton--section-title" />
-              <div className="skeleton-table">
+            <div className={styles.panel}>
+              <div className={`${styles.skeleton} ${styles.sectionTitle}`} />
+              <div className={styles.tableRows}>
                 {Array.from({ length: 4 }).map((_, index) => (
-                  <div key={index} className="skeleton skeleton--table-row" />
+                  <div key={index} className={`${styles.skeleton} ${styles.tableRow}`} />
                 ))}
               </div>
             </div>
           </div>
-          <aside className="dashboard-grid__rail">
-            <div className="panel">
-              <div className="skeleton skeleton--line skeleton--section-title" />
-              <div className="skeleton-table">
+          <aside className={styles.rail}>
+            <div className={styles.panel}>
+              <div className={`${styles.skeleton} ${styles.sectionTitle}`} />
+              <div className={styles.tableRows}>
                 {Array.from({ length: 3 }).map((_, index) => (
-                  <div key={index} className="skeleton skeleton--table-row" />
+                  <div key={index} className={`${styles.skeleton} ${styles.tableRow}`} />
                 ))}
               </div>
             </div>
-            <div className="panel">
-              <div className="skeleton skeleton--line skeleton--section-title" />
-              <div className="skeleton-table">
+            <div className={styles.panel}>
+              <div className={`${styles.skeleton} ${styles.sectionTitle}`} />
+              <div className={styles.tableRows}>
                 {Array.from({ length: 3 }).map((_, index) => (
-                  <div key={index} className="skeleton skeleton--table-row" />
+                  <div key={index} className={`${styles.skeleton} ${styles.tableRow}`} />
                 ))}
               </div>
             </div>
