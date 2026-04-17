@@ -1,7 +1,7 @@
 """Tests for TelethonListener message parsing."""
 import sys
 import types
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -217,3 +217,56 @@ class TestTelethonListenerRun:
                 "session_string": "unset",
             },
         )
+
+
+class TestTelethonListenerHealthStatus:
+    def test_healthy_when_last_message_recent(self):
+        mock_storage = MagicMock()
+        listener = TelethonListener(12345, "hash", "session", mock_storage)
+        listener._last_message_at = datetime.now(timezone.utc) - timedelta(seconds=60)
+        listener._message_count = 3
+        listener._error_count = 0
+
+        status = listener.health_status()
+
+        assert status["status"] == "healthy"
+        assert status["staleness_seconds"] is not None
+        assert status["staleness_seconds"] < 900
+        assert status["message_count"] == 3
+        assert status["error_count"] == 0
+
+    def test_stale_after_15min_without_message(self):
+        mock_storage = MagicMock()
+        listener = TelethonListener(12345, "hash", "session", mock_storage)
+        listener._last_message_at = datetime.now(timezone.utc) - timedelta(seconds=901)
+        listener._message_count = 0
+        listener._error_count = 0
+
+        status = listener.health_status()
+
+        assert status["status"] == "stale"
+        assert status["staleness_seconds"] is not None
+        assert status["staleness_seconds"] >= 900
+
+    def test_stale_before_any_message(self):
+        mock_storage = MagicMock()
+        listener = TelethonListener(12345, "hash", "session", mock_storage)
+
+        status = listener.health_status()
+
+        assert status["status"] == "stale"
+        assert status["last_message_at"] is None
+        assert status["staleness_seconds"] is None
+        assert status["message_count"] == 0
+        assert status["error_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_storage_error_increments_error_count(self):
+        mock_storage = MagicMock()
+        mock_storage.append_tg_whale_event.side_effect = RuntimeError("sheet offline")
+        mock_storage.append_system_log = MagicMock()
+
+        listener = TelethonListener(12345, "hash", "session", mock_storage)
+        await listener._handle_message(42, datetime.now(timezone.utc), _SAMPLE_MSG)
+
+        assert listener._error_count == 1
