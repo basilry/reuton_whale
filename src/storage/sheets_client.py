@@ -1,4 +1,5 @@
 import json
+import threading
 from datetime import datetime
 
 import gspread
@@ -87,6 +88,9 @@ class SheetsClient:
         except Exception as e:
             raise StorageError(f"Failed to initialize SheetsClient: {e}") from e
         self._ensure_worksheets()
+        # Serializes gspread mutations across threads (async callers via
+        # asyncio.to_thread may schedule multiple writes concurrently).
+        self._write_lock = threading.Lock()
 
     def _ensure_worksheets(self) -> None:
         existing = {ws.title for ws in self._spreadsheet.worksheets()}
@@ -105,28 +109,29 @@ class SheetsClient:
 
     @retry(max_retries=3, base_delay=2.0)
     def append_transactions(self, transactions: list[dict]) -> int:
-        try:
-            ws = self._worksheet(TAB_TRANSACTIONS)
-            existing_hashes = set()
-            all_values = ws.get_all_values()
-            if len(all_values) > 1:
-                hash_col = TRANSACTIONS_HEADERS.index("raw_response_hash")
-                existing_hashes = {row[hash_col] for row in all_values[1:]}
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_TRANSACTIONS)
+                existing_hashes = set()
+                all_values = ws.get_all_values()
+                if len(all_values) > 1:
+                    hash_col = TRANSACTIONS_HEADERS.index("raw_response_hash")
+                    existing_hashes = {row[hash_col] for row in all_values[1:]}
 
-            new_rows = []
-            for tx in transactions:
-                if tx.get("raw_response_hash") in existing_hashes:
-                    continue
-                tx.setdefault("created_at", now_iso())
-                new_rows.append(dict_to_row(tx, TRANSACTIONS_HEADERS))
+                new_rows = []
+                for tx in transactions:
+                    if tx.get("raw_response_hash") in existing_hashes:
+                        continue
+                    tx.setdefault("created_at", now_iso())
+                    new_rows.append(dict_to_row(tx, TRANSACTIONS_HEADERS))
 
-            if new_rows:
-                ws.append_rows(new_rows, value_input_option="RAW")
-            logger.info("Appended %d transactions (%d duplicates skipped)",
-                        len(new_rows), len(transactions) - len(new_rows))
-            return len(new_rows)
-        except gspread.exceptions.APIError as e:
-            raise StorageError(f"Failed to append transactions: {e}") from e
+                if new_rows:
+                    ws.append_rows(new_rows, value_input_option="RAW")
+                logger.info("Appended %d transactions (%d duplicates skipped)",
+                            len(new_rows), len(transactions) - len(new_rows))
+                return len(new_rows)
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to append transactions: {e}") from e
 
     # --- daily_brief ---
 
@@ -339,8 +344,9 @@ class SheetsClient:
 
     def upsert_watchlist(self, user_id: int, username: str, coins: list[str]) -> None:
         """Deprecated: use upsert_watched_address / list_watched_addresses instead."""
-        self.add_subscriber(chat_id=user_id, username=username)
-        self.set_watchlist(chat_id=user_id, coins=coins)
+        with self._write_lock:
+            self.add_subscriber(chat_id=user_id, username=username)
+            self.set_watchlist(chat_id=user_id, coins=coins)
 
     # --- analysis_log ---
 
@@ -388,82 +394,85 @@ class SheetsClient:
 
     @retry(max_retries=3, base_delay=2.0)
     def append_system_log(self, level: str, category: str, payload: dict) -> None:
-        try:
-            ws = self._worksheet(TAB_SYSTEM_LOG)
-            entry = self._build_system_log_entry(level, category, payload)
-            ws.append_row(
-                dict_to_row(entry, SYSTEM_LOG_HEADERS),
-                value_input_option="RAW",
-            )
-            logger.info("Appended system log level=%s category=%s", level, category)
-        except gspread.exceptions.APIError as e:
-            raise StorageError(f"Failed to append system log: {e}") from e
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_SYSTEM_LOG)
+                entry = self._build_system_log_entry(level, category, payload)
+                ws.append_row(
+                    dict_to_row(entry, SYSTEM_LOG_HEADERS),
+                    value_input_option="RAW",
+                )
+                logger.info("Appended system log level=%s category=%s", level, category)
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to append system log: {e}") from e
 
     # --- watched_addresses ---
 
     @retry(max_retries=3, base_delay=2.0)
     def upsert_watched_address(self, addr: dict) -> None:
-        try:
-            ws = self._worksheet(TAB_WATCHED_ADDRESSES)
-            all_values = ws.get_all_values()
-            addr_col = WATCHED_ADDRESSES_HEADERS.index("address")
-            target = str(addr.get("address", ""))
-            for i, row in enumerate(all_values[1:], start=2):
-                if addr_col < len(row) and row[addr_col] == target:
-                    existing = row_to_dict(row, WATCHED_ADDRESSES_HEADERS)
-                    existing["label"] = addr.get("label", existing.get("label", ""))
-                    existing["enabled"] = str(addr.get("enabled", existing.get("enabled", "true")))
-                    self._write_row(ws, i, existing, WATCHED_ADDRESSES_HEADERS)
-                    logger.info("Updated watched address: %s", target)
-                    return
-            addr.setdefault("added_at", now_iso())
-            ws.append_row(dict_to_row(addr, WATCHED_ADDRESSES_HEADERS), value_input_option="RAW")
-            logger.info("Added watched address: %s", target)
-        except gspread.exceptions.APIError as e:
-            raise StorageError(f"Failed to upsert watched address: {e}") from e
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_WATCHED_ADDRESSES)
+                all_values = ws.get_all_values()
+                addr_col = WATCHED_ADDRESSES_HEADERS.index("address")
+                target = str(addr.get("address", ""))
+                for i, row in enumerate(all_values[1:], start=2):
+                    if addr_col < len(row) and row[addr_col] == target:
+                        existing = row_to_dict(row, WATCHED_ADDRESSES_HEADERS)
+                        existing["label"] = addr.get("label", existing.get("label", ""))
+                        existing["enabled"] = str(addr.get("enabled", existing.get("enabled", "true")))
+                        self._write_row(ws, i, existing, WATCHED_ADDRESSES_HEADERS)
+                        logger.info("Updated watched address: %s", target)
+                        return
+                addr.setdefault("added_at", now_iso())
+                ws.append_row(dict_to_row(addr, WATCHED_ADDRESSES_HEADERS), value_input_option="RAW")
+                logger.info("Added watched address: %s", target)
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to upsert watched address: {e}") from e
 
     @retry(max_retries=3, base_delay=2.0)
     def append_missing_watched_addresses(self, addresses: list[dict]) -> dict[str, int]:
         """Append missing watched addresses with one read and one batch write."""
-        try:
-            ws = self._worksheet(TAB_WATCHED_ADDRESSES)
-            all_values = ws.get_all_values()
-            addr_col = WATCHED_ADDRESSES_HEADERS.index("address")
-            existing = {
-                row[addr_col]
-                for row in all_values[1:]
-                if addr_col < len(row) and row[addr_col]
-            }
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_WATCHED_ADDRESSES)
+                all_values = ws.get_all_values()
+                addr_col = WATCHED_ADDRESSES_HEADERS.index("address")
+                existing = {
+                    row[addr_col]
+                    for row in all_values[1:]
+                    if addr_col < len(row) and row[addr_col]
+                }
 
-            now = now_iso()
-            new_rows = []
-            skipped = 0
-            invalid = 0
-            for addr in addresses:
-                target = str(addr.get("address", "")).strip()
-                if not target:
-                    invalid += 1
-                    continue
-                if target in existing:
-                    skipped += 1
-                    continue
-                entry = dict(addr)
-                entry["address"] = target
-                entry.setdefault("added_at", now)
-                new_rows.append(dict_to_row(entry, WATCHED_ADDRESSES_HEADERS))
-                existing.add(target)
+                now = now_iso()
+                new_rows = []
+                skipped = 0
+                invalid = 0
+                for addr in addresses:
+                    target = str(addr.get("address", "")).strip()
+                    if not target:
+                        invalid += 1
+                        continue
+                    if target in existing:
+                        skipped += 1
+                        continue
+                    entry = dict(addr)
+                    entry["address"] = target
+                    entry.setdefault("added_at", now)
+                    new_rows.append(dict_to_row(entry, WATCHED_ADDRESSES_HEADERS))
+                    existing.add(target)
 
-            if new_rows:
-                ws.append_rows(new_rows, value_input_option="RAW")
-            logger.info(
-                "Appended %d missing watched addresses (%d existing skipped, %d invalid skipped)",
-                len(new_rows),
-                skipped,
-                invalid,
-            )
-            return {"inserted": len(new_rows), "skipped": skipped, "invalid": invalid}
-        except gspread.exceptions.APIError as e:
-            raise StorageError(f"Failed to append missing watched addresses: {e}") from e
+                if new_rows:
+                    ws.append_rows(new_rows, value_input_option="RAW")
+                logger.info(
+                    "Appended %d missing watched addresses (%d existing skipped, %d invalid skipped)",
+                    len(new_rows),
+                    skipped,
+                    invalid,
+                )
+                return {"inserted": len(new_rows), "skipped": skipped, "invalid": invalid}
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to append missing watched addresses: {e}") from e
 
     _EVM_CHAINS = {"eth", "ethereum", "arbitrum", "base", "bsc", "polygon"}
 
@@ -489,39 +498,40 @@ class SheetsClient:
 
     @retry(max_retries=3, base_delay=2.0)
     def append_address_activity(self, events: list[dict]) -> int:
-        try:
-            ws = self._worksheet(TAB_ADDRESS_ACTIVITY)
-            all_values = ws.get_all_values()
-            tx_col = ADDRESS_ACTIVITY_HEADERS.index("tx_hash")
-            wa_col = ADDRESS_ACTIVITY_HEADERS.index("watched_address")
-            dir_col = ADDRESS_ACTIVITY_HEADERS.index("direction")
-            existing_keys: set[tuple] = set()
-            if len(all_values) > 1:
-                for row in all_values[1:]:
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_ADDRESS_ACTIVITY)
+                all_values = ws.get_all_values()
+                tx_col = ADDRESS_ACTIVITY_HEADERS.index("tx_hash")
+                wa_col = ADDRESS_ACTIVITY_HEADERS.index("watched_address")
+                dir_col = ADDRESS_ACTIVITY_HEADERS.index("direction")
+                existing_keys: set[tuple] = set()
+                if len(all_values) > 1:
+                    for row in all_values[1:]:
+                        key = (
+                            row[tx_col] if tx_col < len(row) else "",
+                            row[wa_col] if wa_col < len(row) else "",
+                            row[dir_col] if dir_col < len(row) else "",
+                        )
+                        existing_keys.add(key)
+                new_rows = []
+                for ev in events:
                     key = (
-                        row[tx_col] if tx_col < len(row) else "",
-                        row[wa_col] if wa_col < len(row) else "",
-                        row[dir_col] if dir_col < len(row) else "",
+                        str(ev.get("tx_hash", "")),
+                        str(ev.get("watched_address", "")),
+                        str(ev.get("direction", "")),
                     )
+                    if key in existing_keys:
+                        continue
+                    ev.setdefault("collected_at", now_iso())
+                    new_rows.append(dict_to_row(ev, ADDRESS_ACTIVITY_HEADERS))
                     existing_keys.add(key)
-            new_rows = []
-            for ev in events:
-                key = (
-                    str(ev.get("tx_hash", "")),
-                    str(ev.get("watched_address", "")),
-                    str(ev.get("direction", "")),
-                )
-                if key in existing_keys:
-                    continue
-                ev.setdefault("collected_at", now_iso())
-                new_rows.append(dict_to_row(ev, ADDRESS_ACTIVITY_HEADERS))
-                existing_keys.add(key)
-            if new_rows:
-                ws.append_rows(new_rows, value_input_option="RAW")
-            logger.info("Appended %d address activity events", len(new_rows))
-            return len(new_rows)
-        except gspread.exceptions.APIError as e:
-            raise StorageError(f"Failed to append address activity: {e}") from e
+                if new_rows:
+                    ws.append_rows(new_rows, value_input_option="RAW")
+                logger.info("Appended %d address activity events", len(new_rows))
+                return len(new_rows)
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to append address activity: {e}") from e
 
     @retry(max_retries=3, base_delay=2.0)
     def list_address_activity(self, since: datetime | None = None) -> list[dict]:
@@ -553,21 +563,22 @@ class SheetsClient:
 
     @retry(max_retries=3, base_delay=2.0)
     def append_tg_whale_event(self, event: dict) -> None:
-        try:
-            ws = self._worksheet(TAB_TG_WHALE_EVENTS)
-            all_values = ws.get_all_values()
-            msg_col = TG_WHALE_EVENTS_HEADERS.index("tg_msg_id")
-            target = str(event.get("tg_msg_id", ""))
-            if len(all_values) > 1:
-                for row in all_values[1:]:
-                    if msg_col < len(row) and row[msg_col] == target:
-                        logger.debug("Duplicate tg_whale_event skipped: %s", target)
-                        return
-            event.setdefault("collected_at", now_iso())
-            ws.append_row(dict_to_row(event, TG_WHALE_EVENTS_HEADERS), value_input_option="RAW")
-            logger.info("Appended tg_whale_event: %s", target)
-        except gspread.exceptions.APIError as e:
-            raise StorageError(f"Failed to append tg_whale_event: {e}") from e
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_TG_WHALE_EVENTS)
+                all_values = ws.get_all_values()
+                msg_col = TG_WHALE_EVENTS_HEADERS.index("tg_msg_id")
+                target = str(event.get("tg_msg_id", ""))
+                if len(all_values) > 1:
+                    for row in all_values[1:]:
+                        if msg_col < len(row) and row[msg_col] == target:
+                            logger.debug("Duplicate tg_whale_event skipped: %s", target)
+                            return
+                event.setdefault("collected_at", now_iso())
+                ws.append_row(dict_to_row(event, TG_WHALE_EVENTS_HEADERS), value_input_option="RAW")
+                logger.info("Appended tg_whale_event: %s", target)
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to append tg_whale_event: {e}") from e
 
     @retry(max_retries=3, base_delay=2.0)
     def list_tg_whale_events(
@@ -606,23 +617,24 @@ class SheetsClient:
 
     @retry(max_retries=3, base_delay=2.0)
     def append_signal(self, signal: dict) -> None:
-        try:
-            ws = self._worksheet(TAB_SIGNALS)
-            all_values = ws.get_all_values()
-            id_col = SIGNALS_HEADERS.index("signal_id")
-            target = str(signal.get("signal_id", ""))
-            if len(all_values) > 1:
-                for row in all_values[1:]:
-                    if id_col < len(row) and row[id_col] == target:
-                        logger.debug("Duplicate signal skipped: %s", target)
-                        return
-            signal.setdefault("created_at", now_iso())
-            if "extra_json" not in signal and "extra" in signal:
-                signal["extra_json"] = json.dumps(signal.pop("extra"), ensure_ascii=False)
-            ws.append_row(dict_to_row(signal, SIGNALS_HEADERS), value_input_option="RAW")
-            logger.info("Appended signal: %s", target)
-        except gspread.exceptions.APIError as e:
-            raise StorageError(f"Failed to append signal: {e}") from e
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_SIGNALS)
+                all_values = ws.get_all_values()
+                id_col = SIGNALS_HEADERS.index("signal_id")
+                target = str(signal.get("signal_id", ""))
+                if len(all_values) > 1:
+                    for row in all_values[1:]:
+                        if id_col < len(row) and row[id_col] == target:
+                            logger.debug("Duplicate signal skipped: %s", target)
+                            return
+                signal.setdefault("created_at", now_iso())
+                if "extra_json" not in signal and "extra" in signal:
+                    signal["extra_json"] = json.dumps(signal.pop("extra"), ensure_ascii=False)
+                ws.append_row(dict_to_row(signal, SIGNALS_HEADERS), value_input_option="RAW")
+                logger.info("Appended signal: %s", target)
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to append signal: {e}") from e
 
     # --- weekly_trend ---
 
@@ -666,38 +678,39 @@ class SheetsClient:
         weight: float,
         source: str,
     ) -> None:
-        try:
-            ws = self._worksheet(TAB_USER_INTERESTS)
-            all_values = ws.get_all_values()
-            cid_col = USER_INTERESTS_HEADERS.index("chat_id")
-            dim_col = USER_INTERESTS_HEADERS.index("dimension")
-            val_col = USER_INTERESTS_HEADERS.index("value")
-            target_cid = str(chat_id)
-            for i, row in enumerate(all_values[1:], start=2):
-                if (
-                    cid_col < len(row) and row[cid_col] == target_cid
-                    and dim_col < len(row) and row[dim_col] == dimension
-                    and val_col < len(row) and row[val_col] == value
-                ):
-                    entry = row_to_dict(row, USER_INTERESTS_HEADERS)
-                    entry["weight"] = str(weight)
-                    entry["source"] = source
-                    entry["updated_at"] = now_iso()
-                    self._write_row(ws, i, entry, USER_INTERESTS_HEADERS)
-                    logger.info("Updated user interest chat_id=%d dim=%s val=%s", chat_id, dimension, value)
-                    return
-            entry = {
-                "chat_id": chat_id,
-                "dimension": dimension,
-                "value": value,
-                "weight": weight,
-                "source": source,
-                "updated_at": now_iso(),
-            }
-            ws.append_row(dict_to_row(entry, USER_INTERESTS_HEADERS), value_input_option="RAW")
-            logger.info("Added user interest chat_id=%d dim=%s val=%s", chat_id, dimension, value)
-        except gspread.exceptions.APIError as e:
-            raise StorageError(f"Failed to upsert user interest: {e}") from e
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_USER_INTERESTS)
+                all_values = ws.get_all_values()
+                cid_col = USER_INTERESTS_HEADERS.index("chat_id")
+                dim_col = USER_INTERESTS_HEADERS.index("dimension")
+                val_col = USER_INTERESTS_HEADERS.index("value")
+                target_cid = str(chat_id)
+                for i, row in enumerate(all_values[1:], start=2):
+                    if (
+                        cid_col < len(row) and row[cid_col] == target_cid
+                        and dim_col < len(row) and row[dim_col] == dimension
+                        and val_col < len(row) and row[val_col] == value
+                    ):
+                        entry = row_to_dict(row, USER_INTERESTS_HEADERS)
+                        entry["weight"] = str(weight)
+                        entry["source"] = source
+                        entry["updated_at"] = now_iso()
+                        self._write_row(ws, i, entry, USER_INTERESTS_HEADERS)
+                        logger.info("Updated user interest chat_id=%d dim=%s val=%s", chat_id, dimension, value)
+                        return
+                entry = {
+                    "chat_id": chat_id,
+                    "dimension": dimension,
+                    "value": value,
+                    "weight": weight,
+                    "source": source,
+                    "updated_at": now_iso(),
+                }
+                ws.append_row(dict_to_row(entry, USER_INTERESTS_HEADERS), value_input_option="RAW")
+                logger.info("Added user interest chat_id=%d dim=%s val=%s", chat_id, dimension, value)
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to upsert user interest: {e}") from e
 
     @retry(max_retries=3, base_delay=2.0)
     def list_user_interests(self, user_id: str | None = None) -> list[dict]:
