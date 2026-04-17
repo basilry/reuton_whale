@@ -883,10 +883,11 @@ const SERVICE_ACTIONS: ReadonlyArray<{
   label: string;
   icon: string;
   variant: "primary" | "secondary";
+  href: string;
 } | null> = [
-  { label: "지금 실행", icon: "play_arrow", variant: "primary" },
-  { label: "로그 보기", icon: "list_alt", variant: "secondary" },
-  { label: "설정", icon: "settings", variant: "secondary" },
+  { label: "실행 로그", icon: "list_alt", variant: "primary", href: "#log" },
+  { label: "시그널 보기", icon: "search", variant: "secondary", href: "#signals" },
+  { label: "상태 로그", icon: "monitor_heart", variant: "secondary", href: "#log" },
   null,
 ];
 
@@ -1002,13 +1003,13 @@ export default async function DashboardPage() {
                     <p className="service-card__desc">{card.description}</p>
                   </div>
                   {action ? (
-                    <button
-                      type="button"
+                    <a
+                      href={action.href}
                       className={`service-card__action-btn service-card__action-btn--${action.variant}`}
                     >
                       <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>{action.icon}</span>
                       {action.label}
-                    </button>
+                    </a>
                   ) : (
                     <div className="service-card__live-indicator">
                       <span className="service-card__live-dot" />
@@ -1022,7 +1023,7 @@ export default async function DashboardPage() {
         </section>
 
         {/* Daily Brief (8 cols) */}
-        <section className="col-span-8">
+        <section className="col-span-8" id="daily-brief">
           <div className="brief-card glass-card">
             <div className="brief-card__header">
               <h2 className="brief-card__header-title">오늘의 고래 브리핑</h2>

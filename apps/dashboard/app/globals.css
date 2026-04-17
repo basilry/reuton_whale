@@ -1286,3 +1286,8 @@ a {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* Anchor scroll offset so sticky navbar doesn't overlap section headers */
+section[id] {
+  scroll-margin-top: 80px;
+}
