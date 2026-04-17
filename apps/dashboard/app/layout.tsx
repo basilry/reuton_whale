@@ -10,14 +10,38 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * Theme-boot: runs synchronously before first paint to set `data-theme`
+ * on <html>. Prevents FOUC on dark-mode page loads. See DESIGN.md §12.
+ * Order of precedence:
+ *   1. localStorage['whalescope.theme'] ('light' | 'dark')
+ *   2. prefers-color-scheme media query
+ *   3. 'light' fallback
+ */
+const themeBootScript = `
+(() => {
+  try {
+    const stored = localStorage.getItem('whalescope.theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const theme = stored === 'dark' || stored === 'light'
+      ? stored
+      : (prefersDark ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch (_) {
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
+})();
+`.trim();
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko">
+    <html lang="ko" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
         <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

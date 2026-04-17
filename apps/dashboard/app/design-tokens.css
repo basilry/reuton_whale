@@ -1,0 +1,494 @@
+/* =============================================================================
+   WhaleScope Design Tokens
+   -------------------------------------------------------------------------
+   Layer 2 (System & Tokens) — design-engineering skill
+   Tone: Editorial-calm · Light Blue · Glassmorphism
+   Scope: Light + Dark theme, 8pt spacing, OKLCH colors, 5-step elevation
+   Edit policy: Values here are THE source of truth. Do not hardcode hex in
+                component CSS. Use var(--token) only.
+   ========================================================================== */
+
+/* =============================================================================
+   1. Color System — OKLCH (perceptually uniform)
+   -------------------------------------------------------------------------
+   Palette axis:
+     Primary   : ocean blue (hue 240)     — brand / navigation / accent
+     Tertiary  : forest green (hue 150)   — success / positive / "good"
+     Warn      : amber (hue 70)           — attention / pending / "warn"
+     Error     : vermilion red (hue 27)   — negative / failure / "bad"
+     Neutrals  : cool-tinted gray (hue 240) — surfaces / ink / borders
+   60/30/10 — paper 60% · ink 30% · accent 10% (accent only for CTA/links)
+   ========================================================================== */
+
+:root {
+  color-scheme: light dark;
+
+  /* ── Raw brand palette (OKLCH) ──────────────────────────────────────── */
+  --brand-primary-50:  oklch(0.98 0.010 240);
+  --brand-primary-100: oklch(0.94 0.025 240);
+  --brand-primary-200: oklch(0.87 0.050 240);
+  --brand-primary-300: oklch(0.76 0.080 240);
+  --brand-primary-400: oklch(0.62 0.110 240);
+  --brand-primary-500: oklch(0.52 0.130 240); /* legacy #0077be */
+  --brand-primary-600: oklch(0.45 0.115 240); /* legacy #005e97 — ACCENT */
+  --brand-primary-700: oklch(0.38 0.100 240);
+  --brand-primary-800: oklch(0.30 0.075 240);
+  --brand-primary-900: oklch(0.22 0.050 240);
+
+  --brand-tertiary-50:  oklch(0.97 0.015 150);
+  --brand-tertiary-100: oklch(0.92 0.040 150);
+  --brand-tertiary-200: oklch(0.84 0.075 150);
+  --brand-tertiary-300: oklch(0.72 0.110 150);
+  --brand-tertiary-500: oklch(0.56 0.140 150); /* legacy #18842e */
+  --brand-tertiary-600: oklch(0.48 0.130 150); /* legacy #00691e — GOOD */
+  --brand-tertiary-700: oklch(0.40 0.115 150);
+
+  --brand-warn-500:  oklch(0.72 0.130  70);
+  --brand-warn-600:  oklch(0.60 0.125  70); /* legacy #a56a12 — WARN */
+  --brand-warn-700:  oklch(0.48 0.110  70);
+
+  --brand-error-500: oklch(0.62 0.180  27);
+  --brand-error-600: oklch(0.52 0.190  27); /* legacy #ba1a1a — BAD */
+  --brand-error-700: oklch(0.42 0.170  27);
+
+  --neutral-0:    oklch(1    0     0);
+  --neutral-50:   oklch(0.985 0.008 240); /* paper */
+  --neutral-100:  oklch(0.97  0.010 240); /* paper-alt */
+  --neutral-150:  oklch(0.955 0.012 240); /* surface-container-low */
+  --neutral-200:  oklch(0.935 0.014 240); /* surface-container */
+  --neutral-300:  oklch(0.90  0.016 240); /* surface-container-high */
+  --neutral-400:  oklch(0.85  0.016 240); /* surface-container-highest */
+  --neutral-500:  oklch(0.78  0.014 240); /* outline-variant */
+  --neutral-600:  oklch(0.60  0.013 240); /* muted */
+  --neutral-700:  oklch(0.50  0.013 240); /* muted-strong */
+  --neutral-800:  oklch(0.30  0.012 240); /* on-surface-variant */
+  --neutral-900:  oklch(0.18  0.012 240); /* ink — body text */
+  --neutral-950:  oklch(0.10  0.010 240); /* ink-strong */
+
+  /* ── Semantic tokens — light theme (DEFAULT) ───────────────────────── */
+  /* Backwards compat: keep legacy names (--ink, --accent, --paper, ...) */
+  --paper:          var(--neutral-50);
+  --paper-alt:      var(--neutral-100);
+  --surface:        var(--neutral-50);
+  --surface-container-low:     var(--neutral-150);
+  --surface-container:         var(--neutral-200);
+  --surface-container-high:    var(--neutral-300);
+  --surface-container-highest: var(--neutral-400);
+
+  --panel:          rgb(255 255 255 / 0.78);
+  --panel-strong:   rgb(255 255 255 / 0.98);
+  --panel-glass:    rgb(255 255 255 / 0.70);
+
+  --ink:                  var(--neutral-900);
+  --on-surface:           var(--neutral-900);
+  --on-surface-variant:   var(--neutral-800);
+  --muted-strong:         var(--neutral-700);
+  --muted:                var(--neutral-600);
+
+  --line:          rgb(192 199 210 / 0.35);
+  --line-strong:   rgb(192 199 210 / 0.50);
+  --outline-variant: var(--neutral-500);
+
+  --accent:            var(--brand-primary-600);
+  --accent-dark:       var(--brand-primary-700);
+  --accent-container:  var(--brand-primary-500);
+  --accent-soft:       oklch(0.45 0.115 240 / 0.08);
+  --accent-softer:     oklch(0.45 0.115 240 / 0.04);
+  --on-accent:         var(--neutral-0);
+
+  --secondary:           oklch(0.55 0.070 265); /* legacy #455f87 */
+  --secondary-container: oklch(0.85 0.060 260); /* legacy #b5d0fd */
+
+  --tertiary:            var(--brand-tertiary-600);
+  --tertiary-container:  var(--brand-tertiary-500);
+
+  --good:        var(--brand-tertiary-600);
+  --good-soft:   oklch(0.48 0.130 150 / 0.08);
+  --good-softer: oklch(0.48 0.130 150 / 0.04);
+
+  --warn:        var(--brand-warn-600);
+  --warn-soft:   oklch(0.60 0.125 70 / 0.10);
+  --warn-softer: oklch(0.60 0.125 70 / 0.04);
+
+  --bad:         var(--brand-error-600);
+  --bad-soft:    oklch(0.52 0.190 27 / 0.08);
+  --bad-softer:  oklch(0.52 0.190 27 / 0.04);
+
+  --error:       var(--bad);
+  --on-error:    var(--neutral-0);
+
+  /* Dark card surfaces (operator checklist — legacy slate-800 region) */
+  --inverse-surface:        oklch(0.26 0.024 250);
+  --inverse-surface-high:   oklch(0.32 0.022 250);
+  --inverse-on-surface:     oklch(0.93 0.010 250);
+  --inverse-on-surface-muted: oklch(0.68 0.013 250);
+  --inverse-outline:        oklch(0.38 0.020 250);
+  --inverse-accent:         oklch(0.80 0.130 185); /* teal — legacy #2dd4bf */
+
+  /* =============================================================================
+     2. Typography
+     -------------------------------------------------------------------------
+     Pairing: Manrope (display, headings) + Pretendard (body, KR-friendly)
+     Monospace: ui-monospace stack
+     Scale: 10 steps · 1.2~1.25 ratio · body anchor 16px
+     ========================================================================== */
+
+  --font-display: "Manrope", "Pretendard", ui-sans-serif, system-ui, sans-serif;
+  --font-body:    "Pretendard", "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+                  "Liberation Mono", monospace;
+
+  --text-2xs:  0.6875rem; /* 11px — micro tag */
+  --text-xs:   0.75rem;   /* 12px — label */
+  --text-sm:   0.875rem;  /* 14px — caption / secondary body */
+  --text-base: 1rem;      /* 16px — body */
+  --text-md:   1.125rem;  /* 18px — lead / card title */
+  --text-lg:   1.25rem;   /* 20px — section title */
+  --text-xl:   1.5rem;    /* 24px — subheading */
+  --text-2xl:  1.875rem;  /* 30px — page title */
+  --text-3xl:  2.25rem;   /* 36px — hero */
+  --text-4xl:  3rem;      /* 48px — editorial display */
+
+  --leading-tight:    1.2;
+  --leading-snug:     1.35;
+  --leading-normal:   1.5;
+  --leading-relaxed:  1.65;
+  --leading-loose:    1.8;
+
+  --tracking-tighter: -0.03em;
+  --tracking-tight:   -0.02em;
+  --tracking-normal:   0em;
+  --tracking-wide:     0.04em;
+  --tracking-wider:    0.08em;
+  --tracking-widest:   0.12em;
+
+  --weight-regular: 400;
+  --weight-medium:  500;
+  --weight-semibold: 600;
+  --weight-bold:    700;
+  --weight-extrabold: 800;
+  --weight-black:   900;
+
+  --measure-prose:  65ch;  /* body max width — editorial */
+  --measure-wide:   75ch;
+
+  /* =============================================================================
+     3. Spacing — 4pt base · 8pt preferred
+     -------------------------------------------------------------------------
+     Rule: component gaps use 8pt ramp (xs/sm/md/lg/xl/2xl/3xl).
+           Fine-tune uses 4pt ramp (3xs/2xs).
+     Anti-pattern: arbitrary px values (13 / 17 / 25 / 27).
+     ========================================================================== */
+
+  --space-3xs:  2px;
+  --space-2xs:  4px;
+  --space-xs:   8px;
+  --space-sm:   12px;
+  --space-md:   16px;
+  --space-lg:   24px;
+  --space-xl:   32px;
+  --space-2xl:  48px;
+  --space-3xl:  64px;
+  --space-4xl:  96px;
+  --space-5xl:  128px;
+
+  --inset-navbar: 80px; /* sticky navbar height offset for anchors */
+
+  /* =============================================================================
+     4. Radius
+     -------------------------------------------------------------------------
+     Mental model: component "softness".
+       sm : chip, pill edges
+       md : button, input
+       lg : card (default)
+       xl : hero card / modal
+       2xl : banner
+       full : avatar, status dot, tab pill
+     ========================================================================== */
+
+  --radius-none: 0;
+  --radius-2xs:  0.25rem; /* 4px */
+  --radius-xs:   0.375rem; /* 6px */
+  --radius-sm:   0.5rem;  /* 8px */
+  --radius-md:   0.75rem; /* 12px */
+  --radius-lg:   1rem;    /* 16px */
+  --radius-xl:   1.5rem;  /* 24px */
+  --radius-2xl:  2rem;    /* 32px */
+  --radius-3xl:  3rem;    /* 48px */
+  --radius-full: 9999px;
+
+  /* =============================================================================
+     5. Motion
+     -------------------------------------------------------------------------
+     Rule-of-thumb:
+       100+/day (toggle, cmdk)  → no anim
+       10-100/day (hover, nav)  → 80-160ms ease-out
+       1-10/day (modal, drawer) → 200-300ms ease-drawer
+       rare (onboarding)        → 400-600ms + spring
+     Never: `ease-in` on UI · `transition: all` · anim `all` properties
+     Only animate: transform, opacity, filter, background-color (when necessary)
+     ========================================================================== */
+
+  --duration-instant:   80ms;
+  --duration-quick:    160ms; /* project-wide default */
+  --duration-standard: 200ms;
+  --duration-emphatic: 300ms;
+  --duration-slow:     400ms;
+  --duration-deliberate: 600ms;
+
+  --ease-linear:      cubic-bezier(0, 0, 1, 1);
+  --ease-out:         cubic-bezier(0.16, 1, 0.3, 1);        /* default UI */
+  --ease-in-out:      cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-drawer:      cubic-bezier(0.32, 0.72, 0, 1);       /* modal / sheet */
+  --ease-spring-soft: cubic-bezier(0.34, 1.56, 0.64, 1);    /* rare delight */
+  --ease-snap:        cubic-bezier(0.65, 0, 0.35, 1);       /* toggle flip */
+
+  /* Transition presets — compose instead of writing full shorthand */
+  --transition-color:   color var(--duration-quick) var(--ease-out);
+  --transition-bg:      background-color var(--duration-quick) var(--ease-out);
+  --transition-border:  border-color var(--duration-quick) var(--ease-out);
+  --transition-opacity: opacity var(--duration-quick) var(--ease-out);
+  --transition-transform: transform var(--duration-quick) var(--ease-out);
+
+  /* =============================================================================
+     6. Elevation — Blue-tinted shadows (not pure black)
+     -------------------------------------------------------------------------
+     elev-0 : flat (borders do the work)
+     elev-1 : subtle — small chips, tooltips
+     elev-2 : cards default
+     elev-3 : hero card, floating badge
+     elev-4 : popover, dropdown
+     elev-5 : modal, drawer overlay
+     ========================================================================== */
+
+  --elev-0: none;
+  --elev-1: 0 1px 2px rgb(0 65 106 / 0.05);
+  --elev-2: 0 4px 10px rgb(0 65 106 / 0.05),  0 1px 2px rgb(0 65 106 / 0.04);
+  --elev-3: 0 10px 24px rgb(0 65 106 / 0.07), 0 2px 4px rgb(0 65 106 / 0.04);
+  --elev-4: 0 20px 40px rgb(0 65 106 / 0.08), 0 4px 8px rgb(0 65 106 / 0.05);
+  --elev-5: 0 40px 80px rgb(0 65 106 / 0.10), 0 8px 16px rgb(0 65 106 / 0.06);
+
+  /* Legacy aliases — keep for backward compat with existing globals.css */
+  --shadow:      var(--elev-4);
+  --shadow-soft: var(--elev-3);
+
+  /* =============================================================================
+     7. Z-Index — named layers
+     ========================================================================== */
+
+  --z-base:            0;
+  --z-raised:         10;
+  --z-sticky:         20;
+  --z-navbar:         50;
+  --z-dropdown:       60;
+  --z-floating-badge: 80;
+  --z-modal-backdrop: 100;
+  --z-modal:          110;
+  --z-toast:          200;
+  --z-tooltip:        300;
+
+  /* =============================================================================
+     8. Signal accent — per-severity CSS variables (reused across patterns)
+     ========================================================================== */
+
+  --signal-good-fg:     var(--accent);
+  --signal-good-bg:     var(--accent-softer);
+  --signal-good-border: oklch(0.45 0.115 240 / 0.12);
+
+  --signal-warn-fg:     var(--warn);
+  --signal-warn-bg:     var(--warn-softer);
+  --signal-warn-border: oklch(0.60 0.125 70 / 0.15);
+
+  --signal-bad-fg:      var(--bad);
+  --signal-bad-bg:      var(--bad-softer);
+  --signal-bad-border:  oklch(0.52 0.190 27 / 0.12);
+
+  --signal-neutral-fg:     var(--muted-strong);
+  --signal-neutral-bg:     rgb(255 255 255 / 0.72);
+  --signal-neutral-border: var(--line-strong);
+
+  /* =============================================================================
+     9. Focus ring — accessibility
+     ========================================================================== */
+
+  --focus-ring-color:  var(--accent);
+  --focus-ring-offset: 2px;
+  --focus-ring-width:  2px;
+}
+
+/* =============================================================================
+   DARK THEME — explicit opt-in via [data-theme="dark"]
+   -------------------------------------------------------------------------
+   Strategy:
+     1. Near-black blue-tinted base (not pure black) — reduce bloom on OLED
+     2. Ink softened to warm cream (not pure white) — reduce halation
+     3. Accent boost +10% chroma — blues appear duller on dark
+     4. Elevation via background luminance, not shadow (shadows weaker on dark)
+   ========================================================================== */
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --paper:         oklch(0.16 0.015 240);
+  --paper-alt:     oklch(0.18 0.018 240);
+  --surface:       oklch(0.16 0.015 240);
+  --surface-container-low:     oklch(0.20 0.017 240);
+  --surface-container:         oklch(0.23 0.019 240);
+  --surface-container-high:    oklch(0.27 0.021 240);
+  --surface-container-highest: oklch(0.31 0.023 240);
+
+  --panel:          rgb(30 38 50 / 0.75);
+  --panel-strong:   oklch(0.22 0.018 240);
+  --panel-glass:    rgb(30 38 50 / 0.65);
+
+  --ink:                  oklch(0.94 0.006 240);
+  --on-surface:           oklch(0.94 0.006 240);
+  --on-surface-variant:   oklch(0.80 0.010 240);
+  --muted-strong:         oklch(0.72 0.012 240);
+  --muted:                oklch(0.62 0.012 240);
+
+  --line:            rgb(192 199 210 / 0.12);
+  --line-strong:     rgb(192 199 210 / 0.20);
+  --outline-variant: oklch(0.40 0.015 240);
+
+  --accent:            oklch(0.72 0.120 240);
+  --accent-dark:       oklch(0.65 0.130 240);
+  --accent-container:  oklch(0.78 0.120 240);
+  --accent-soft:       oklch(0.72 0.120 240 / 0.14);
+  --accent-softer:     oklch(0.72 0.120 240 / 0.06);
+  --on-accent:         oklch(0.12 0.010 240);
+
+  --secondary:           oklch(0.75 0.070 265);
+  --secondary-container: oklch(0.35 0.050 260);
+
+  --tertiary:            oklch(0.72 0.140 150);
+  --tertiary-container:  oklch(0.65 0.130 150);
+
+  --good:        oklch(0.72 0.140 150);
+  --good-soft:   oklch(0.72 0.140 150 / 0.14);
+  --good-softer: oklch(0.72 0.140 150 / 0.06);
+
+  --warn:        oklch(0.80 0.150  85);
+  --warn-soft:   oklch(0.80 0.150  85 / 0.16);
+  --warn-softer: oklch(0.80 0.150  85 / 0.06);
+
+  --bad:         oklch(0.72 0.170  27);
+  --bad-soft:    oklch(0.72 0.170  27 / 0.14);
+  --bad-softer:  oklch(0.72 0.170  27 / 0.06);
+
+  --error:       var(--bad);
+  --on-error:    oklch(0.10 0.010 240);
+
+  /* Inverse surfaces on dark theme become bright highlight instead */
+  --inverse-surface:          oklch(0.94 0.006 240);
+  --inverse-surface-high:     oklch(0.88 0.008 240);
+  --inverse-on-surface:       oklch(0.18 0.012 240);
+  --inverse-on-surface-muted: oklch(0.40 0.013 240);
+  --inverse-outline:          oklch(0.75 0.012 240);
+  --inverse-accent:           oklch(0.60 0.110 185);
+
+  --elev-0: none;
+  --elev-1: 0 1px 2px rgb(0 0 0 / 0.30);
+  --elev-2: 0 4px 10px rgb(0 0 0 / 0.35), 0 1px 2px rgb(0 0 0 / 0.30);
+  --elev-3: 0 10px 24px rgb(0 0 0 / 0.40), 0 2px 4px rgb(0 0 0 / 0.30);
+  --elev-4: 0 20px 40px rgb(0 0 0 / 0.45), 0 4px 8px rgb(0 0 0 / 0.35);
+  --elev-5: 0 40px 80px rgb(0 0 0 / 0.55), 0 8px 16px rgb(0 0 0 / 0.40);
+
+  --signal-good-fg:     var(--accent);
+  --signal-good-bg:     var(--accent-softer);
+  --signal-good-border: oklch(0.72 0.120 240 / 0.18);
+
+  --signal-warn-fg:     var(--warn);
+  --signal-warn-bg:     var(--warn-softer);
+  --signal-warn-border: oklch(0.80 0.150 85 / 0.18);
+
+  --signal-bad-fg:      var(--bad);
+  --signal-bad-bg:      var(--bad-softer);
+  --signal-bad-border:  oklch(0.72 0.170 27 / 0.18);
+
+  --signal-neutral-fg:     var(--muted-strong);
+  --signal-neutral-bg:     rgb(255 255 255 / 0.04);
+  --signal-neutral-border: var(--line-strong);
+}
+
+/* =============================================================================
+   prefers-color-scheme fallback — only applies when no explicit data-theme
+   -------------------------------------------------------------------------
+   The theme-boot script in layout.tsx sets data-theme on <html> before paint.
+   This @media block is a pure fallback for environments where JS is disabled.
+   ========================================================================== */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --paper:         oklch(0.16 0.015 240);
+    --paper-alt:     oklch(0.18 0.018 240);
+    --surface:       oklch(0.16 0.015 240);
+    --surface-container-low:     oklch(0.20 0.017 240);
+    --surface-container:         oklch(0.23 0.019 240);
+    --surface-container-high:    oklch(0.27 0.021 240);
+    --surface-container-highest: oklch(0.31 0.023 240);
+
+    --panel:          rgb(30 38 50 / 0.75);
+    --panel-strong:   oklch(0.22 0.018 240);
+    --panel-glass:    rgb(30 38 50 / 0.65);
+
+    --ink:                  oklch(0.94 0.006 240);
+    --on-surface:           oklch(0.94 0.006 240);
+    --on-surface-variant:   oklch(0.80 0.010 240);
+    --muted-strong:         oklch(0.72 0.012 240);
+    --muted:                oklch(0.62 0.012 240);
+
+    --line:            rgb(192 199 210 / 0.12);
+    --line-strong:     rgb(192 199 210 / 0.20);
+    --outline-variant: oklch(0.40 0.015 240);
+
+    --accent:           oklch(0.72 0.120 240);
+    --accent-dark:      oklch(0.65 0.130 240);
+    --accent-container: oklch(0.78 0.120 240);
+    --accent-soft:      oklch(0.72 0.120 240 / 0.14);
+    --accent-softer:    oklch(0.72 0.120 240 / 0.06);
+    --on-accent:        oklch(0.12 0.010 240);
+
+    --good:         oklch(0.72 0.140 150);
+    --good-soft:    oklch(0.72 0.140 150 / 0.14);
+    --good-softer:  oklch(0.72 0.140 150 / 0.06);
+    --warn:         oklch(0.80 0.150  85);
+    --warn-soft:    oklch(0.80 0.150  85 / 0.16);
+    --warn-softer:  oklch(0.80 0.150  85 / 0.06);
+    --bad:          oklch(0.72 0.170  27);
+    --bad-soft:     oklch(0.72 0.170  27 / 0.14);
+    --bad-softer:   oklch(0.72 0.170  27 / 0.06);
+
+    --elev-1: 0 1px 2px rgb(0 0 0 / 0.30);
+    --elev-2: 0 4px 10px rgb(0 0 0 / 0.35), 0 1px 2px rgb(0 0 0 / 0.30);
+    --elev-3: 0 10px 24px rgb(0 0 0 / 0.40), 0 2px 4px rgb(0 0 0 / 0.30);
+    --elev-4: 0 20px 40px rgb(0 0 0 / 0.45), 0 4px 8px rgb(0 0 0 / 0.35);
+    --elev-5: 0 40px 80px rgb(0 0 0 / 0.55), 0 8px 16px rgb(0 0 0 / 0.40);
+  }
+}
+
+/* =============================================================================
+   Reduced motion — respect user OS preference
+   -------------------------------------------------------------------------
+   Rule: do not remove opacity fades (they help tracking focus). Kill transforms.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant:    0ms;
+    --duration-quick:      0ms;
+    --duration-standard:   0ms;
+    --duration-emphatic:   0ms;
+    --duration-slow:       0ms;
+    --duration-deliberate: 0ms;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
