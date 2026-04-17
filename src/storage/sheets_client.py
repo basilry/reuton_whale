@@ -570,27 +570,35 @@ class SheetsClient:
             raise StorageError(f"Failed to append tg_whale_event: {e}") from e
 
     @retry(max_retries=3, base_delay=2.0)
-    def list_tg_whale_events(self, since: datetime | None = None) -> list[dict]:
+    def list_tg_whale_events(
+        self,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, object]]:
         try:
             ws = self._worksheet(TAB_TG_WHALE_EVENTS)
             all_values = ws.get_all_values()
             if len(all_values) <= 1:
                 return []
 
-            rows = [row_to_dict(row, TG_WHALE_EVENTS_HEADERS) for row in all_values[1:]]
-            if since is None:
-                return rows
+            rows: list[dict[str, object]] = [
+                row_to_dict(row, TG_WHALE_EVENTS_HEADERS) for row in all_values[1:]
+            ]
+            if since is not None:
+                filtered: list[dict[str, object]] = []
+                for row in rows:
+                    row_time = _normalize_event_time(row)
+                    if row_time is None:
+                        continue
+                    if row_time.tzinfo is None and since.tzinfo is not None:
+                        row_time = row_time.replace(tzinfo=since.tzinfo)
+                    if row_time >= since:
+                        filtered.append(row)
+                rows = filtered
 
-            filtered: list[dict] = []
-            for row in rows:
-                row_time = _normalize_event_time(row)
-                if row_time is None:
-                    continue
-                if row_time.tzinfo is None and since.tzinfo is not None:
-                    row_time = row_time.replace(tzinfo=since.tzinfo)
-                if row_time >= since:
-                    filtered.append(row)
-            return filtered
+            if limit is not None and limit >= 0:
+                rows = rows[-limit:] if limit else []
+            return rows
         except gspread.exceptions.APIError as e:
             raise StorageError(f"Failed to list tg whale events: {e}") from e
 
