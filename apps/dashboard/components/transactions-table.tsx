@@ -1,3 +1,5 @@
+import styles from "./transactions-table.module.css";
+
 export type TransactionRow = {
   id: string;
   timestamp: string;
@@ -46,9 +48,9 @@ function formatTime(value: string) {
 
 function EmptyState() {
   return (
-    <div className="empty-state empty-state--table">
-      <p className="empty-state__title">최근 거래가 아직 없습니다.</p>
-      <p className="empty-state__body">
+    <div className={styles.emptyState}>
+      <p className={styles.emptyStateTitle}>최근 거래가 아직 없습니다.</p>
+      <p className={styles.emptyStateBody}>
         파이프라인 실행 후 Google Sheets의 transactions 시트가 채워지면 이 표에 최신 거래가 나타납니다.
       </p>
     </div>
@@ -57,10 +59,10 @@ function EmptyState() {
 
 export function TransactionsTable({ rows }: TransactionsTableProps) {
   return (
-    <section className="panel">
-      <div className="panel__header">
+    <section className={styles.panel}>
+      <div className={styles.panelHeader}>
         <div>
-          <p className="panel__eyebrow">Recent transactions</p>
+          <p className={styles.panelEyebrow}>Recent transactions</p>
           <h2>Latest whale movement</h2>
         </div>
       </div>
@@ -69,8 +71,8 @@ export function TransactionsTable({ rows }: TransactionsTableProps) {
         <EmptyState />
       ) : (
         <>
-          <div className="table-shell">
-            <table className="data-table">
+          <div className={styles.tableShell}>
+            <table className={styles.dataTable}>
               <thead>
                 <tr>
                   <th>Time</th>
@@ -88,19 +90,29 @@ export function TransactionsTable({ rows }: TransactionsTableProps) {
                   <tr key={row.id}>
                     <td data-label="Time">{formatTime(row.timestamp)}</td>
                     <td data-label="Asset">
-                      <span className="table-chip">{row.symbol}</span>
+                      {/* Direction pill is placed inline next to the symbol chip in the Asset cell.
+                          This keeps the column count unchanged while making direction scannable
+                          at a glance alongside the asset ticker. */}
+                      <span className={styles.assetCell}>
+                        <span className={styles.tableChip}>{row.symbol}</span>
+                        {row.direction ? (
+                          <span className={styles.dirPill} data-dir={row.direction}>
+                            {row.direction}
+                          </span>
+                        ) : null}
+                      </span>
                     </td>
                     <td data-label="Amount">{formatNumber(row.amount)}</td>
                     <td data-label="USD">{formatUsd(row.amountUsd)}</td>
                     <td data-label="From">
-                      <span className="mono">{row.from}</span>
+                      <span className={styles.mono}>{row.from}</span>
                     </td>
                     <td data-label="To">
-                      <span className="mono">{row.to}</span>
+                      <span className={styles.mono}>{row.to}</span>
                     </td>
                     <td data-label="Chain">{row.chain}</td>
                     <td data-label="Hash">
-                      <span className="mono mono--truncate">{row.hash}</span>
+                      <span className={styles.monoTruncate}>{row.hash}</span>
                     </td>
                   </tr>
                 ))}
@@ -108,17 +120,24 @@ export function TransactionsTable({ rows }: TransactionsTableProps) {
             </table>
           </div>
 
-          <div className="card-list">
+          <div className={styles.cardList}>
             {rows.map((row) => (
-              <article key={`${row.id}-mobile`} className="stack-card">
-                <div className="stack-card__top">
+              <article key={`${row.id}-mobile`} className={styles.stackCard}>
+                <div className={styles.stackCardTop}>
                   <div>
-                    <p className="stack-card__label">{formatTime(row.timestamp)}</p>
-                    <h3>{row.symbol}</h3>
+                    <p className={styles.stackCardLabel}>{formatTime(row.timestamp)}</p>
+                    <h3>
+                      {row.symbol}
+                      {row.direction ? (
+                        <span className={styles.dirPill} data-dir={row.direction}>
+                          {row.direction}
+                        </span>
+                      ) : null}
+                    </h3>
                   </div>
-                  <span className="table-chip">{row.chain}</span>
+                  <span className={styles.tableChip}>{row.chain}</span>
                 </div>
-                <dl className="stack-card__grid">
+                <dl className={styles.stackCardGrid}>
                   <div>
                     <dt>Amount</dt>
                     <dd>{formatNumber(row.amount)}</dd>
@@ -129,14 +148,14 @@ export function TransactionsTable({ rows }: TransactionsTableProps) {
                   </div>
                   <div>
                     <dt>From</dt>
-                    <dd className="mono">{row.from}</dd>
+                    <dd className={styles.mono}>{row.from}</dd>
                   </div>
                   <div>
                     <dt>To</dt>
-                    <dd className="mono">{row.to}</dd>
+                    <dd className={styles.mono}>{row.to}</dd>
                   </div>
                 </dl>
-                <p className="stack-card__hash mono">{row.hash}</p>
+                <p className={styles.stackCardHash}>{row.hash}</p>
               </article>
             ))}
           </div>

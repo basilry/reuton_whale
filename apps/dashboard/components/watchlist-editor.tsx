@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import styles from "./watchlist-editor.module.css";
+
 export type WatchlistEntry = {
   address: string;
   chain: string;
@@ -92,24 +94,24 @@ export function WatchlistEditor() {
   }
 
   if (state.kind === "loading") {
-    return <p className="watchlist-editor__hint">감시 주소를 불러오는 중...</p>;
+    return <p className={styles.hint} data-state="loading">감시 주소를 불러오는 중...</p>;
   }
   if (state.kind === "error") {
-    return <p className="watchlist-editor__hint">감시 주소를 불러오지 못했습니다. ({state.message})</p>;
+    return <p className={styles.hint} data-state="error">감시 주소를 불러오지 못했습니다. ({state.message})</p>;
   }
 
   if (state.entries.length === 0) {
-    return <p className="watchlist-editor__hint">등록된 감시 주소가 없습니다.</p>;
+    return <p className={styles.hint} data-state="empty">등록된 감시 주소가 없습니다.</p>;
   }
 
   return (
-    <ul className="watchlist-editor__list" aria-label="감시 주소 목록">
+    <ul className={styles.list} aria-label="감시 주소 목록">
       {state.entries.map((entry) => (
-        <li key={entry.address} className="watchlist-editor__row">
-          <div className="watchlist-editor__meta">
-            <span className="watchlist-editor__label">{entry.label}</span>
-            <span className="watchlist-editor__chain">{entry.chain}</span>
-            <span className="watchlist-editor__address" title={entry.address}>
+        <li key={entry.address} className={styles.row}>
+          <div className={styles.meta}>
+            <span className={styles.label}>{entry.label}</span>
+            <span className={styles.chain}>{entry.chain}</span>
+            <span className={styles.address} title={entry.address}>
               {entry.address.length > 18
                 ? `${entry.address.slice(0, 8)}…${entry.address.slice(-6)}`
                 : entry.address}
@@ -117,7 +119,8 @@ export function WatchlistEditor() {
           </div>
           <button
             type="button"
-            className={`watchlist-editor__toggle ${entry.enabled ? "watchlist-editor__toggle--on" : "watchlist-editor__toggle--off"}`}
+            className={styles.toggle}
+            data-enabled={entry.enabled ? "true" : "false"}
             onClick={() => toggleAddress(entry.address, !entry.enabled)}
             disabled={pendingAddress === entry.address}
             aria-pressed={entry.enabled}

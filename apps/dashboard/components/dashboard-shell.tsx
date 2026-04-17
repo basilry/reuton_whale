@@ -1,3 +1,9 @@
+/**
+ * @deprecated Superseded by TopNavbar (Wave 1) + page.module.css hero (Wave 2).
+ * This file is no longer imported by any route. Retained as reference for the
+ * Wave 5 cleanup pass, which will delete it and purge the legacy
+ * `.dashboard-shell` / `.hero-panel` / `.source-pill` globals from globals.css.
+ */
 import type { ReactNode } from "react";
 
 import { RunStatusBadge } from "@/components/run-status-badge";

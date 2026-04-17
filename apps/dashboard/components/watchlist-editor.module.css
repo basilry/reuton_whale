@@ -1,0 +1,151 @@
+/* =============================================================================
+   watchlist-editor.module.css — Wave 4-C
+   -------------------------------------------------------------------------
+   Token source: design-tokens.css only. Zero hex/rgba/oklch literals.
+   Toggle buttons follow preview §16 .btnPrimary / .btnSecondary pattern.
+   data-enabled="true"  → accent fill (primary style)
+   data-enabled="false" → surface fill with border (secondary style)
+   ========================================================================== */
+
+/* ── Hint text: loading / error / empty ─────────────────────────────────── */
+.hint {
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: var(--text-sm);
+  padding: var(--space-md);
+}
+
+.hint[data-state="error"] {
+  color: var(--bad);
+}
+
+/* ── List shell ─────────────────────────────────────────────────────────── */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* ── Row ────────────────────────────────────────────────────────────────── */
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-low);
+  border: 1px solid var(--line);
+  align-items: center;
+  transition: var(--transition-bg), var(--transition-border);
+}
+
+.row:hover {
+  background: var(--surface-container);
+}
+
+/* ── Meta block ─────────────────────────────────────────────────────────── */
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+  min-width: 0;
+}
+
+.label {
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chain {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+}
+
+.address {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Toggle button ──────────────────────────────────────────────────────── */
+/* Base — shared by both states (mirrors preview .btnPrimary/.btnSecondary) */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  border: 1px solid transparent;
+  transition: var(--transition-bg), var(--transition-transform), var(--transition-color);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* enabled = true → primary fill */
+.toggle[data-enabled="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: transparent;
+}
+
+.toggle[data-enabled="true"]:hover {
+  background: var(--accent-dark);
+}
+
+/* enabled = false → secondary/surface fill */
+.toggle[data-enabled="false"] {
+  background: var(--surface-container);
+  color: var(--on-surface);
+  border-color: var(--line);
+}
+
+.toggle[data-enabled="false"]:hover {
+  background: var(--surface-container-high);
+}
+
+/* Active press */
+.toggle:active {
+  transform: scale(0.97);
+}
+
+/* Focus ring */
+.toggle:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* Disabled (pending save) */
+.toggle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .toggle {
+    transition: none;
+  }
+
+  .toggle:active {
+    transform: none;
+  }
+
+  .row {
+    transition: none;
+  }
+}

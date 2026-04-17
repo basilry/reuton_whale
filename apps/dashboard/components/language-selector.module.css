@@ -1,0 +1,55 @@
+/* =============================================================================
+   language-selector.module.css — Wave 4-C
+   -------------------------------------------------------------------------
+   Token source: design-tokens.css only. Zero hex/rgba/oklch literals.
+   Native <select> with appearance: none inside a styled <label> chip.
+   z-index: --z-raised so the chip floats above sibling cards.
+   ========================================================================== */
+
+/* ── Label shell (the visible chip) ────────────────────────────────────── */
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-2xs) var(--space-sm);
+  border-radius: var(--radius-full);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--elev-1);
+  color: var(--on-surface-variant);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: var(--transition-bg), var(--transition-border);
+  position: relative;
+  z-index: var(--z-raised);
+}
+
+.label:hover {
+  border-color: var(--accent);
+}
+
+.label:focus-within {
+  border-color: var(--accent);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* ── Native select ──────────────────────────────────────────────────────── */
+.select {
+  background: transparent;
+  border: none;
+  color: var(--on-surface);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  outline: none;
+  padding-right: var(--space-sm);
+  appearance: none;
+  /* Inherit font stack from globals so Pretendard applies */
+  font-family: inherit;
+}
+
+.select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}

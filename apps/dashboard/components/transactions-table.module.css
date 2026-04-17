@@ -1,0 +1,270 @@
+/* =============================================================================
+   transactions-table.module.css — Wave 4-C
+   -------------------------------------------------------------------------
+   Token source: design-tokens.css only. Zero hex/rgba/oklch literals.
+   Direction pill: rendered inline in the Asset cell next to the symbol chip.
+   ========================================================================== */
+
+/* ── Panel shell ────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--panel-glass);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-2);
+  overflow: hidden;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: var(--space-md) var(--space-lg);
+  background: var(--surface-container);
+  border-bottom: 1px solid var(--line);
+}
+
+.panelHeader h2 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+}
+
+.panelEyebrow {
+  margin: 0 0 var(--space-3xs);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  color: var(--accent);
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+}
+
+/* ── Empty state ────────────────────────────────────────────────────────── */
+.emptyState {
+  padding: var(--space-lg);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--line-strong);
+  background: var(--surface);
+  display: grid;
+  gap: var(--space-2xs);
+  margin: var(--space-md);
+}
+
+.emptyStateTitle {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+}
+
+.emptyStateBody {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--muted-strong);
+}
+
+/* ── Table shell (desktop) ──────────────────────────────────────────────── */
+.tableShell {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dataTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  color: var(--on-surface);
+}
+
+.dataTable thead tr {
+  background: var(--surface-container);
+}
+
+.dataTable th {
+  padding: var(--space-xs) var(--space-md);
+  text-align: left;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  color: var(--muted-strong);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+
+.dataTable td {
+  padding: var(--space-xs) var(--space-md);
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.dataTable tbody tr {
+  transition: var(--transition-bg);
+}
+
+.dataTable tbody tr:hover {
+  background: var(--surface-container-low);
+}
+
+.dataTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Numeric cells — tabular figures */
+.dataTable td[data-label="Amount"],
+.dataTable td[data-label="USD"] {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+/* ── Asset cell inner layout ────────────────────────────────────────────── */
+.assetCell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+}
+
+/* ── Symbol chip ────────────────────────────────────────────────────────── */
+.tableChip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-3xs) var(--space-xs);
+  border-radius: var(--radius-full);
+  background: var(--surface-container-high);
+  color: var(--on-surface-variant);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+/* ── Direction badge (in / out) ─────────────────────────────────────────── */
+/* in  → accent-soft palette (blue)  */
+/* out → good-soft palette (green)   */
+.dirPill {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-3xs) var(--space-xs);
+  border-radius: var(--radius-full);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  white-space: nowrap;
+}
+
+.dirPill[data-dir="in"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.dirPill[data-dir="out"] {
+  background: var(--good-soft);
+  color: var(--good);
+}
+
+/* ── Mono utilities ─────────────────────────────────────────────────────── */
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.monoTruncate {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+  display: inline-block;
+}
+
+/* ── Card list (mobile) ─────────────────────────────────────────────────── */
+.cardList {
+  display: none;
+}
+
+.stackCard {
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.stackCard:last-child {
+  border-bottom: none;
+}
+
+.stackCardTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.stackCardTop h3 {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+}
+
+.stackCardLabel {
+  margin: 0 0 var(--space-3xs);
+  font-size: var(--text-2xs);
+  color: var(--muted);
+}
+
+.stackCardGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-xs);
+  margin: 0;
+}
+
+.stackCardGrid dt {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  margin-bottom: 2px;
+}
+
+.stackCardGrid dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--on-surface);
+  font-variant-numeric: tabular-nums;
+}
+
+.stackCardHash {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Responsive: hide table, show cards on narrow ───────────────────────── */
+@media (max-width: 768px) {
+  .tableShell {
+    display: none;
+  }
+
+  .cardList {
+    display: block;
+  }
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .dataTable tbody tr {
+    transition: none;
+  }
+}

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import styles from "./language-selector.module.css";
+
 const SUPPORTED = [
   { code: "ko", label: "한국어" },
   { code: "en", label: "English" },
@@ -44,12 +46,12 @@ export function LanguageSelector({ currentLang = "ko" }: LanguageSelectorProps) 
   }
 
   return (
-    <label className="language-selector" aria-label="대시보드 언어 선택">
+    <label className={styles.label} aria-label="대시보드 언어 선택">
       <span className="material-symbols-outlined" aria-hidden="true">
         language
       </span>
       <select
-        className="language-selector__select"
+        className={styles.select}
         value={lang}
         onChange={handleChange}
         disabled={saving}
