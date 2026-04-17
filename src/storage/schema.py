@@ -61,6 +61,7 @@ ANALYSIS_LOG_HEADERS = [
     "tokens_out",
     "cost_usd",
     "latency_ms",
+    "status",
     "created_at",
 ]
 

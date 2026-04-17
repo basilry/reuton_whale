@@ -19,6 +19,9 @@ _RATES: dict[str, tuple[float, float]] = {
     # Google Gemini
     "gemini-1.5-flash": (0.075, 0.30),
     "gemini-1.5-pro": (1.25, 5.0),
+    "gemini-2.0-flash": (0.10, 0.40),
+    "gemini-2.5-flash": (0.15, 0.60),
+    "gemini-2.5-pro": (1.25, 5.0),
     # Groq
     "llama-3.3-70b-versatile": (0.59, 0.79),
 }

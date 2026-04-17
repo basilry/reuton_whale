@@ -134,6 +134,7 @@ class LLMAnalyzer:
     def _log_analysis(self, entry: dict) -> None:
         if not self._storage:
             return
+        entry.setdefault("status", "ok")
         try:
             self._storage.save_analysis_log(entry)
         except Exception as e:
