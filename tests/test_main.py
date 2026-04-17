@@ -105,13 +105,26 @@ def test_tg_direction_four_branches():
 
 
 def test_safe_float_logs_warning_on_parse_failure(caplog):
-    from src.main import _safe_float
+    import logging
 
-    with caplog.at_level("WARNING"):
-        value = _safe_float("not-a-number")
+    from src.utils.number_utils import safe_float
+
+    test_logger = logging.getLogger("test.main.safe_float")
+    test_logger.propagate = True
+    with caplog.at_level(logging.WARNING, logger=test_logger.name):
+        value = safe_float(
+            "not-a-number",
+            strip_commas=True,
+            field_name="amount",
+            log_level=logging.WARNING,
+            logger=test_logger,
+        )
 
     assert value == 0.0
-    assert any("Failed to parse float value='not-a-number'" in record.message for record in caplog.records)
+    assert any(
+        "safe_float failed" in record.getMessage() and "not-a-number" in record.getMessage()
+        for record in caplog.records
+    )
 
 
 def test_run_listener_login_hint_only_for_auth_errors():

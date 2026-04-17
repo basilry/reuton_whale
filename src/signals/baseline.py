@@ -7,24 +7,11 @@ from datetime import datetime, timedelta
 from typing import Iterable
 
 from src.storage.protocol import Storage
+from src.utils.datetime_utils import parse_dt
 from src.utils.logger import get_logger
-
-
-from src.utils.datetime_utils import parse_dt as _parse_dt  # noqa: E302
+from src.utils.number_utils import safe_float
 
 logger = get_logger("signals.baseline")
-
-
-def _safe_float(value: object, field_name: str | None = None) -> float:
-    try:
-        return float(value or 0.0)
-    except (TypeError, ValueError):
-        logger.debug(
-            "_safe_float failed field=%s value=%r; defaulting to 0.0",
-            field_name,
-            value,
-        )
-        return 0.0
 
 
 def _stats(values: Iterable[float]) -> tuple[float, float]:
@@ -60,7 +47,7 @@ def build_chain_baselines(
     for row in rows:
         if str(row.get("counterparty_category", "")).lower() != "cex":
             continue
-        block_time = _parse_dt(row.get("block_time") or row.get("collected_at"))
+        block_time = parse_dt(row.get("block_time") or row.get("collected_at"))
         if block_time is None:
             continue
         if block_time.tzinfo is None and since.tzinfo is not None:
@@ -73,7 +60,7 @@ def build_chain_baselines(
 
         day = block_time.date().isoformat()
         chain = str(row.get("chain", "default") or "default").lower()
-        amount_usd = _safe_float(row.get("amount_usd"), field_name="amount_usd")
+        amount_usd = safe_float(row.get("amount_usd"), field_name="amount_usd", logger=logger)
         all_dates.add(day)
 
         buckets["default"][day][direction] += amount_usd

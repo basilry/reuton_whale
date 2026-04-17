@@ -107,15 +107,10 @@ def _event_to_dict(e: Event) -> dict:
     }
 
 
-from src.utils.datetime_utils import parse_dt as _parse_dt  # noqa: E302
+import logging
 
-
-def _safe_float(value: object) -> float:
-    try:
-        return float(str(value).replace(",", ""))
-    except (TypeError, ValueError):
-        logger.warning("Failed to parse float value=%r; defaulting to 0.0", value)
-        return 0.0
+from src.utils.datetime_utils import parse_dt
+from src.utils.number_utils import safe_float
 
 
 def _normalize_tg_chain(value: object) -> str:
@@ -154,8 +149,8 @@ def _tg_direction(from_owner_type: str, to_owner_type: str) -> tuple[str, str | 
 
 
 def _tg_row_to_event(row: dict) -> Event:
-    block_time = _parse_dt(row.get("tg_date")) or _parse_dt(row.get("collected_at")) or datetime.now(timezone.utc)
-    collected_at = _parse_dt(row.get("collected_at")) or block_time
+    block_time = parse_dt(row.get("tg_date")) or parse_dt(row.get("collected_at")) or datetime.now(timezone.utc)
+    collected_at = parse_dt(row.get("collected_at")) or block_time
     from_owner = _tg_owner_label(row.get("from_owner"))
     to_owner = _tg_owner_label(row.get("to_owner"))
     from_owner_type = str(row.get("from_owner_type") or "unknown").strip().lower() or "unknown"
@@ -171,8 +166,20 @@ def _tg_row_to_event(row: dict) -> Event:
         to_addr=to_owner or to_owner_type or "unknown",
         direction=direction,
         token=str(row.get("symbol") or "UNKNOWN").upper(),
-        amount_token=_safe_float(row.get("amount")),
-        amount_usd=_safe_float(row.get("amount_usd")),
+        amount_token=safe_float(
+            row.get("amount"),
+            strip_commas=True,
+            field_name="amount",
+            log_level=logging.WARNING,
+            logger=logger,
+        ),
+        amount_usd=safe_float(
+            row.get("amount_usd"),
+            strip_commas=True,
+            field_name="amount_usd",
+            log_level=logging.WARNING,
+            logger=logger,
+        ),
         counterparty_category=counterparty_category,
         block_time=block_time,
         collected_at=collected_at,
