@@ -1,4 +1,19 @@
-"""Rule loader and pure-function signal rules."""
+"""Rule loader and pure-function signal rules.
+
+Design note — CEX counterparty semantics
+----------------------------------------
+Rules that target CEX flow (``cex_outflow_spike``, ``cex_inflow_spike``,
+``tg_cex_inflow_burst``) compare ``counterparty_category == "cex"`` **exactly**.
+
+Exchange-to-exchange transfers are emitted with
+``counterparty_category == "cex_to_cex"`` by ``src.main::_tg_direction`` to
+suppress venue-rebalance noise. Do **NOT** widen the comparison to
+``in {"cex", "cex_to_cex"}`` — that would defeat the split.
+
+If you need to treat cex-to-cex events as signals, create a dedicated rule
+(e.g. ``cex_venue_rebalance``) with its own threshold, instead of merging
+categories here.
+"""
 from __future__ import annotations
 
 import math

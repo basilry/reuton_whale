@@ -1,11 +1,17 @@
 # Signal rules configuration.
 rules:
+  # cex_outflow_spike: CEX에서 외부(온체인 수취인)로 나가는 대규모 플로우.
+  # 주의: counterparty_category="cex_to_cex"는 의도적으로 제외됨.
+  # 변경 시 src/main.py::_tg_direction 및 src/signals/rules.py 모듈 docstring 동시 확인.
   - name: cex_outflow_spike
     window_hours: 24
     baseline_days: 7
     sigma_threshold: 3.0
     min_usd: 1000000
     severity_base: medium
+  # cex_inflow_spike: 외부(온체인 송신자)에서 CEX로 들어오는 대규모 플로우.
+  # 주의: counterparty_category="cex_to_cex"는 의도적으로 제외됨.
+  # 변경 시 src/main.py::_tg_direction 및 src/signals/rules.py 모듈 docstring 동시 확인.
   - name: cex_inflow_spike
     window_hours: 24
     baseline_days: 7
@@ -23,6 +29,9 @@ rules:
     top_n: 10
     threshold_pct: 2.0
     severity_base: medium
+  # tg_cex_inflow_burst: Telegram 채널에서 단시간 내 CEX 유입 이벤트가 폭증하는 경우.
+  # 주의: counterparty_category="cex_to_cex"는 의도적으로 제외됨.
+  # 변경 시 src/main.py::_tg_direction 및 src/signals/rules.py 모듈 docstring 동시 확인.
   - name: tg_cex_inflow_burst
     window_minutes: 10
     min_events: 3
