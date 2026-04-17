@@ -3,6 +3,7 @@ import Link from "next/link";
 import { DashboardConfigError } from "@/lib/env";
 import { cleanGeneratedBrief } from "@/lib/format";
 import { getDashboardData } from "@/lib/metrics";
+import { SystemLogPanel, type SystemLogRow } from "@/components/system-log-panel";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -928,6 +929,13 @@ export default async function DashboardPage() {
   const signals = data.recentSignals.slice(0, 6).map(humanizeSignal);
   const transactions = data.recentTransactions.slice(0, 6).map(humanizeTransaction);
   const logs = data.systemLogs.slice(0, 6).map(humanizeLog);
+  const logRows: SystemLogRow[] = logs.map((row) => ({
+    id: row.id,
+    timestamp: row.timestamp,
+    status: row.status,
+    title: row.title,
+    message: row.message,
+  }));
 
   return (
     <>
@@ -1192,32 +1200,9 @@ export default async function DashboardPage() {
         </section>
 
         {/* Operation Log (4 cols) */}
-        <section className="col-span-4" id="log">
-          <div className="oplog-card glass-card">
-            <h2 className="oplog-card__title">운영 알림 센터</h2>
-            {logs.length > 0 ? (
-              <div className="oplog-list">
-                {logs.map((row, index) => (
-                  <div key={row.id ?? `${row.timestamp}-${index}`} className="oplog-item">
-                    <div className={`oplog-item__dot oplog-item__dot--${row.tone}`} />
-                    <div className="oplog-item__body">
-                      <p className={`oplog-item__text ${row.tone === "bad" || row.tone === "warn" ? "oplog-item__text--emphasis" : ""}`}>
-                        {row.message}
-                      </p>
-                      <span className="oplog-item__time">
-                        {formatTime(row.timestamp, { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="empty-state">
-                <p className="empty-state__title">운영 로그 없음</p>
-                <p className="empty-state__body">파이프라인 실행 또는 운영 이벤트가 기록되면 표시됩니다.</p>
-              </div>
-            )}
-          </div>
+        <section id="log" className="col-span-4 glass-card oplog-card">
+          <h2 className="oplog-card__title">운영 알림 센터</h2>
+          <SystemLogPanel rows={logRows} />
         </section>
       </main>
 
