@@ -1,0 +1,29 @@
+[project]
+name = "whalescope"
+version = "0.5.0"
+description = "On-chain whale movement pipeline with AI-generated multilang briefings and read-only dashboard"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.94.0,<1.0",
+    "google-genai>=0.8,<1.0",
+    "groq>=0.11,<1.0",
+    "telethon>=1.36,<2.0",
+    "PyYAML>=6.0,<7.0",
+    "gspread>=6.2,<7.0",
+    "google-auth>=2.35,<3.0",
+    "python-telegram-bot>=22.0,<23.0",
+    "requests>=2.32,<3.0",
+    "python-dotenv>=1.0,<2.0",
+    "streamlit>=1.54,<2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0,<9.0",
+    "pytest-asyncio>=1.0,<2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["scripts", ".venv", "__pycache__", ".pytest_cache"]
+asyncio_mode = "auto"

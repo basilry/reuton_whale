@@ -98,6 +98,9 @@ cp apps/dashboard/.env.example apps/dashboard/.env.local
 | `/api/transactions?limit=20` | 최근 거래 목록 |
 | `/api/signals?limit=20` | 최근 규칙 기반 시그널 목록 |
 | `/api/system-log?limit=25` | 최근 pipeline/system log 목록 |
+| `PATCH /api/signals/[id]` | 시그널 acknowledge 또는 dismiss 상태 기록 (in-memory 휘발성) |
+| `GET\|PATCH /api/watchlist` | 대시보드 감시 주소 목록 조회 및 enabled 토글 |
+| `GET\|POST /api/language` | 대시보드 표시 언어 쿠키 조회 및 설정 (`ko`, `en`, `ja`) |
 
 배포 기준은 다음과 같습니다.
 
@@ -127,7 +130,7 @@ cp apps/dashboard/.env.example apps/dashboard/.env.local
 - LLM 호출은 자체 `LLMRouter`가 Anthropic, Gemini, Groq provider를 preferred/fallback 방식으로 라우팅합니다.
 - Google Sheets는 MVP 영구 저장소로 사용하며 `Storage` Protocol을 통해 이후 SQLite/Postgres 전환 여지를 둡니다.
 - Telegram 발송은 429, timeout, network error에 대해 재시도하며, 구독자별 관심 규칙 기반 개인화를 지원합니다.
-- 로컬 기준 검증 결과: `pytest -q` 298 passed, `python scripts/smoke_pipeline.py` SMOKE OK.
+- 로컬 기준 검증 결과: `pytest -q` 329 passed, `python scripts/smoke_pipeline.py` SMOKE OK.
 
 ## 아키텍처
 
@@ -520,6 +523,8 @@ python scripts/run_bot.py
 | `/watchlist ETH BTC SOL` | 관심 코인 설정 |
 | `/pause` | 알림 일시중지 |
 | `/status` | 구독 상태 조회 |
+| `/language` | 현재 언어 조회 |
+| `/language ko\|en\|ja` | 브리핑 언어 설정 (한국어/영어/일본어) |
 
 주의: `run_bot.py`는 명령 처리용 long-polling 프로세스입니다. 일일 브리핑 발송은 Render pipeline의 `python -m src.main` 또는 선택적 GitHub Actions daily workflow에서 수행합니다.
 
@@ -698,8 +703,10 @@ src/
 │   ├── schema.py              # Sheets tab headers
 │   └── sheets_client.py       # Google Sheets implementation
 ├── distributor/
-│   ├── telegram_bot.py        # command handlers, send retry, personalization
+│   ├── telegram_bot.py        # command handlers, send retry, personalization, /language
 │   └── formatters.py
+├── i18n/
+│   └── languages.py           # Language dataclass, SUPPORTED_LANGUAGES (ko/en/ja)
 └── utils/
     ├── datetime_utils.py      # ISO 8601 parse_dt / parse_dt_strict 공용 유틸
     ├── errors.py
@@ -752,6 +759,31 @@ prompts/
 
 Telegram 발송 시 구독자별로 `list_user_interests(chat_id)`를 읽고, signal 목록을 개인화한 뒤 별도 메시지를 생성합니다. 개인화 결과가 비어 있으면 `"오늘은 관심 기준에 부합하는 시그널이 없습니다."`를 보냅니다.
 
+## 다국어 브리핑
+
+LLM 브리핑과 Telegram 메시지는 구독자별로 `ko`, `en`, `ja` 중 하나를 선택할 수 있습니다. 구현은 다음과 같이 분리되어 있습니다.
+
+| 모듈 | 역할 |
+|---|---|
+| `src/i18n/languages.py` | `Language` dataclass와 `SUPPORTED_LANGUAGES` 레지스트리 (`prompt_suffix`, `disclaimer` 포함) |
+| `src/storage/sheets_client.py` | `SUBSCRIBERS_HEADERS_EXT`로 `subscribers` 탭에 `language` 컬럼을 확장하고 upsert 시 기본값 `ko` 사용 |
+| `src/analyzer/*` | 프롬프트에 `prompt_suffix`를 합성해 선택 언어로 응답하도록 유도 |
+| `src/distributor/telegram_bot.py` | `/language` 명령으로 구독자 선호 언어를 조회/설정하고, 일일 브리핑 발송 시 해당 언어 템플릿을 사용 |
+
+`subscribers` 탭에 `language` 컬럼이 없는 기존 워크시트도 자동 확장 됩니다 (누락 컬럼은 `ko`로 기본 세팅). Bot 명령은 앞 절 `지원 명령` 표의 `/language` 항목을 참고하세요.
+
+## 대시보드 인터랙션
+
+대시보드는 Google Sheets 기반 읽기 전용이 기본이지만, 데모 편의를 위해 몇 가지 인터랙션을 in-memory 휘발성 상태로 지원합니다. 서버 재시작 시 상태는 초기화됩니다.
+
+| 컴포넌트 | 위치 | 엔드포인트 | 동작 |
+|---|---|---|---|
+| `SignalActionCard` | `apps/dashboard/components/signal-action-card.tsx` | `PATCH /api/signals/[id]` | 시그널 단위 acknowledge/dismiss 토글. 상태 머신(`idle → saving → acknowledged/dismissed/error`) 으로 double-fire 방지 |
+| `WatchlistEditor` | `apps/dashboard/components/watchlist-editor.tsx` | `GET\|PATCH /api/watchlist` | 감시 주소 enabled 토글. `useEffect` + `AbortController` + empty deps + optimistic update with revert-on-error |
+| `LanguageSelector` | `apps/dashboard/components/language-selector.tsx` | `GET\|POST /api/language` | 대시보드 언어(ko/en/ja) 쿠키 설정. `dashboard_lang` 쿠키에 1년 TTL로 저장 |
+
+모든 PATCH/POST 요청은 `requireDashboardAuth` + `rateLimit`을 통과해야 합니다. in-memory 저장소는 데모용이며 실제 영속화가 필요하면 Google Sheets 또는 별도 RDB로 교체할 수 있습니다.
+
 ## 테스트
 
 전체 테스트:
@@ -763,7 +795,7 @@ pytest -q
 현재 로컬 기준:
 
 ```text
-298 passed
+329 passed
 ```
 
 주요 targeted 테스트:
@@ -779,7 +811,7 @@ pytest tests/test_rules/test_rules.py -q
 
 - 테스트는 외부 API를 mock 처리합니다.
 - 실제 API 연결 검증은 `python scripts/test_connection.py`를 별도로 실행합니다.
-- `pytest-asyncio`가 필요하므로 `pip install -r requirements.txt`를 사용하세요.
+- `pytest-asyncio`가 필요하므로 `pip install -r requirements.txt` 또는 `pip install -e ".[dev]"`를 사용하세요. `pyproject.toml`에 동일한 의존성과 `pytest` 설정이 포함되어 있습니다.
 
 ## 운영 순서
 
