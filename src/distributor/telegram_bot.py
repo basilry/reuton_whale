@@ -67,6 +67,7 @@ class WhaleScopeBot:
         self,
         brief_text: str,
         signals: list[Signal] | None = None,
+        brief_texts: dict[str, str] | None = None,
     ) -> dict:
         if self._app is None:
             raise DistributorError("Bot not built. Call build() first.")
@@ -81,7 +82,9 @@ class WhaleScopeBot:
                 continue
 
             watchlist = sub.get("watchlist")
-            text = self._brief_for_subscriber(chat_id, brief_text, signals, watchlist)
+            text = self._brief_for_subscriber(
+                chat_id, brief_text, signals, watchlist, brief_texts,
+            )
 
             try:
                 await async_retry(
@@ -119,6 +122,7 @@ class WhaleScopeBot:
         brief_text: str,
         signals: list[Signal] | None,
         watchlist: list[str] | None,
+        brief_texts: dict[str, str] | None = None,
     ) -> str:
         base_brief = brief_text if not watchlist else self._filter_brief(brief_text, watchlist)
         if signals is None or self._personalize_fn is None:
@@ -131,7 +135,7 @@ class WhaleScopeBot:
                 base_brief,
                 "<i>추가로 관심 기준에 맞는 시그널은 없었습니다.</i>",
             ])
-        return self._append_personalized_signals(base_brief, personalized)
+        return self._append_personalized_signals(base_brief, personalized, brief_texts)
 
     def _load_signal_interests(self, chat_id: int) -> list[dict]:
         try:
@@ -154,22 +158,30 @@ class WhaleScopeBot:
         return interests
 
     def _append_personalized_signals(
-        self, base_brief: str, signals: list[Signal]
+        self,
+        base_brief: str,
+        signals: list[Signal],
+        brief_texts: dict[str, str] | None = None,
     ) -> str:
         return "\n\n".join([
             base_brief,
-            self._format_signal_brief(signals),
+            self._format_signal_brief(signals, brief_texts),
         ])
 
-    def _format_signal_brief(self, signals: list[Signal]) -> str:
+    def _format_signal_brief(
+        self,
+        signals: list[Signal],
+        brief_texts: dict[str, str] | None = None,
+    ) -> str:
         cards = ["<b>내 관심 항목</b>"]
         for sig in sorted(signals, key=lambda s: s.score, reverse=True):
+            summary = (brief_texts or {}).get(sig.signal_id, sig.summary)
             cards.append(
                 "\n".join([
                     f"<b>{sig.rule}</b>",
                     f"심각도: {sig.severity} / 신뢰도: {sig.confidence}",
                     f"점수: {sig.score}/10",
-                    sig.summary,
+                    summary,
                 ])
             )
         return "\n\n".join(cards)
