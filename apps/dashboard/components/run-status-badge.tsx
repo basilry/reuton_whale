@@ -1,3 +1,5 @@
+import styles from "./run-status-badge.module.css";
+
 type RunStatusBadgeProps = {
   status: string;
   compact?: boolean;
@@ -48,7 +50,12 @@ export function RunStatusBadge({ status, compact = false }: RunStatusBadgeProps)
   const tone = normalizeTone(status);
 
   return (
-    <span className={`run-status-badge run-status-badge--${tone} ${compact ? "run-status-badge--compact" : ""}`}>
+    <span
+      className={styles.badge}
+      data-tone={tone}
+      data-compact={compact ? "true" : undefined}
+    >
+      <span className={styles.dot} aria-hidden="true" />
       {compact ? labelForStatus(status) : `Run: ${labelForStatus(status)}`}
     </span>
   );

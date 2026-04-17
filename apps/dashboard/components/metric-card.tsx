@@ -1,3 +1,5 @@
+import styles from "./metric-card.module.css";
+
 type MetricCardAction = {
   label: string;
   onClick?: () => void;
@@ -14,17 +16,17 @@ type MetricCardProps = {
 
 export function MetricCard({ label, value, hint, tone = "neutral", actions }: MetricCardProps) {
   return (
-    <article className={`metric-card metric-card--${tone}`}>
-      <p className="metric-card__label">{label}</p>
-      <p className="metric-card__value">{value}</p>
-      <p className="metric-card__hint">{hint}</p>
+    <article className={styles.card} data-tone={tone}>
+      <p className={styles.label}>{label}</p>
+      <p className={styles.value}>{value}</p>
+      <p className={styles.hint}>{hint}</p>
       {actions && actions.length > 0 && (
-        <div className="metric-card__actions">
+        <div className={styles.actions}>
           {actions.map((action) =>
             action.href ? (
               <a
                 key={action.label}
-                className="metric-card__action-btn"
+                className={styles.actionBtn}
                 href={action.href}
               >
                 {action.label}
@@ -33,7 +35,7 @@ export function MetricCard({ label, value, hint, tone = "neutral", actions }: Me
               <button
                 key={action.label}
                 type="button"
-                className="metric-card__action-btn"
+                className={styles.actionBtn}
                 onClick={action.onClick}
               >
                 {action.label}

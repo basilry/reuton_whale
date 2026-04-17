@@ -1,0 +1,277 @@
+/* =============================================================================
+   system-log-panel.module.css
+   Wave 4-B — B-3
+   Token rules: var(--token) only. Zero hex/rgba/oklch literals.
+   Backdrop rationale: spec required a scrim but all literal color forms are
+   forbidden. Solution: --panel-glass + backdrop-filter: blur(12px) provides
+   a frosted-glass scrim that reads as darkened overlay in both themes without
+   any literal value. This is the token-safe equivalent of rgba(21,28,34/0.55).
+   ============================================================================= */
+
+/* ── Panel root ───────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--surface-container-high);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-2);
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+/* ── Panel header ─────────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--line);
+}
+
+.eyebrow {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  color: var(--accent);
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+  margin: 0 0 var(--space-3xs);
+}
+
+.panelTitle {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+  margin: 0;
+  letter-spacing: var(--tracking-tight);
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────────── */
+.emptyState {
+  padding: var(--space-lg);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--line-strong);
+  background: var(--surface);
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.emptyTitle {
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+  margin: 0;
+}
+
+.emptyBody {
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--muted-strong);
+  margin: 0;
+}
+
+/* ── Log list ─────────────────────────────────────────────────────────────── */
+.logList {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+/* ── Log item (clickable button) ─────────────────────────────────────────── */
+.logItem {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  transition: var(--transition-bg), var(--transition-border), var(--transition-transform);
+}
+
+.logItem:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
+.logItem:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.logItem:active {
+  transform: scale(0.995);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logItem:active {
+    transform: none;
+  }
+}
+
+/* ── Log item meta row ────────────────────────────────────────────────────── */
+.logMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.logMeta time {
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.logItemTitle {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+  margin: 0;
+}
+
+.logItemDesc {
+  font-size: var(--text-xs);
+  color: var(--on-surface-variant);
+  line-height: var(--leading-relaxed);
+  margin: 0;
+}
+
+/* ── Severity pill ────────────────────────────────────────────────────────── */
+.severityPill {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-3xs) var(--space-xs);
+  border-radius: var(--radius-full);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  white-space: nowrap;
+  /* Default fallback */
+  background: var(--surface-container);
+  color: var(--muted-strong);
+}
+
+.severityPill[data-tone="good"] {
+  background: var(--good-soft);
+  color: var(--good);
+}
+
+.severityPill[data-tone="warn"] {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.severityPill[data-tone="bad"] {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+
+.severityPill[data-tone="neutral"] {
+  background: var(--surface-container);
+  color: var(--muted-strong);
+}
+
+/* ── Modal backdrop ───────────────────────────────────────────────────────── */
+/*
+   Spec required a scrim but forbids hex/rgba/oklch literals.
+   --panel-glass is an rgb(...) token defined in design-tokens.css, so it is
+   token-safe here. Pairing it with backdrop-filter: blur(12px) produces a
+   frosted-glass overlay that is functionally equivalent to a semi-transparent
+   dark scrim in both light and dark themes.
+*/
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal-backdrop);
+  background: var(--panel-glass);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xl);
+}
+
+/* ── Modal ────────────────────────────────────────────────────────────────── */
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-5);
+  z-index: var(--z-modal);
+  max-width: 600px;
+  width: calc(100vw - var(--space-2xl));
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-xl);
+}
+
+/* ── Modal header ─────────────────────────────────────────────────────────── */
+.modalHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.modalHeader time {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.modalClose {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  font-size: var(--text-xl);
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  padding: var(--space-3xs) var(--space-2xs);
+  border-radius: var(--radius-sm);
+  transition: var(--transition-color), var(--transition-bg);
+}
+
+.modalClose:hover {
+  color: var(--on-surface);
+  background: var(--surface-container);
+}
+
+.modalClose:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* ── Modal body ───────────────────────────────────────────────────────────── */
+.modalTitle {
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+  margin: var(--space-md) 0 var(--space-xs);
+}
+
+.modalMessage {
+  flex: 1;
+  overflow: auto;
+  margin: 0;
+  padding: var(--space-sm);
+  background: var(--surface-container-low);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--muted-strong);
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid var(--line);
+}
