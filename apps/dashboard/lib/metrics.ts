@@ -494,3 +494,96 @@ export async function getSystemLogData(limit: number): Promise<{
     limit,
   };
 }
+
+// ---- Interactive dashboard state (in-memory, ephemeral) ----
+//
+// These stores back the Wave 2-E interaction APIs. They live in process
+// memory and reset on deploy — appropriate for the demo scope. A
+// production build would persist to Sheets or a DB from here.
+
+export type SignalActionRecord = {
+  signalId: string;
+  action: "acknowledge" | "dismiss";
+  recordedAt: string;
+};
+
+export type WatchlistEntry = {
+  address: string;
+  chain: string;
+  label: string;
+  enabled: boolean;
+};
+
+const signalActionStore = new Map<string, SignalActionRecord>();
+
+export function recordSignalAction(
+  signalId: string,
+  action: "acknowledge" | "dismiss",
+): SignalActionRecord {
+  const record: SignalActionRecord = {
+    signalId,
+    action,
+    recordedAt: new Date().toISOString(),
+  };
+  signalActionStore.set(signalId, record);
+  return record;
+}
+
+export function getSignalAction(signalId: string): SignalActionRecord | null {
+  return signalActionStore.get(signalId) ?? null;
+}
+
+export function listSignalActions(): SignalActionRecord[] {
+  return Array.from(signalActionStore.values());
+}
+
+// Seed watchlist — in production this would be loaded from the
+// `addresses` sheet. For the demo we keep a small hand-curated list.
+const watchlistSeed: WatchlistEntry[] = [
+  {
+    address: "0x28C6c06298d514Db089934071355E5743bf21d60",
+    chain: "ethereum",
+    label: "Binance 14",
+    enabled: true,
+  },
+  {
+    address: "0xDFd5293D8e347dFe59E90eFd55b2956a1343963d",
+    chain: "ethereum",
+    label: "Binance 16",
+    enabled: true,
+  },
+  {
+    address: "0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549",
+    chain: "ethereum",
+    label: "Binance 15",
+    enabled: false,
+  },
+  {
+    address: "bc1qm34lsc65zpw79lxes69zkqmk6ee3ewf0j77s3h",
+    chain: "bitcoin",
+    label: "Bitfinex cold wallet",
+    enabled: true,
+  },
+];
+
+const watchlistOverrides = new Map<string, boolean>();
+
+export function listWatchlistEntries(): WatchlistEntry[] {
+  return watchlistSeed.map((entry) => {
+    const override = watchlistOverrides.get(entry.address);
+    return override === undefined ? entry : { ...entry, enabled: override };
+  });
+}
+
+export function setWatchlistEntryEnabled(
+  address: string,
+  enabled: boolean,
+): WatchlistEntry | null {
+  const normalized = address.trim();
+  const entry = watchlistSeed.find((e) => e.address === normalized);
+  if (!entry) {
+    return null;
+  }
+  watchlistOverrides.set(normalized, enabled);
+  return { ...entry, enabled };
+}
