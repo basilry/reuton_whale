@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
 export type SystemLogRow = {
   id?: string;
   timestamp: string;
@@ -50,6 +54,17 @@ function EmptyState() {
 }
 
 export function SystemLogPanel({ rows }: SystemLogPanelProps) {
+  const [selected, setSelected] = useState<SystemLogRow | null>(null);
+
+  useEffect(() => {
+    if (!selected) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSelected(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selected]);
+
   return (
     <section className="panel panel--log">
       <div className="panel__header">
@@ -64,7 +79,12 @@ export function SystemLogPanel({ rows }: SystemLogPanelProps) {
       ) : (
         <div className="log-list">
           {rows.slice(0, 6).map((row, index) => (
-            <article key={row.id ?? `${row.timestamp}-${index}`} className="log-item">
+            <button
+              key={row.id ?? `${row.timestamp}-${index}`}
+              type="button"
+              className="log-item log-item--button"
+              onClick={() => setSelected(row)}
+            >
               <div className="log-item__meta">
                 <span className={`severity-pill severity-pill--${toneForStatus(row.status)}`}>
                   {row.status}
@@ -73,8 +93,38 @@ export function SystemLogPanel({ rows }: SystemLogPanelProps) {
               </div>
               <h3>{row.title}</h3>
               <p>{typeof row.message === "string" ? row.message : "상세 로그 확인 필요"}</p>
-            </article>
+            </button>
           ))}
+        </div>
+      )}
+
+      {selected && (
+        <div
+          className="log-modal__backdrop"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setSelected(null)}
+        >
+          <div className="log-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="log-modal__header">
+              <span className={`severity-pill severity-pill--${toneForStatus(selected.status)}`}>
+                {selected.status}
+              </span>
+              <time dateTime={selected.timestamp}>{formatTime(selected.timestamp)}</time>
+              <button
+                type="button"
+                className="log-modal__close"
+                onClick={() => setSelected(null)}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <h3 className="log-modal__title">{selected.title}</h3>
+            <pre className="log-modal__message">
+              {typeof selected.message === "string" ? selected.message : "상세 로그 확인 필요"}
+            </pre>
+          </div>
         </div>
       )}
     </section>
