@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -10,22 +11,46 @@ from uuid import uuid4
 import yaml
 
 from src.analyzer.claude_analyzer import LLMAnalyzer
+from src.analyzer.price_service import PriceService
 from src.analyzer.scoring import TransactionScorer
 from src.collectors.coingecko import CoinGeckoEnricher
 from src.config import load_config
 from src.distributor.telegram_bot import WhaleScopeBot
 from src.ingestion.etherscan import EtherscanCollector
 from src.ingestion.solscan import SolscanCollector
+from src.ingestion.tg_normalizer import (
+    TG_CHAIN_MAP as _TG_CHAIN_MAP,
+    normalize_tg_chain,
+    tg_direction,
+    tg_owner_label,
+    tg_row_to_event,
+)
 from src.llm.anthropic_provider import AnthropicProvider
 from src.llm.router import LLMRouter
 from src.signals.baseline import build_chain_baselines
 from src.signals.engine import SignalEngine
+from src.signals.formatters import (
+    event_within_signal_window,
+    signal_to_sheet_dict,
+    signal_to_top_item,
+    signals_to_top5,
+)
 from src.signals.models import Event, Signal
 from src.storage.queries import now_iso
 from src.storage.sheets_client import SheetsClient
+from src.utils.datetime_utils import parse_dt
 from src.utils.logger import get_logger
+from src.utils.number_utils import safe_float
 
-from src.analyzer.price_service import PriceService
+# Backward-compat aliases (kept for existing tests that import from src.main)
+_normalize_tg_chain = normalize_tg_chain
+_tg_owner_label = tg_owner_label
+_tg_direction = tg_direction
+_tg_row_to_event = tg_row_to_event
+_event_within_signal_window = event_within_signal_window
+_signal_to_top_item = signal_to_top_item
+_signals_to_top5 = signals_to_top5
+_signal_to_sheet_dict = signal_to_sheet_dict
 
 # Alias so existing tests can patch src.main.ClaudeAnalyzer
 ClaudeAnalyzer = LLMAnalyzer
@@ -36,21 +61,6 @@ _EVM_CHAINS = ("ETH", "ARB", "BASE", "BSC", "POLYGON")
 
 _CONFIG_DIR = Path(__file__).parent.parent / "config"
 _FIXTURES_PATH = Path(__file__).parent.parent / "tests" / "fixtures" / "sample_events.json"
-_TG_CHAIN_MAP = {
-    "bitcoin": "BTC",
-    "btc": "BTC",
-    "ethereum": "ETH",
-    "eth": "ETH",
-    "bsc": "BSC",
-    "bnb": "BSC",
-    "binance smart chain": "BSC",
-    "polygon": "POLYGON",
-    "matic": "POLYGON",
-    "solana": "SOL",
-    "sol": "SOL",
-    "tron": "TRX",
-    "trx": "TRX",
-}
 
 
 # ---------------------------------------------------------------------------
@@ -107,85 +117,6 @@ def _event_to_dict(e: Event) -> dict:
     }
 
 
-import logging
-
-from src.utils.datetime_utils import parse_dt
-from src.utils.number_utils import safe_float
-
-
-def _normalize_tg_chain(value: object) -> str:
-    raw = str(value or "unknown").strip().lower()
-    if not raw:
-        return "unknown"
-    if raw == "unknown":
-        return "unknown"
-    return _TG_CHAIN_MAP.get(raw, raw.upper())
-
-
-def _tg_owner_label(value: object, fallback: str = "unknown") -> str:
-    text = str(value or "").strip()
-    if not text:
-        return fallback
-    return text.lstrip("#")
-
-
-def _tg_direction(from_owner_type: str, to_owner_type: str) -> tuple[str, str | None]:
-    from_type = from_owner_type.lower()
-    to_type = to_owner_type.lower()
-    if from_type == "exchange" and to_type == "exchange":
-        # Exchange-to-exchange moves are distinct from regular CEX outflows;
-        # surface the "cex_to_cex" category so downstream rules can treat them
-        # as venue-rebalance noise rather than genuine whale positioning.
-        return "out", "cex_to_cex"
-    if to_type == "exchange" and from_type != "exchange":
-        return "in", "cex"
-    if from_type == "exchange":
-        return "out", None
-    # Wallet-to-wallet / unknown fallback: TG events have no watched_address,
-    # so in/out is a convention. We default to "out" to keep the Event
-    # direction typing (Literal["in","out"]) consistent; counterparty_category
-    # stays None so signal rules can filter these as uncategorized transfers.
-    return "out", None
-
-
-def _tg_row_to_event(row: dict) -> Event:
-    block_time = parse_dt(row.get("tg_date")) or parse_dt(row.get("collected_at")) or datetime.now(timezone.utc)
-    collected_at = parse_dt(row.get("collected_at")) or block_time
-    from_owner = _tg_owner_label(row.get("from_owner"))
-    to_owner = _tg_owner_label(row.get("to_owner"))
-    from_owner_type = str(row.get("from_owner_type") or "unknown").strip().lower() or "unknown"
-    to_owner_type = str(row.get("to_owner_type") or "unknown").strip().lower() or "unknown"
-    direction, counterparty_category = _tg_direction(from_owner_type, to_owner_type)
-
-    return Event(
-        source="tg",
-        chain=_normalize_tg_chain(row.get("blockchain")),
-        tx_hash=None,
-        watched_address=None,
-        from_addr=from_owner or from_owner_type or "unknown",
-        to_addr=to_owner or to_owner_type or "unknown",
-        direction=direction,
-        token=str(row.get("symbol") or "UNKNOWN").upper(),
-        amount_token=safe_float(
-            row.get("amount"),
-            strip_commas=True,
-            field_name="amount",
-            log_level=logging.WARNING,
-            logger=logger,
-        ),
-        amount_usd=safe_float(
-            row.get("amount_usd"),
-            strip_commas=True,
-            field_name="amount_usd",
-            log_level=logging.WARNING,
-            logger=logger,
-        ),
-        counterparty_category=counterparty_category,
-        block_time=block_time,
-        collected_at=collected_at,
-    )
-
-
 def _event_to_address_activity(e: Event) -> dict:
     counterparty = e.to_addr if e.direction == "out" else e.from_addr
     return {
@@ -200,112 +131,6 @@ def _event_to_address_activity(e: Event) -> dict:
         "amount_token": e.amount_token,
         "amount_usd": e.amount_usd,
         "collected_at": e.collected_at.isoformat(),
-    }
-
-
-def _event_within_signal_window(event: Event, signal: Signal) -> bool:
-    return (
-        signal.window_start <= event.block_time <= signal.window_end
-        or signal.window_start <= event.collected_at <= signal.window_end
-    )
-
-
-def _signal_to_top_item(signal: Signal, events: list[Event]) -> dict:
-    events_by_hash = {e.tx_hash: e for e in events if e.tx_hash}
-    evidence_events = [
-        events_by_hash[h]
-        for h in signal.evidence_tx_hashes
-        if h in events_by_hash
-    ]
-    fallback_events = [
-        e for e in events
-        if _event_within_signal_window(e, signal)
-        and (
-            signal.source == "both"
-            or e.source == signal.source
-            or (signal.source == "chain" and e.source == "chain")
-            or (signal.source == "tg" and e.source == "tg")
-        )
-    ]
-    candidate_events = evidence_events or fallback_events
-
-    seen: set[tuple[str, str, str, str]] = set()
-    deduped_events: list[Event] = []
-    for event in candidate_events:
-        key = (
-            event.tx_hash or "",
-            event.source,
-            event.block_time.isoformat(),
-            event.collected_at.isoformat(),
-        )
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped_events.append(event)
-
-    first_event = deduped_events[0] if deduped_events else None
-    amount_usd: float | None = sum(e.amount_usd for e in deduped_events) or None
-    if amount_usd is None:
-        raw_amount = (
-            signal.extra.get("amount_usd")
-            or signal.extra.get("total_usd")
-            or signal.extra.get("notional_usd")
-        )
-        amount_usd = float(raw_amount) if raw_amount not in (None, "") else None
-
-    symbol = ""
-    if first_event and first_event.token:
-        symbol = first_event.token
-    else:
-        symbol = (
-            str(signal.extra.get("token") or signal.extra.get("symbol") or "")
-            or signal.source.upper()
-            or signal.rule
-        )
-
-    hash_value = next((h for h in signal.evidence_tx_hashes if h), "")
-    if not hash_value and first_event and first_event.tx_hash:
-        hash_value = first_event.tx_hash
-
-    return {
-        "hash": hash_value,
-        "symbol": symbol,
-        "amount_usd": amount_usd,
-        "amount_usd_known": amount_usd is not None,
-        "importance_score": signal.score,
-        "interpretation": signal.summary,
-        "type": signal.rule,
-        "signal_id": signal.signal_id,
-        "rule": signal.rule,
-        "severity": signal.severity,
-        "source": signal.source,
-        "confidence": signal.confidence,
-        "evidence_count": len(signal.evidence_tx_hashes),
-        "window_start": signal.window_start.isoformat(),
-        "window_end": signal.window_end.isoformat(),
-        "summary": signal.summary,
-    }
-
-
-def _signals_to_top5(signals: list[Signal], events: list[Event]) -> list[dict]:
-    valid = [sig for sig in signals if sig.score > 0]
-    top_signals = sorted(valid, key=lambda sig: sig.score, reverse=True)[:5]
-    return [_signal_to_top_item(sig, events) for sig in top_signals]
-
-
-def _signal_to_sheet_dict(signal: Signal) -> dict:
-    return {
-        "signal_id": signal.signal_id,
-        "rule": signal.rule,
-        "severity": signal.severity,
-        "score": signal.score,
-        "confidence": signal.confidence,
-        "source": signal.source,
-        "evidence_tx_hashes": signal.evidence_tx_hashes,
-        "window_start": signal.window_start.isoformat(),
-        "window_end": signal.window_end.isoformat(),
-        "summary": signal.summary,
-        "extra": signal.extra,
     }
 
 
@@ -411,7 +236,7 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
             try:
                 tg_rows = sheets.list_tg_whale_events(since=since_dt)
                 if isinstance(tg_rows, list) and tg_rows:
-                    tg_events = [_tg_row_to_event(row) for row in tg_rows if isinstance(row, dict)]
+                    tg_events = [tg_row_to_event(row) for row in tg_rows if isinstance(row, dict)]
                     raw_events.extend(tg_events)
                     logger.info("[%s] Loaded %d tg events from Sheets", run_id, len(tg_events))
             except Exception as e:
@@ -508,7 +333,7 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
             run_id,
             len(signals),
         )
-        top5 = _signals_to_top5(signals, raw_events)
+        top5 = signals_to_top5(signals, raw_events)
         logger.info("[%s] Selected top %d signals", run_id, len(top5))
     else:
         logger.info(
@@ -570,7 +395,7 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
         try:
             stored_signals = 0
             for signal in signals:
-                sheets.append_signal(_signal_to_sheet_dict(signal))
+                sheets.append_signal(signal_to_sheet_dict(signal))
                 stored_signals += 1
             logger.info("[%s] Stored %d signals", run_id, stored_signals)
         except Exception as e:
