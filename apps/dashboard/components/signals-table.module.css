@@ -1,0 +1,280 @@
+/* =============================================================================
+   signals-table.module.css — Signals table with dual desktop/mobile view
+   -------------------------------------------------------------------------
+   Layer 3 (Craft). Tokens only — no hex / rgba / oklch literals.
+   Pattern reference: preview.module.css §10 severity-pill via data-tone
+   ========================================================================== */
+
+/* ── Root panel ─────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--panel-glass);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  box-shadow: var(--elev-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+/* ── Panel header ───────────────────────────────────────────────────────── */
+.panelHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--line);
+}
+
+.panelEyebrow {
+  margin: 0 0 var(--space-2xs);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  color: var(--accent);
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+.emptyState {
+  padding: var(--space-lg);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--line-strong);
+  background: var(--surface);
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.emptyStateTitle {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+}
+
+.emptyStateBody {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--on-surface-variant);
+  line-height: var(--leading-relaxed);
+}
+
+/* ── Table shell — horizontal scroll wrapper ─────────────────────────────── */
+.tableShell {
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+}
+
+/* ── Data table ─────────────────────────────────────────────────────────── */
+.dataTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  color: var(--on-surface);
+}
+
+/* Table header */
+.dataTable thead tr {
+  background: var(--surface-container);
+}
+
+.dataTable thead th {
+  padding: var(--space-xs) var(--space-sm);
+  text-align: left;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+/* Table body */
+.dataTable tbody tr {
+  border-bottom: 1px solid var(--line);
+  transition: var(--transition-bg);
+}
+
+.dataTable tbody tr:last-child {
+  border-bottom: 0;
+}
+
+.dataTable tbody tr:hover {
+  background: var(--surface-container-low);
+}
+
+.dataTable tbody td {
+  padding: var(--space-xs) var(--space-sm);
+  vertical-align: top;
+  line-height: var(--leading-relaxed);
+}
+
+/* Numeric / Score column — tabular-nums */
+.dataTable tbody td.scoreCell {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+}
+
+/* ── Severity pill ───────────────────────────────────────────────────────── */
+.severityPill {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-3xs) var(--space-xs);
+  border-radius: var(--radius-full);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.severityPill[data-tone="good"] {
+  background: var(--signal-good-bg);
+  color: var(--signal-good-fg);
+  border-color: var(--signal-good-border);
+}
+
+.severityPill[data-tone="warn"] {
+  background: var(--signal-warn-bg);
+  color: var(--signal-warn-fg);
+  border-color: var(--signal-warn-border);
+}
+
+.severityPill[data-tone="bad"] {
+  background: var(--signal-bad-bg);
+  color: var(--signal-bad-fg);
+  border-color: var(--signal-bad-border);
+}
+
+.severityPill[data-tone="neutral"],
+.severityPill:not([data-tone="good"]):not([data-tone="warn"]):not([data-tone="bad"]) {
+  background: var(--signal-neutral-bg);
+  color: var(--signal-neutral-fg);
+  border-color: var(--signal-neutral-border);
+}
+
+/* ── Signal summary cell ─────────────────────────────────────────────────── */
+.signalSummary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+
+.signalSummary p {
+  margin: 0;
+  line-height: var(--leading-relaxed);
+}
+
+.signalSummaryMeta {
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+/* ── Mobile card list (hidden on desktop) ────────────────────────────────── */
+.cardList {
+  display: none;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.stackCard {
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-low);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  transition: var(--transition-bg);
+}
+
+.stackCard:hover {
+  background: var(--surface-container);
+}
+
+.stackCardTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-sm);
+}
+
+.stackCardLabel {
+  margin: 0 0 var(--space-3xs);
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.stackCardTop h3 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+  line-height: var(--leading-snug);
+}
+
+.stackCardSummary {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--on-surface-variant);
+  line-height: var(--leading-relaxed);
+}
+
+/* DL grid inside mobile card */
+.stackCardGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xs);
+  font-size: var(--text-xs);
+}
+
+.stackCardGrid div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+}
+
+.stackCardGrid dt {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+.stackCardGrid dd {
+  margin: 0;
+  font-weight: var(--weight-medium);
+  color: var(--on-surface);
+}
+
+.stackCardWide {
+  grid-column: 1 / -1;
+}
+
+/* Mono text (evidence hashes) */
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--muted-strong);
+  word-break: break-all;
+}
+
+/* ── Responsive: switch to card list on mobile ───────────────────────────── */
+@media (max-width: 768px) {
+  .tableShell {
+    display: none;
+  }
+
+  .cardList {
+    display: flex;
+  }
+}

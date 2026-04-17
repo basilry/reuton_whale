@@ -1,3 +1,5 @@
+import styles from "./signals-table.module.css";
+
 export type SignalRow = {
   id: string;
   createdAt: string;
@@ -31,9 +33,9 @@ function toneForSeverity(severity: string) {
 
 function EmptyState() {
   return (
-    <div className="empty-state empty-state--rail">
-      <p className="empty-state__title">Signals are empty.</p>
-      <p className="empty-state__body">
+    <div className={styles.emptyState}>
+      <p className={styles.emptyStateTitle}>Signals are empty.</p>
+      <p className={styles.emptyStateBody}>
         LLM 브리프 이전의 규칙 기반 시그널이 아직 생성되지 않았습니다.
       </p>
     </div>
@@ -42,10 +44,10 @@ function EmptyState() {
 
 export function SignalsTable({ rows }: SignalsTableProps) {
   return (
-    <section className="panel">
-      <div className="panel__header">
+    <section className={styles.panel}>
+      <div className={styles.panelHeader}>
         <div>
-          <p className="panel__eyebrow">Signals</p>
+          <p className={styles.panelEyebrow}>Signals</p>
           <h2>Rule outputs</h2>
         </div>
       </div>
@@ -54,8 +56,8 @@ export function SignalsTable({ rows }: SignalsTableProps) {
         <EmptyState />
       ) : (
         <>
-          <div className="table-shell">
-            <table className="data-table data-table--signals">
+          <div className={styles.tableShell}>
+            <table className={styles.dataTable}>
               <thead>
                 <tr>
                   <th>Created</th>
@@ -74,17 +76,20 @@ export function SignalsTable({ rows }: SignalsTableProps) {
                       <strong>{row.rule}</strong>
                     </td>
                     <td data-label="Severity">
-                      <span className={`severity-pill severity-pill--${toneForSeverity(row.severity)}`}>
+                      <span
+                        className={styles.severityPill}
+                        data-tone={toneForSeverity(row.severity)}
+                      >
                         {row.severity}
                       </span>
                     </td>
-                    <td data-label="Score">{row.score.toFixed(1)}</td>
+                    <td data-label="Score" className={styles.scoreCell}>{row.score.toFixed(1)}</td>
                     <td data-label="Source">{row.source}</td>
                     <td data-label="Summary">
-                      <div className="signal-summary">
+                      <div className={styles.signalSummary}>
                         <p>{row.summary}</p>
                         {row.evidenceTxHashes.length > 0 ? (
-                          <span className="signal-summary__meta">
+                          <span className={styles.signalSummaryMeta}>
                             Evidence: {row.evidenceTxHashes.slice(0, 2).join(", ")}
                             {row.evidenceTxHashes.length > 2 ? "..." : ""}
                           </span>
@@ -97,20 +102,23 @@ export function SignalsTable({ rows }: SignalsTableProps) {
             </table>
           </div>
 
-          <div className="card-list">
+          <div className={styles.cardList}>
             {rows.map((row) => (
-              <article key={`${row.id}-mobile`} className="stack-card stack-card--signal">
-                <div className="stack-card__top">
+              <article key={`${row.id}-mobile`} className={styles.stackCard}>
+                <div className={styles.stackCardTop}>
                   <div>
-                    <p className="stack-card__label">{row.createdAt || "Unknown"}</p>
+                    <p className={styles.stackCardLabel}>{row.createdAt || "Unknown"}</p>
                     <h3>{row.rule}</h3>
                   </div>
-                  <span className={`severity-pill severity-pill--${toneForSeverity(row.severity)}`}>
+                  <span
+                    className={styles.severityPill}
+                    data-tone={toneForSeverity(row.severity)}
+                  >
                     {row.severity}
                   </span>
                 </div>
-                <p className="stack-card__summary">{row.summary}</p>
-                <dl className="stack-card__grid">
+                <p className={styles.stackCardSummary}>{row.summary}</p>
+                <dl className={styles.stackCardGrid}>
                   <div>
                     <dt>Score</dt>
                     <dd>{row.score.toFixed(1)}</dd>
@@ -119,9 +127,9 @@ export function SignalsTable({ rows }: SignalsTableProps) {
                     <dt>Source</dt>
                     <dd>{row.source}</dd>
                   </div>
-                  <div className="stack-card__wide">
+                  <div className={styles.stackCardWide}>
                     <dt>Evidence</dt>
-                    <dd className="mono">
+                    <dd className={styles.mono}>
                       {row.evidenceTxHashes.length > 0 ? row.evidenceTxHashes.join(", ") : "No evidence hashes"}
                     </dd>
                   </div>

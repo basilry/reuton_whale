@@ -1,4 +1,5 @@
 import { RunStatusBadge } from "@/components/run-status-badge";
+import styles from "./brief-panel.module.css";
 
 type BriefPanelProps = {
   brief: {
@@ -61,9 +62,9 @@ function EmptyBrief({
   body: string;
 }) {
   return (
-    <div className="empty-state">
-      <p className="empty-state__title">{title}</p>
-      <p className="empty-state__body">{body}</p>
+    <div className={styles.emptyState}>
+      <p className={styles.emptyStateTitle}>{title}</p>
+      <p className={styles.emptyStateBody}>{body}</p>
     </div>
   );
 }
@@ -74,42 +75,42 @@ export function BriefPanel({ brief, latestRun, sourceState }: BriefPanelProps) {
   const topTransactions = brief.topTransactions ?? [];
 
   return (
-    <section className="panel brief-panel">
-      <div className="panel__header">
+    <section className={styles.panel}>
+      <div className={styles.panelHeader}>
         <div>
-          <p className="panel__eyebrow">Daily brief</p>
+          <p className={styles.panelEyebrow}>Daily brief</p>
           <h2>Latest curated brief</h2>
         </div>
         <RunStatusBadge status={latestRun.status} />
       </div>
 
-      <div className="brief-panel__summary">
-        <p className="brief-panel__summary-copy">{brief.summary}</p>
-        <div className="brief-panel__stats">
-          <div className="stat-block">
-            <span className="stat-block__label">Brief date</span>
-            <strong className="stat-block__value">{brief.date || "Not generated yet"}</strong>
+      <div className={styles.summary}>
+        <p className={styles.summaryCopy}>{brief.summary}</p>
+        <div className={styles.stats}>
+          <div className={styles.statBlock}>
+            <span className={styles.statBlockLabel}>Brief date</span>
+            <strong className={styles.statBlockValue}>{brief.date || "Not generated yet"}</strong>
           </div>
-          <div className="stat-block">
-            <span className="stat-block__label">Generated at</span>
-            <strong className="stat-block__value">{formatCaption(brief.generatedAt)}</strong>
+          <div className={styles.statBlock}>
+            <span className={styles.statBlockLabel}>Generated at</span>
+            <strong className={styles.statBlockValue}>{formatCaption(brief.generatedAt)}</strong>
           </div>
-          <div className="stat-block">
-            <span className="stat-block__label">Alert count</span>
-            <strong className="stat-block__value">{brief.alertCount ?? 0}</strong>
+          <div className={styles.statBlock}>
+            <span className={styles.statBlockLabel}>Alert count</span>
+            <strong className={styles.statBlockValue}>{brief.alertCount ?? 0}</strong>
           </div>
-          <div className="stat-block">
-            <span className="stat-block__label">Volume</span>
-            <strong className="stat-block__value">{formatUsd(brief.totalVolumeUsd)}</strong>
+          <div className={styles.statBlock}>
+            <span className={styles.statBlockLabel}>Volume</span>
+            <strong className={styles.statBlockValue}>{formatUsd(brief.totalVolumeUsd)}</strong>
           </div>
         </div>
       </div>
 
-      <div className="brief-panel__bands">
-        <div className="brief-panel__band">
-          <p className="brief-panel__band-label">Highlights</p>
+      <div className={styles.bands}>
+        <div className={styles.band}>
+          <p className={styles.bandLabel}>Highlights</p>
           {highlights.length > 0 ? (
-            <ul className="bullet-list">
+            <ul className={styles.bulletList}>
               {highlights.map((item) => (
                 <li key={item}>{item}</li>
               ))}
@@ -122,12 +123,12 @@ export function BriefPanel({ brief, latestRun, sourceState }: BriefPanelProps) {
           )}
         </div>
 
-        <div className="brief-panel__band">
-          <p className="brief-panel__band-label">Signal themes</p>
+        <div className={styles.band}>
+          <p className={styles.bandLabel}>Signal themes</p>
           {themes.length > 0 ? (
-            <div className="tag-cloud">
+            <div className={styles.tagCloud}>
               {themes.map((item) => (
-                <span key={item} className="tag-cloud__item">
+                <span key={item} className={styles.tagCloudItem}>
                   {item}
                 </span>
               ))}
@@ -141,16 +142,16 @@ export function BriefPanel({ brief, latestRun, sourceState }: BriefPanelProps) {
         </div>
       </div>
 
-      <div className="brief-panel__foot">
+      <div className={styles.foot}>
         <div>
-          <p className="brief-panel__foot-label">Top transactions</p>
+          <p className={styles.footLabel}>Top transactions</p>
           {topTransactions.length > 0 ? (
-            <div className="brief-panel__mini-grid">
+            <div className={styles.miniGrid}>
               {topTransactions.slice(0, 3).map((item) => (
-                <article key={`${item.symbol}-${item.chain}-${item.amountUsd}`} className="mini-card">
-                  <span className="mini-card__eyebrow">{item.chain}</span>
-                  <strong className="mini-card__title">{item.symbol}</strong>
-                  <span className="mini-card__value">{formatUsd(item.amountUsd)}</span>
+                <article key={`${item.symbol}-${item.chain}-${item.amountUsd}`} className={styles.miniCard}>
+                  <span className={styles.miniCardEyebrow}>{item.chain}</span>
+                  <strong className={styles.miniCardTitle}>{item.symbol}</strong>
+                  <span className={styles.miniCardValue}>{formatUsd(item.amountUsd)}</span>
                 </article>
               ))}
             </div>
@@ -162,8 +163,8 @@ export function BriefPanel({ brief, latestRun, sourceState }: BriefPanelProps) {
           )}
         </div>
 
-        <div className="brief-panel__source">
-          <span className={`source-pill source-pill--${sourceState}`}>
+        <div className={styles.source}>
+          <span className={sourceState === "connected" ? styles.sourcePill : styles.sourcePillFallback}>
             {sourceState === "connected" ? "Live Sheets data" : "Preview data"}
           </span>
           <p>{latestRun.message}</p>

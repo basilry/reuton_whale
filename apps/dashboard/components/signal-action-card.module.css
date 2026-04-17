@@ -1,0 +1,229 @@
+/* =============================================================================
+   signal-action-card.module.css — Signal action card (per-tone via data-tone)
+   -------------------------------------------------------------------------
+   Layer 3 (Craft). Tokens only — no hex / rgba / oklch literals.
+   Pattern reference: preview.module.css §10 .signalCard[data-tone="..."]
+   Tone conveyed via bg + border + accent; no side stripes.
+   ========================================================================== */
+
+/* ── Root card ──────────────────────────────────────────────────────────── */
+.card {
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  position: relative;
+  transition: var(--transition-bg), var(--transition-border);
+}
+
+/* 4-tone data-attribute backgrounds + borders */
+.card[data-tone="good"] {
+  background: var(--signal-good-bg);
+  border-color: var(--signal-good-border);
+}
+
+.card[data-tone="warn"] {
+  background: var(--signal-warn-bg);
+  border-color: var(--signal-warn-border);
+}
+
+.card[data-tone="bad"] {
+  background: var(--signal-bad-bg);
+  border-color: var(--signal-bad-border);
+}
+
+.card[data-tone="neutral"],
+.card:not([data-tone="good"]):not([data-tone="warn"]):not([data-tone="bad"]) {
+  background: var(--signal-neutral-bg);
+  border-color: var(--signal-neutral-border);
+}
+
+/* Hover lift */
+.card:hover {
+  transform: translateY(-2px);
+}
+
+/* disabled state */
+.card[data-status="acknowledged"],
+.card[data-status="saving"] {
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+/* ── Top row (dot + severity + time) ────────────────────────────────────── */
+.topRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.severityDot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+}
+
+/* Status dot */
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.card[data-tone="good"] .dot   { background: var(--signal-good-fg); }
+.card[data-tone="warn"] .dot   { background: var(--signal-warn-fg); }
+.card[data-tone="bad"]  .dot   { background: var(--signal-bad-fg); animation: pulseDot 2s ease-in-out infinite; }
+.card[data-tone="neutral"] .dot,
+.card:not([data-tone="good"]):not([data-tone="warn"]):not([data-tone="bad"]) .dot {
+  background: var(--signal-neutral-fg);
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* Severity label */
+.severityLabel {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+}
+
+.card[data-tone="good"] .severityLabel   { color: var(--signal-good-fg); }
+.card[data-tone="warn"] .severityLabel   { color: var(--signal-warn-fg); }
+.card[data-tone="bad"]  .severityLabel   { color: var(--signal-bad-fg); }
+.card[data-tone="neutral"] .severityLabel,
+.card:not([data-tone="good"]):not([data-tone="warn"]):not([data-tone="bad"]) .severityLabel {
+  color: var(--signal-neutral-fg);
+}
+
+/* Time chip */
+.time {
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  background: var(--surface-container-low);
+  padding: var(--space-3xs) var(--space-xs);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+}
+
+/* ── Title ──────────────────────────────────────────────────────────────── */
+.title {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+  line-height: var(--leading-snug);
+}
+
+/* ── Description ─────────────────────────────────────────────────────────── */
+.desc {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--on-surface-variant);
+}
+
+/* ── Meta row ────────────────────────────────────────────────────────────── */
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+/* Action badge (acknowledged / error) */
+.actionBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-3xs) var(--space-xs);
+  border-radius: var(--radius-full);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  background: var(--signal-good-bg);
+  color: var(--signal-good-fg);
+  border: 1px solid var(--signal-good-border);
+}
+
+.card[data-status="error"] .actionBadge {
+  background: var(--signal-bad-bg);
+  color: var(--signal-bad-fg);
+  border-color: var(--signal-bad-border);
+}
+
+/* ── Actions row ─────────────────────────────────────────────────────────── */
+.actions {
+  display: flex;
+  gap: var(--space-xs);
+  margin-top: var(--space-2xs);
+}
+
+/* Base button styles */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xs) var(--space-sm);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: var(--transition-bg), var(--transition-color), var(--transition-transform);
+}
+
+.btn:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Primary button */
+.btnPrimary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background: var(--accent-dark);
+}
+
+/* Secondary button */
+.btnSecondary {
+  background: var(--surface-container);
+  color: var(--on-surface);
+  border-color: var(--line);
+}
+
+.btnSecondary:hover:not(:disabled) {
+  background: var(--surface-container-high);
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .card:hover {
+    transform: none;
+  }
+
+  .dot {
+    animation: none !important;
+  }
+}

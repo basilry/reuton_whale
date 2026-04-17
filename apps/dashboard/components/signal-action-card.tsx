@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import styles from "./signal-action-card.module.css";
 
 // Status kept in-component (ephemeral). The PATCH response body is
 // ignored beyond its `ok` flag — the API is non-persistent by design for this
@@ -53,28 +54,38 @@ export function SignalActionCard(props: SignalActionCardProps) {
         ? "처리 실패"
         : null;
 
+  const validTones = ["good", "warn", "bad", "neutral"] as const;
+  const tone = validTones.includes(props.tone as (typeof validTones)[number])
+    ? props.tone
+    : "neutral";
+
   return (
-    <div className={`signal-item signal-item--${props.tone}`} data-signal-id={props.signalId}>
-      <div className="signal-item__top-row">
-        <div className="signal-item__severity-dot">
-          <span className={`signal-item__dot signal-item__dot--${props.tone}`} />
-          <span className={`signal-item__severity-label signal-item__severity-label--${props.tone}`}>
+    <div
+      className={styles.card}
+      data-tone={tone}
+      data-status={status}
+      data-signal-id={props.signalId}
+    >
+      <div className={styles.topRow}>
+        <div className={styles.severityDot}>
+          <span className={styles.dot} />
+          <span className={styles.severityLabel}>
             {props.severityLabel}
           </span>
         </div>
-        <span className="signal-item__time">{props.timeLabel}</span>
+        <span className={styles.time}>{props.timeLabel}</span>
       </div>
-      <h4 className="signal-item__title">{props.title}</h4>
-      <p className="signal-item__desc">{props.summary}</p>
-      <div className="signal-item__meta">
+      <h4 className={styles.title}>{props.title}</h4>
+      <p className={styles.desc}>{props.summary}</p>
+      <div className={styles.meta}>
         <span>Score {props.score}</span>
         <span>{props.confidenceLabel}</span>
-        {badgeText ? <span className="signal-item__action-badge">{badgeText}</span> : null}
+        {badgeText ? <span className={styles.actionBadge}>{badgeText}</span> : null}
       </div>
-      <div className="signal-item__actions">
+      <div className={styles.actions}>
         <button
           type="button"
-          className="signal-item__btn signal-item__btn--primary"
+          className={`${styles.btn} ${styles.btnPrimary}`}
           onClick={() => applyAction("acknowledge")}
           disabled={status === "saving" || status === "acknowledged"}
         >
@@ -82,7 +93,7 @@ export function SignalActionCard(props: SignalActionCardProps) {
         </button>
         <button
           type="button"
-          className="signal-item__btn signal-item__btn--secondary"
+          className={`${styles.btn} ${styles.btnSecondary}`}
           onClick={() => applyAction("dismiss")}
           disabled={status === "saving"}
         >
