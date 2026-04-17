@@ -1,0 +1,155 @@
+/* =============================================================================
+   InsightsSidebar — sticky vertical sidebar for insights persona
+   Mobile: transforms into horizontal top tab bar above content
+   Rule: tokens only, no hex / rgb / rgba / oklch literals
+   ========================================================================== */
+
+/* ── Desktop: vertical sticky sidebar (≥769px) ── */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  background: var(--surface-container-low);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  min-width: 220px;
+  width: 220px;
+  flex-shrink: 0;
+  position: sticky;
+  top: calc(var(--inset-navbar) + var(--space-sm));
+  height: fit-content;
+}
+
+/* ── Brand header ── */
+.brandBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-display);
+  margin-bottom: var(--space-xs);
+}
+
+.brandTitle {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+  letter-spacing: var(--tracking-tight);
+}
+
+.brandSubtitle {
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+}
+
+/* ── Nav ── */
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+}
+
+/* ── Link ── */
+.link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--muted-strong);
+  transition: var(--transition-bg), var(--transition-color);
+}
+
+.link:hover {
+  background: var(--surface-container);
+  color: var(--accent);
+}
+
+.link:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 var(--focus-ring-offset) var(--surface-container-low),
+    0 0 0 calc(var(--focus-ring-offset) + var(--focus-ring-width)) var(--focus-ring-color);
+}
+
+.link[data-active="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: var(--weight-bold);
+}
+
+/* ── Disabled link ── */
+.linkDisabled {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--muted);
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── Mobile: horizontal tab bar (≤768px) ── */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 100%;
+    min-width: 0;
+    flex-direction: row;
+    align-items: center;
+    position: static;
+    padding: var(--space-xs) var(--space-md);
+    border-radius: var(--radius-none);
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    gap: var(--space-2xs);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: var(--space-md);
+    scrollbar-width: none;
+  }
+
+  .sidebar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .brandBlock {
+    display: none;
+  }
+
+  .nav {
+    flex-direction: row;
+    gap: var(--space-3xs);
+    flex: 1;
+  }
+
+  .link,
+  .linkDisabled {
+    scroll-snap-align: start;
+    flex-shrink: 0;
+    padding: var(--space-2xs) var(--space-sm);
+    font-size: var(--text-xs);
+    gap: var(--space-2xs);
+    white-space: nowrap;
+  }
+
+  .link .material-symbols-outlined,
+  .linkDisabled .material-symbols-outlined {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .link {
+    transition-duration: 0.01ms;
+  }
+}

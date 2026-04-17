@@ -1,0 +1,163 @@
+/* =============================================================================
+   TopNavbar — sticky tab bar for operator dashboard
+   Rule: tokens only, no hex / rgb / rgba / oklch literals
+   ========================================================================== */
+
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-navbar);
+  background: var(--panel);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--line);
+  box-shadow: var(--elev-1);
+}
+
+.inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  width: 100%;
+  max-width: 1920px;
+  margin: 0 auto;
+  padding: var(--space-sm) var(--space-xl);
+}
+
+/* ── Brand ── */
+.brand {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: var(--weight-extrabold);
+  color: var(--accent-dark);
+  font-style: italic;
+  letter-spacing: var(--tracking-tight);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: var(--transition-color);
+}
+
+.brand:hover {
+  color: var(--accent);
+}
+
+.brand:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 var(--focus-ring-offset) var(--surface-container),
+    0 0 0 calc(var(--focus-ring-offset) + var(--focus-ring-width)) var(--focus-ring-color);
+  border-radius: var(--radius-xs);
+}
+
+/* ── Tab nav ── */
+.tabNav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  overflow-x: auto;
+  flex: 1;
+  justify-content: center;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: var(--space-md);
+  /* hide scrollbar on desktop while allowing scroll on mobile */
+  scrollbar-width: none;
+}
+
+.tabNav::-webkit-scrollbar {
+  display: none;
+}
+
+.tabLink {
+  flex-shrink: 0;
+  scroll-snap-align: start;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--on-surface-variant);
+  padding: var(--space-2xs) var(--space-sm);
+  border-radius: var(--radius-full);
+  border-bottom: 2px solid transparent;
+  transition: var(--transition-color), var(--transition-bg);
+  white-space: nowrap;
+}
+
+.tabLink:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.tabLink:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 var(--focus-ring-offset) var(--panel),
+    0 0 0 calc(var(--focus-ring-offset) + var(--focus-ring-width)) var(--focus-ring-color);
+}
+
+.tabLink[data-active="true"] {
+  color: var(--accent);
+  font-weight: var(--weight-semibold);
+  background: var(--accent-soft);
+  border-bottom-color: var(--tertiary);
+}
+
+/* ── Right controls ── */
+.right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-shrink: 0;
+}
+
+.themeBtn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--line);
+  background: var(--surface-container);
+  color: var(--on-surface);
+  display: grid;
+  place-items: center;
+  transition: var(--transition-bg);
+}
+
+.themeBtn:hover {
+  background: var(--surface-container-high);
+}
+
+.themeBtn:active {
+  transform: scale(0.95);
+}
+
+.themeBtn:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 var(--focus-ring-offset) var(--panel),
+    0 0 0 calc(var(--focus-ring-offset) + var(--focus-ring-width)) var(--focus-ring-color);
+}
+
+/* ── Mobile: compact padding + scrollable tabs ── */
+@media (max-width: 640px) {
+  .inner {
+    padding: var(--space-xs) var(--space-md);
+    gap: var(--space-xs);
+  }
+
+  .tabNav {
+    justify-content: flex-start;
+    gap: var(--space-3xs);
+    scroll-padding-inline: var(--space-md);
+  }
+
+  .tabLink {
+    padding: var(--space-2xs) var(--space-xs);
+    font-size: var(--text-xs);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand,
+  .tabLink,
+  .themeBtn {
+    transition-duration: 0.01ms;
+  }
+}

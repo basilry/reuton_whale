@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { TopNavbar } from "@/components/top-navbar";
+import { InsightsSidebar } from "@/components/insights-sidebar";
 import { LanguageSelector } from "@/components/language-selector";
 import { WatchlistEditor } from "@/components/watchlist-editor";
 import { cleanGeneratedBrief } from "@/lib/format";
@@ -459,41 +461,11 @@ export default async function InsightsPage() {
 
   return (
     <main className={styles.page}>
-      {/* ── Top NavBar ── */}
-      <header className={styles.topNav}>
-        <div className={styles.topNavBrand}>
-          <Link href="/" className={styles.topNavLogo}>WhaleScope</Link>
-          <nav className={styles.topNavLinks}>
-            {topNavLinks.map((item) => (
-              <a
-                key={item.label}
-                href={item.href}
-                className={`${styles.topNavLink} ${item.active ? styles.topNavLinkActive : ""}`}
-              >
-                {item.label}
-              </a>
-            ))}
-          </nav>
-        </div>
-        <div className={styles.topNavRight}>
-          <LanguageSelector />
-          <div className={styles.telegramToggle}>
-            <span className={styles.materialIcon} style={{ fontVariationSettings: "'FILL' 1" }}>send</span>
-            <span className={styles.telegramToggleLabel}>텔레그램 알림</span>
-            <span className={styles.toggleTrack} data-enabled={telegramToggleOn ? "true" : "false"}>
-              <span className={styles.toggleKnob} />
-            </span>
-          </div>
-          <div className={styles.navIconGroup}>
-            <button className={styles.navIconBtn} type="button" aria-label="Notifications">
-              <span className={styles.materialIcon}>notifications</span>
-            </button>
-            <button className={styles.navIconBtn} type="button" aria-label="Profile">
-              <span className={styles.materialIcon}>account_circle</span>
-            </button>
-          </div>
-        </div>
-      </header>
+      <TopNavbar />
+
+      {/* ── Layout Shell: InsightsSidebar + content ── */}
+      <div className={styles.layoutShell}>
+        <InsightsSidebar />
 
       {/* ── Main Layout ── */}
       <div className={styles.mainLayout}>
@@ -533,10 +505,6 @@ export default async function InsightsPage() {
                 <span className={styles.connectionDot} />
                 {connectedLabel}
               </div>
-            </div>
-            <div className={styles.assignmentBadge}>
-              <span className={styles.badgeLabel}>과제 배지</span>
-              <span className={styles.badgeText}>뤼튼 프로덕트 엔지니어 데모</span>
             </div>
           </section>
 
@@ -759,6 +727,7 @@ export default async function InsightsPage() {
           </article>
         </div>
       </div>
+      </div>{/* layoutShell */}
 
       {/* ── Footer ── */}
       <footer className={styles.footer}>
@@ -778,12 +747,6 @@ export default async function InsightsPage() {
           </div>
         </div>
       </footer>
-
-      {/* ── Floating Badge ── */}
-      <div className={styles.floatingBadge}>
-        <div className={styles.floatingBadgeDot} />
-        <span className={styles.floatingBadgeText}>뤼튼 과제 데모 버전</span>
-      </div>
     </main>
   );
 }

@@ -1,6 +1,4 @@
-import Link from "next/link";
-
-import { LanguageSelector } from "@/components/language-selector";
+import { TopNavbar } from "@/components/top-navbar";
 import { SignalActionCard } from "@/components/signal-action-card";
 import { SystemLogPanel, type SystemLogRow } from "@/components/system-log-panel";
 import { DashboardConfigError } from "@/lib/env";
@@ -172,36 +170,7 @@ export default async function DashboardPage() {
 
   return (
     <>
-      {/* Top Navigation Bar */}
-      <header className="top-navbar">
-        <div className="top-navbar__inner">
-          <div className="top-navbar__left">
-            <Link href="/" className="top-navbar__brand">WhaleScope</Link>
-            <div className="top-navbar__badge-group">
-              <span className="top-navbar__assignment-badge">뤼튼 과제 전형</span>
-              <p className="top-navbar__badge-desc">뤼튼 테크놀로지스 Product Engineer 과제 제출용 데모</p>
-            </div>
-          </div>
-
-          <nav className="top-navbar__nav">
-            <Link href="/" className="top-navbar__nav-link top-navbar__nav-link--active">대시보드</Link>
-            <Link href="/insights" className="top-navbar__nav-link">인사이트</Link>
-            <a href="#signals" className="top-navbar__nav-link">시그널</a>
-            <a href="#transactions" className="top-navbar__nav-link">리포트</a>
-          </nav>
-
-          <div className="top-navbar__right">
-            <LanguageSelector />
-            <div className="top-navbar__profile-info">
-              <div className="top-navbar__profile-name">운영자 프로필</div>
-              <div className="top-navbar__profile-role">시스템 관리자</div>
-            </div>
-            <div className="top-navbar__avatar" aria-label="운영자 프로필">
-              <span className="material-symbols-outlined">person</span>
-            </div>
-          </div>
-        </div>
-      </header>
+      <TopNavbar />
 
       <main className="main-content">
         {/* Hero Summary Banner */}
@@ -432,15 +401,6 @@ export default async function DashboardPage() {
           <SystemLogPanel rows={logRows} />
         </section>
       </main>
-
-      {/* Floating Assignment Badge */}
-      <div className="floating-badge">
-        <div className="floating-badge__inner">
-          <div className="floating-badge__label">Wrtn Technologies</div>
-          <div className="floating-badge__divider" />
-          <div className="floating-badge__sub">Official Assignment Demo</div>
-        </div>
-      </div>
     </>
   );
 }
