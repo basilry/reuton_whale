@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { LanguageSelector } from "@/components/language-selector";
+import { SignalActionCard } from "@/components/signal-action-card";
 import { SystemLogPanel, type SystemLogRow } from "@/components/system-log-panel";
 import { DashboardConfigError } from "@/lib/env";
 import {
@@ -189,6 +191,7 @@ export default async function DashboardPage() {
           </nav>
 
           <div className="top-navbar__right">
+            <LanguageSelector />
             <div className="top-navbar__profile-info">
               <div className="top-navbar__profile-name">운영자 프로필</div>
               <div className="top-navbar__profile-role">시스템 관리자</div>
@@ -336,25 +339,18 @@ export default async function DashboardPage() {
             {signals.length > 0 ? (
               <div>
                 {signals.slice(0, 4).map((row) => (
-                  <div key={row.id} className={`signal-item signal-item--${row.tone}`}>
-                    <div className="signal-item__top-row">
-                      <div className="signal-item__severity-dot">
-                        <span className={`signal-item__dot signal-item__dot--${row.tone}`} />
-                        <span className={`signal-item__severity-label signal-item__severity-label--${row.tone}`}>
-                          {row.severityLabel}
-                        </span>
-                      </div>
-                      <span className="signal-item__time">
-                        {formatTime(row.createdAt, { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    </div>
-                    <h4 className="signal-item__title">{row.title}</h4>
-                    <p className="signal-item__desc">{row.summary}</p>
-                    <div className="signal-item__meta">
-                      <span>Score {formatScore(row.score)}</span>
-                      <span>{row.confidenceLabel}</span>
-                    </div>
-                  </div>
+                  <SignalActionCard
+                    key={row.id}
+                    signalId={row.id}
+                    createdAt={row.createdAt}
+                    title={row.title}
+                    summary={row.summary}
+                    severityLabel={row.severityLabel}
+                    confidenceLabel={row.confidenceLabel}
+                    score={formatScore(row.score)}
+                    tone={row.tone}
+                    timeLabel={formatTime(row.createdAt, { hour: "2-digit", minute: "2-digit" })}
+                  />
                 ))}
               </div>
             ) : (

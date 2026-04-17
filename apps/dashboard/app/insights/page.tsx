@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { LanguageSelector } from "@/components/language-selector";
+import { WatchlistEditor } from "@/components/watchlist-editor";
 import { cleanGeneratedBrief } from "@/lib/format";
 import { getDashboardData, type DashboardData } from "@/lib/metrics";
 import styles from "./insights.module.css";
@@ -474,6 +476,7 @@ export default async function InsightsPage() {
           </nav>
         </div>
         <div className={styles.topNavRight}>
+          <LanguageSelector />
           <div className={styles.telegramToggle}>
             <span className={styles.materialIcon} style={{ fontVariationSettings: "'FILL' 1" }}>send</span>
             <span className={styles.telegramToggleLabel}>텔레그램 알림</span>
@@ -653,6 +656,10 @@ export default async function InsightsPage() {
                       </div>
                     );
                   })}
+                </div>
+                <div className={styles.watchlistEditorBlock}>
+                  <h4 className={styles.watchlistEditorTitle}>감시 주소 관리</h4>
+                  <WatchlistEditor />
                 </div>
               </div>
 
