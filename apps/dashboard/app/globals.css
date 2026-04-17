@@ -1169,3 +1169,27 @@ a {
     right: 12px;
   }
 }
+
+/* ===== Metric Card Actions ===== */
+.metric-card__actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.metric-card__action-btn {
+  font-size: 0.7rem;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.metric-card__action-btn:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}

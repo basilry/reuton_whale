@@ -72,7 +72,7 @@ export function SystemLogPanel({ rows }: SystemLogPanelProps) {
                 <time dateTime={row.timestamp}>{formatTime(row.timestamp)}</time>
               </div>
               <h3>{row.title}</h3>
-              <p>{row.message}</p>
+              <p>{typeof row.message === "string" ? row.message : "상세 로그 확인 필요"}</p>
             </article>
           ))}
         </div>

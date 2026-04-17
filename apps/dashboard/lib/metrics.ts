@@ -334,10 +334,32 @@ function normalizeBrief(row: DailyBriefRow | null): DashboardBrief | null {
   };
 }
 
+function humanizeLogMessage(row: SystemLogRow): string {
+  const details = compactString(row.details);
+  if (details) {
+    try {
+      const parsed = JSON.parse(details);
+      if (typeof parsed === "object" && parsed !== null) {
+        const parts: string[] = [];
+        if (parsed.stage) parts.push(`[${parsed.stage}]`);
+        if (parsed.message) parts.push(parsed.message);
+        if (parsed.event) parts.push(parsed.event);
+        if (parsed.count) parts.push(`(${parsed.count}건 처리)`);
+        if (parts.length > 0) return parts.join(" ");
+      }
+    } catch {
+      // not JSON, use as-is with truncation
+    }
+    return details.length > 120 ? details.slice(0, 120) + "..." : details;
+  }
+  return "";
+}
+
 function normalizeSystemLogRows(rows: SystemLogRow[]) {
   return rows.map((row) => {
     const normalized = normalizeLatestRun(row);
     const errorCount = errorCountForRun(row);
+    const humanized = humanizeLogMessage(row);
     return {
       id: row.run_id,
       ...normalized,
@@ -345,8 +367,8 @@ function normalizeSystemLogRows(rows: SystemLogRow[]) {
       status: row.status,
       title: row.run_type || "Pipeline run",
       message:
-        row.details ||
-        (errorCount > 0 ? `${errorCount} error(s): ${row.errors}` : "No details recorded."),
+        humanized ||
+        (errorCount > 0 ? `${errorCount}건 오류 발생` : "정상 완료"),
       errorCount,
       updatedAt: row.finished_at || row.started_at,
     };
