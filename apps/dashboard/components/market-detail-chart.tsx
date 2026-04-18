@@ -39,9 +39,16 @@ function toLineData(
   points: MarketTickerDetailSeries["usdPoints"],
   metric: MarketTickerChartMetric,
 ) {
-  return points.map((point) => ({
-    time: Math.floor(point.timestamp / 1000) as UTCTimestamp,
-    value: point.value,
+  const ordered = [...points].sort((left, right) => left.timestamp - right.timestamp);
+  const deduped = new Map<number, number>();
+
+  for (const point of ordered) {
+    deduped.set(Math.floor(point.timestamp / 1000), point.value);
+  }
+
+  return Array.from(deduped.entries()).map(([time, value]) => ({
+    time: time as UTCTimestamp,
+    value,
     customValues: { metric },
   }));
 }

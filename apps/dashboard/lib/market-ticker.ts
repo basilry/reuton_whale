@@ -342,6 +342,10 @@ function clampChartPoints(
   return points.slice(points.length - pointCount);
 }
 
+function chartSecond(timestamp: number): number {
+  return Math.trunc(timestamp / 1000);
+}
+
 function createChartAbortController(timeoutMs: number): {
   controller: AbortController;
   timeoutId: ReturnType<typeof setTimeout>;
@@ -774,7 +778,10 @@ export function appendMarketTickerChartPoint(
   }
 
   const nextPoints = [...points];
-  if (previousPoint.timestamp >= nextTimestamp) {
+  if (
+    previousPoint.timestamp >= nextTimestamp ||
+    chartSecond(previousPoint.timestamp) >= chartSecond(nextTimestamp)
+  ) {
     nextPoints[nextPoints.length - 1] = nextPoint;
     return clampChartPoints(nextPoints, pointCount);
   }
