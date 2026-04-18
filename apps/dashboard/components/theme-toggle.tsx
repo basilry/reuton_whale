@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { DashboardLanguage } from "@/lib/i18n/config";
+import { useDashboardI18n } from "@/lib/i18n/client";
 
 type Theme = "light" | "dark";
 
@@ -8,7 +10,14 @@ type Theme = "light" | "dark";
  * Theme toggle — writes `data-theme` on <html> and persists to localStorage.
  * Complements the pre-paint script in `app/layout.tsx`.
  */
-export function ThemeToggle({ className }: { className?: string }) {
+export function ThemeToggle({
+  className,
+  initialLanguage,
+}: {
+  className?: string;
+  initialLanguage?: DashboardLanguage;
+}) {
+  const { language } = useDashboardI18n(initialLanguage);
   const [theme, setTheme] = useState<Theme>("light");
   const [mounted, setMounted] = useState(false);
 
@@ -34,9 +43,10 @@ export function ThemeToggle({ className }: { className?: string }) {
     return (
       <button
         type="button"
-        aria-label="테마 전환"
+        aria-hidden="true"
         className={className}
         style={{ visibility: "hidden" }}
+        tabIndex={-1}
       >
         <span className="material-symbols-outlined">dark_mode</span>
       </button>
@@ -44,11 +54,13 @@ export function ThemeToggle({ className }: { className?: string }) {
   }
 
   const isDark = theme === "dark";
+  const toggleToLight = language === "ko" ? "라이트 모드로 전환" : "Switch to light mode";
+  const toggleToDark = language === "ko" ? "다크 모드로 전환" : "Switch to dark mode";
   return (
     <button
       type="button"
       onClick={toggle}
-      aria-label={isDark ? "라이트 모드로 전환" : "다크 모드로 전환"}
+      aria-label={isDark ? toggleToLight : toggleToDark}
       aria-pressed={isDark}
       className={className}
     >

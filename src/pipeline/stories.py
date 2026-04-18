@@ -4,6 +4,7 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 
+from src.observability.service_health import append_service_heartbeat, pipeline_status_to_health
 from src.pipeline.common import (
     build_router_from_env,
     build_sheets_client,
@@ -33,6 +34,21 @@ Rules:
 - Do not give investment advice.
 - Keep concrete numbers from the input unchanged.
 """
+
+
+def _record_stories_heartbeat(sheets, result: dict[str, object]) -> None:
+    append_service_heartbeat(
+        sheets,
+        service="pipeline.stories",
+        component="pipeline",
+        status=pipeline_status_to_health(result.get("status")),
+        heartbeat_key=str(result.get("run_id", "")),
+        details={
+            "status": result.get("status"),
+            "details": result.get("details", ""),
+        },
+        error=result.get("errors", ""),
+    )
 
 
 def _parse_story_json(raw: str) -> dict:
@@ -100,6 +116,7 @@ def run_stories_pipeline(limit: int = 5) -> dict[str, object]:
             details="No recent signals available for story generation",
         )
         sheets.log_run(result)
+        _record_stories_heartbeat(sheets, result)
         return result
 
     transaction_rows = sheets.list_transactions(since=since, limit=200)
@@ -202,6 +219,7 @@ def run_stories_pipeline(limit: int = 5) -> dict[str, object]:
         details=f"signals={len(signal_rows)}; generated={generated}",
     )
     sheets.log_run(result)
+    _record_stories_heartbeat(sheets, result)
     logger.info("stories pipeline finished generated=%d errors=%d", generated, len(errors))
     return result
 

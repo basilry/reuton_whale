@@ -3,6 +3,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import type { DashboardLanguage } from "@/lib/i18n/config";
+import { useDashboardI18n } from "@/lib/i18n/client";
 import type { MarketTickerDefinition, MarketTickerItem } from "@/lib/market-ticker";
 
 import { MarketDetailChart } from "./market-detail-chart";
@@ -13,6 +15,7 @@ type MarketDetailChartModalProps = {
   item: MarketTickerItem | null;
   isOpen: boolean;
   onClose: () => void;
+  initialLanguage: DashboardLanguage;
 };
 
 export function MarketDetailChartModal({
@@ -20,7 +23,9 @@ export function MarketDetailChartModal({
   item,
   isOpen,
   onClose,
+  initialLanguage,
 }: MarketDetailChartModalProps) {
+  const { language } = useDashboardI18n(initialLanguage);
   const [isMounted, setIsMounted] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
@@ -70,6 +75,21 @@ export function MarketDetailChartModal({
     return null;
   }
 
+  const copy =
+    language === "ko"
+      ? {
+          eyebrow: "Market Detail",
+          titleSuffix: "상세 차트",
+          description: "Binance USD, Upbit KRW 기준 가격 흐름과 김치 프리미엄을 한 번에 확인합니다.",
+          closeLabel: `${item.asset} 상세 차트 닫기`,
+        }
+      : {
+          eyebrow: "Market Detail",
+          titleSuffix: "detail chart",
+          description: "Review Binance USD, Upbit KRW, and the kimchi premium in one chart view.",
+          closeLabel: `Close ${item.asset} detail chart`,
+        };
+
   return createPortal(
     <div className={styles.backdrop} onClick={onClose}>
       <div
@@ -82,12 +102,12 @@ export function MarketDetailChartModal({
       >
         <div className={styles.header}>
           <div className={styles.headerCopy}>
-            <p className={styles.eyebrow}>Market Detail</p>
+            <p className={styles.eyebrow}>{copy.eyebrow}</p>
             <h3 id={titleId} className={styles.title}>
-              {item.asset} 상세 차트
+              {item.asset} {copy.titleSuffix}
             </h3>
             <p id={descriptionId} className={styles.description}>
-              Binance USD, Upbit KRW 기준 가격 흐름과 김치 프리미엄을 한 번에 확인합니다.
+              {copy.description}
             </p>
           </div>
           <button
@@ -95,7 +115,7 @@ export function MarketDetailChartModal({
             type="button"
             className={styles.closeButton}
             onClick={onClose}
-            aria-label={`${item.asset} 상세 차트 닫기`}
+            aria-label={copy.closeLabel}
           >
             <span className="material-symbols-outlined" aria-hidden="true">
               close
@@ -104,7 +124,7 @@ export function MarketDetailChartModal({
         </div>
 
         <div className={styles.content}>
-          <MarketDetailChart definition={definition} item={item} />
+          <MarketDetailChart definition={definition} item={item} initialLanguage={initialLanguage} />
         </div>
       </div>
     </div>,

@@ -40,7 +40,7 @@ type BriefLike = {
   date?: string;
 };
 
-type StoryCard = Pick<WhaleStory, "title" | "body" | "meta" | "hash" | "tone">;
+type StoryCard = Pick<WhaleStory, "title" | "body" | "meta" | "hash" | "tone" | "generatedAt">;
 
 function normalizeText(value?: string): string {
   return compactString(value).toLowerCase();
@@ -78,17 +78,36 @@ function formatDateTime(value?: string): string {
     return "시간 미상";
   }
 
+  return formatStoryTimestamp(value);
+}
+
+export function formatStoryTimestamp(value?: string): string {
+  if (!value) {
+    return "시간 미상";
+  }
+
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
     return value;
   }
 
-  return new Intl.DateTimeFormat("ko-KR", {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(parsed);
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(parsed);
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+
+  return `${values.year}.${values.month}.${values.day} ${values.hour}:${values.minute}:${values.second}`;
 }
 
 function truncate(value?: string): string {
@@ -298,6 +317,7 @@ function buildTransactionStory(
     symbol,
     chain: compactString(transaction.blockchain) || undefined,
     occurredAt,
+    generatedAt,
     priority: storyPriority(amountUsd, signal, curatedParticipants.length),
     supportingSignalIds: relatedSignals.map((item) => compactString(item.signal_id)).filter(Boolean),
     participants: [fromParticipant, toParticipant],
@@ -316,6 +336,7 @@ function buildSignalStory(signal: SignalLike): WhaleStory {
     meta: formatDateTime(compactString(signal.created_at) || undefined),
     tone: toneForSignal(signal),
     occurredAt: compactString(signal.created_at) || undefined,
+    generatedAt: compactString(signal.created_at) || undefined,
     priority: 5,
     supportingSignalIds: [compactString(signal.signal_id)].filter(Boolean),
     participants: [],
@@ -336,6 +357,7 @@ function buildBriefFallbackStory(brief: BriefLike | null): WhaleStory | null {
     meta: compactString(brief?.date) || "최신 브리핑",
     tone: "neutral",
     occurredAt: compactString(brief?.date) || undefined,
+    generatedAt: compactString(brief?.date) || undefined,
     priority: 1,
     supportingSignalIds: [],
     participants: [],
@@ -397,6 +419,7 @@ export function buildWhaleStories(options?: {
         "정보수집 파이프라인이 실행되면, 최근 거래와 시그널을 기반으로 사람이 읽기 쉬운 고래 스토리가 여기에 생성됩니다.",
       meta: "실행 대기",
       tone: "neutral",
+      generatedAt,
       priority: 0,
       supportingSignalIds: [],
       participants: [],
@@ -411,5 +434,6 @@ export function buildWhaleStoryCards(stories: readonly WhaleStory[]): StoryCard[
     meta: story.meta,
     hash: story.hash,
     tone: story.tone,
+    generatedAt: story.generatedAt,
   }));
 }

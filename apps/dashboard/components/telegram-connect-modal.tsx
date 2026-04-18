@@ -3,6 +3,9 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import type { DashboardLanguage } from "@/lib/i18n/config";
+import { useDashboardI18n } from "@/lib/i18n/client";
+import { formatDashboardMessage } from "@/lib/i18n/get-dictionary";
 import styles from "./telegram-connect-modal.module.css";
 
 type TelegramConnectModalProps = {
@@ -11,6 +14,7 @@ type TelegramConnectModalProps = {
   channelUsername: string | null;
   className?: string;
   subscriberCount?: number;
+  initialLanguage?: DashboardLanguage;
 };
 
 type CopyState = "idle" | "success" | "error";
@@ -21,7 +25,9 @@ export function TelegramConnectModal({
   channelUsername,
   className,
   subscriberCount = 0,
+  initialLanguage,
 }: TelegramConnectModalProps) {
+  const { dictionary, language } = useDashboardI18n(initialLanguage);
   const [isOpen, setIsOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [copyState, setCopyState] = useState<CopyState>("idle");
@@ -29,9 +35,13 @@ export function TelegramConnectModal({
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const descriptionId = useId();
+  const triggerDescriptionId = useId();
   const hasChannelLink = Boolean(channelUrl);
   const triggerClassName = [styles.trigger, className].filter(Boolean).join(" ");
-  const channelHandle = channelUsername ? `@${channelUsername}` : "공개 채널";
+  const channelHandle = channelUsername ? `@${channelUsername}` : "Telegram";
+  const formattedSubscriberCount = subscriberCount.toLocaleString(
+    language === "ko" ? "ko-KR" : "en-US",
+  );
 
   useEffect(() => {
     setIsMounted(true);
@@ -114,9 +124,9 @@ export function TelegramConnectModal({
           >
             <div className={styles.header}>
               <div>
-                <p className={styles.eyebrow}>Telegram Connect</p>
+                <p className={styles.eyebrow}>{dictionary.telegram.eyebrow}</p>
                 <h3 id={titleId} className={styles.title}>
-                  텔레그램 채널에서 실시간 고래 브리핑을 받으세요
+                  {dictionary.telegram.title}
                 </h3>
               </div>
               <button
@@ -124,7 +134,7 @@ export function TelegramConnectModal({
                 type="button"
                 className={styles.closeButton}
                 onClick={() => setIsOpen(false)}
-                aria-label="텔레그램 연결 안내 닫기"
+                aria-label={dictionary.telegram.closeLabel}
               >
                 <span className="material-symbols-outlined" aria-hidden="true">
                   close
@@ -134,18 +144,26 @@ export function TelegramConnectModal({
 
             <p id={descriptionId} className={styles.description}>
               {hasChannelLink
-                ? `${channelHandle} 채널에서 공개 브리핑과 주요 고래 이벤트 요약을 받아볼 수 있습니다.`
-                : "현재 텔레그램 채널 링크를 준비 중입니다. 잠시 후 다시 확인해 주세요."}
+                ? formatDashboardMessage(dictionary.telegram.descriptionReady, {
+                    channelHandle,
+                  })
+                : dictionary.telegram.descriptionUnavailable}
             </p>
 
-            <section className={styles.connectOption} aria-label="공개 브리핑 채널 연결">
+            <section className={styles.connectOption} aria-label={dictionary.telegram.channelTitle}>
               <div className={styles.optionTop}>
-                <p className={styles.optionEyebrow}>Telegram Channel</p>
-                <h4 className={styles.optionTitle}>공개 브리핑 채널 구독</h4>
+                <p className={styles.optionEyebrow}>{dictionary.telegram.channelEyebrow}</p>
+                <h4 className={styles.optionTitle}>{dictionary.telegram.channelTitle}</h4>
                 <p className={styles.optionDesc}>
                   {channelUsername
-                    ? `${channelHandle} 채널에서 전체 브리핑과 공용 시그널 공지를 확인할 수 있습니다.`
-                    : "공개 브리핑 채널 주소가 설정되면 여기에서 바로 구독할 수 있습니다."}
+                    ? formatDashboardMessage(dictionary.telegram.channelDescriptionReady, {
+                        channelHandle,
+                      })
+                    : dictionary.telegram.channelDescriptionUnavailable}
+                </p>
+                <p className={styles.optionDesc}>
+                  <strong>{dictionary.telegram.channelBadge}:</strong>{" "}
+                  {channelUsername ? channelHandle : dictionary.telegram.unavailableAction}
                 </p>
               </div>
 
@@ -157,21 +175,24 @@ export function TelegramConnectModal({
                   rel="noreferrer"
                   target="_blank"
                   aria-disabled={hasChannelLink ? undefined : true}
+                  tabIndex={hasChannelLink ? undefined : -1}
+                  title={hasChannelLink ? channelUrl ?? undefined : dictionary.telegram.triggerHelpUnavailable}
                   onClick={(event) => {
                     if (!hasChannelLink) {
                       event.preventDefault();
                     }
                   }}
                 >
-                  채널 열기
+                  {dictionary.telegram.openChannel}
                 </a>
                 <button
                   type="button"
                   className={styles.secondaryAction}
                   onClick={() => handleCopy(channelUrl)}
                   disabled={!hasChannelLink}
+                  aria-describedby={hasChannelLink ? undefined : descriptionId}
                 >
-                  링크 복사
+                  {dictionary.telegram.copyLink}
                 </button>
               </div>
 
@@ -182,8 +203,10 @@ export function TelegramConnectModal({
                     <img
                       alt={
                         channelUsername
-                          ? `텔레그램 채널 @${channelUsername} 연결 QR 코드`
-                          : "텔레그램 채널 연결 QR 코드"
+                          ? formatDashboardMessage(dictionary.telegram.qrImageAltReady, {
+                              channelHandle,
+                            })
+                          : dictionary.telegram.qrImageAltFallback
                       }
                       className={styles.qrImage}
                       height={240}
@@ -196,31 +219,35 @@ export function TelegramConnectModal({
                       <span className="material-symbols-outlined" aria-hidden="true">
                         qr_code_2
                       </span>
-                      <span>QR 준비 중</span>
+                      <span>{dictionary.telegram.qrFallback}</span>
                     </div>
                   )}
                 </div>
 
                 <div className={styles.qrMeta}>
-                  <p className={styles.qrTitle}>브리핑 채널 바로가기</p>
+                  <p className={styles.qrTitle}>{dictionary.telegram.qrTitle}</p>
                   <p className={styles.qrText}>
                     {channelUsername
-                      ? `QR을 스캔하거나 ${channelHandle} 채널을 열어 업데이트를 구독하세요.`
-                      : "배포 환경에 공개 채널 주소가 설정되면 QR이 표시됩니다."}
+                      ? formatDashboardMessage(dictionary.telegram.qrTextReady, {
+                          channelHandle,
+                        })
+                      : dictionary.telegram.qrTextUnavailable}
                   </p>
                   <p className={styles.qrText}>
-                    현재 안내 대상: <strong>{subscriberCount.toLocaleString("ko-KR")}</strong>명
+                    {dictionary.telegram.audienceLabel}: <strong>{formattedSubscriberCount}</strong>
+                    {dictionary.telegram.audienceUnit}
                   </p>
+                  <p className={styles.qrText}>{dictionary.telegram.qrCaption}</p>
                 </div>
               </div>
             </section>
 
             <p className={styles.feedback} aria-live="polite">
               {copyState === "success"
-                ? "텔레그램 채널 링크를 복사했습니다."
+                ? dictionary.telegram.copySuccess
                 : copyState === "error"
-                  ? "링크를 복사하지 못했습니다. 직접 열어 주세요."
-                  : channelUrl ?? "텔레그램 링크 준비 중"}
+                  ? dictionary.telegram.copyError
+                  : channelUrl ?? dictionary.telegram.linkUnavailable}
             </p>
           </div>
         </div>,
@@ -233,9 +260,18 @@ export function TelegramConnectModal({
         type="button"
         className={triggerClassName}
         onClick={() => setIsOpen(true)}
+        aria-describedby={triggerDescriptionId}
+        data-disabled={hasChannelLink ? undefined : "true"}
       >
-        텔레그램 연결하기
+        {hasChannelLink
+          ? dictionary.telegram.triggerReady
+          : dictionary.telegram.triggerUnavailable}
       </button>
+      <span id={triggerDescriptionId} className="sr-only">
+        {hasChannelLink
+          ? dictionary.telegram.triggerHelpReady
+          : dictionary.telegram.triggerHelpUnavailable}
+      </span>
 
       {modal}
     </>

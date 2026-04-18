@@ -2,6 +2,9 @@
 
 import { useId, useState } from "react";
 
+import type { DashboardLanguage } from "@/lib/i18n/config";
+import { useDashboardI18n } from "@/lib/i18n/client";
+import { formatDashboardMessage } from "@/lib/i18n/get-dictionary";
 import type { NewsWidgetData } from "@/lib/news";
 
 import styles from "./news-widget.module.css";
@@ -9,11 +12,12 @@ import styles from "./news-widget.module.css";
 type NewsWidgetClientProps = {
   data: NewsWidgetData;
   mobileLimit?: number;
+  initialLanguage?: DashboardLanguage;
 };
 
-function formatUpdatedAt(value: string): string {
+function formatUpdatedAt(value: string, fallback: string): string {
   if (!value) {
-    return "업데이트 대기";
+    return fallback;
   }
 
   const date = new Date(value);
@@ -41,9 +45,9 @@ function formatUpdatedAt(value: string): string {
   return `${values.year}.${values.month}.${values.day} ${values.hour}:${values.minute}:${values.second}`;
 }
 
-function formatPublishedAt(value: string): string {
+function formatPublishedAt(value: string, fallback: string, language: "ko" | "en"): string {
   if (!value) {
-    return "업데이트 대기";
+    return fallback;
   }
 
   const date = new Date(value);
@@ -51,7 +55,7 @@ function formatPublishedAt(value: string): string {
     return value;
   }
 
-  return new Intl.DateTimeFormat("ko-KR", {
+  return new Intl.DateTimeFormat(language === "ko" ? "ko-KR" : "en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -59,56 +63,113 @@ function formatPublishedAt(value: string): string {
   }).format(date);
 }
 
-function sourceBadgeLabel(source: NewsWidgetData["source"]): string {
+function sourceBadgeLabel(
+  source: NewsWidgetData["source"],
+  dictionary: ReturnType<typeof useDashboardI18n>["dictionary"],
+): string {
   if (source === "news_feed") {
-    return "RSS";
+    return dictionary.news.sourceBadgeNewsFeed;
   }
   if (source === "derived") {
-    return "브리핑";
+    return dictionary.news.sourceBadgeDerived;
   }
-  return "준비 중";
+  return dictionary.news.sourceBadgeFallback;
 }
 
-function sourceCaption(source: NewsWidgetData["source"]): string {
+function sourceCaption(
+  source: NewsWidgetData["source"],
+  dictionary: ReturnType<typeof useDashboardI18n>["dictionary"],
+): string {
   if (source === "news_feed") {
-    return "수집된 기사에서 바로 읽을 수 있는 맥락만 추렸습니다.";
+    return dictionary.news.sourceCaptionNewsFeed;
   }
   if (source === "derived") {
-    return "뉴스 행이 비어 있어 브리핑과 시그널 요약으로 대체했습니다.";
+    return dictionary.news.sourceCaptionDerived;
   }
-  return "연결 전에도 빈 화면 대신 현재 상태를 이해할 수 있게 유지합니다.";
+  return dictionary.news.sourceCaptionFallback;
+}
+
+function buildStalenessWarning(
+  data: NewsWidgetData,
+  dictionary: ReturnType<typeof useDashboardI18n>["dictionary"],
+): string | null {
+  const staleness = data.staleness;
+  if (!staleness) {
+    return null;
+  }
+
+  const minutes = staleness.minutes;
+  switch (staleness.reason) {
+    case "pipeline_stale":
+      if (minutes == null) {
+        return dictionary.news.warningPipelineStaleUnknown;
+      }
+      return formatDashboardMessage(dictionary.news.warningPipelineStale, {
+        minutes,
+      });
+    case "article_quiet":
+      if (minutes == null) {
+        return null;
+      }
+      return formatDashboardMessage(dictionary.news.warningArticleQuiet, {
+        minutes,
+      });
+    case "derived_stale":
+      if (minutes == null) {
+        return null;
+      }
+      return formatDashboardMessage(dictionary.news.warningDerivedStale, {
+        minutes,
+      });
+    case "fallback":
+      return dictionary.news.warningFallback;
+    default:
+      return null;
+  }
 }
 
 export function NewsWidgetClient({
   data,
   mobileLimit = 2,
+  initialLanguage,
 }: NewsWidgetClientProps) {
+  const { dictionary, language } = useDashboardI18n(initialLanguage);
   const [isExpanded, setIsExpanded] = useState(false);
   const listId = useId();
   const hasOverflow = data.items.length > mobileLimit;
+  const stalenessWarning = buildStalenessWarning(data, dictionary);
 
   return (
     <>
       <div className={styles.header}>
         <div className={styles.titleBlock}>
-          <p className={styles.eyebrow}>News & Curation</p>
+          <p className={styles.eyebrow}>{dictionary.news.eyebrow}</p>
           <h2 id="news-widget-title" className={styles.title}>
-            지금 읽을 맥락
+            {dictionary.news.title}
           </h2>
         </div>
         <span className={styles.sourceBadge} data-source={data.source}>
-          {sourceBadgeLabel(data.source)}
+          {sourceBadgeLabel(data.source, dictionary)}
         </span>
       </div>
 
       <div className={styles.metaBlock}>
-        <p className={styles.caption}>{sourceCaption(data.source)}</p>
+        <p className={styles.caption}>{sourceCaption(data.source, dictionary)}</p>
         <p className={styles.updatedAt}>
-          마지막 갱신{" "}
+          {dictionary.news.updatedAtLabel}{" "}
           <time dateTime={data.lastUpdatedAt || undefined}>
-            {formatUpdatedAt(data.lastUpdatedAt)}
+            {formatUpdatedAt(data.lastUpdatedAt, dictionary.news.updatedAtPending)}
           </time>
         </p>
+        {stalenessWarning ? (
+          <p
+            className={styles.warning}
+            data-level={data.staleness?.level ?? "warn"}
+            role="status"
+          >
+            {stalenessWarning}
+          </p>
+        ) : null}
       </div>
 
       <div
@@ -117,14 +178,28 @@ export function NewsWidgetClient({
         data-collapsed={hasOverflow && !isExpanded ? "true" : undefined}
       >
         {data.items.map((item) => {
+          const displaySource =
+            item.id === "news-fallback-empty"
+              ? dictionary.news.fallbackItemSource
+              : item.source;
+          const displayTitle =
+            item.id === "news-fallback-empty"
+              ? dictionary.news.fallbackItemTitle
+              : item.title;
+          const displaySummary =
+            item.id === "news-fallback-empty"
+              ? dictionary.news.fallbackItemSummary
+              : item.summary;
           const content = (
             <>
               <div className={styles.itemMeta}>
-                <span className={styles.itemSource}>{item.source}</span>
-                <span className={styles.itemDate}>{formatPublishedAt(item.publishedAt)}</span>
+                <span className={styles.itemSource}>{displaySource}</span>
+                <span className={styles.itemDate}>
+                  {formatPublishedAt(item.publishedAt, dictionary.news.publishedAtPending, language)}
+                </span>
               </div>
-              <h3 className={styles.itemTitle}>{item.title}</h3>
-              <p className={styles.itemSummary}>{item.summary}</p>
+              <h3 className={styles.itemTitle}>{displayTitle}</h3>
+              <p className={styles.itemSummary}>{displaySummary}</p>
               {item.tags.length > 0 ? (
                 <div className={styles.tagRow}>
                   {item.tags.map((tag) => (
@@ -166,7 +241,11 @@ export function NewsWidgetClient({
           <span className="material-symbols-outlined" aria-hidden="true">
             {isExpanded ? "expand_less" : "expand_more"}
           </span>
-          {isExpanded ? "뉴스 접기" : `나머지 ${data.items.length - mobileLimit}개 더 보기`}
+          {isExpanded
+            ? dictionary.news.expandLess
+            : formatDashboardMessage(dictionary.news.expandMore, {
+                count: data.items.length - mobileLimit,
+              })}
         </button>
       ) : null}
     </>

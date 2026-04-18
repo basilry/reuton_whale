@@ -12,9 +12,18 @@ export type MarketTickerSourceChip = {
 
 type MarketTickerSourceChipsProps = {
   sources: MarketTickerSourceChip[];
+  ariaLabel?: string;
+  statusLabels?: Partial<Record<MarketTickerChipStatus, string>>;
 };
 
-function statusLabel(status: MarketTickerChipStatus): string {
+function statusLabel(
+  status: MarketTickerChipStatus,
+  statusLabels?: Partial<Record<MarketTickerChipStatus, string>>,
+): string {
+  const override = statusLabels?.[status];
+  if (override) {
+    return override;
+  }
   if (status === "connecting") {
     return "연결 중";
   }
@@ -29,9 +38,11 @@ function statusLabel(status: MarketTickerChipStatus): string {
 
 export function MarketTickerSourceChips({
   sources,
+  ariaLabel = "시장 데이터 소스 상태",
+  statusLabels,
 }: MarketTickerSourceChipsProps) {
   return (
-    <div className={styles.list} aria-label="시장 데이터 소스 상태" role="list">
+    <div className={styles.list} aria-label={ariaLabel} role="list">
       {sources.map((source) => (
         <span
           key={source.id}
@@ -41,7 +52,7 @@ export function MarketTickerSourceChips({
         >
           <span className={styles.dot} aria-hidden="true" />
           <span>{source.label}</span>
-          <span className={styles.status}>{statusLabel(source.status)}</span>
+          <span className={styles.status}>{statusLabel(source.status, statusLabels)}</span>
         </span>
       ))}
     </div>

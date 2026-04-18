@@ -16,9 +16,13 @@ function sanitizeTelegramUsername(value: string | undefined): string | null {
 }
 
 export function getTelegramPublicConfig(): TelegramPublicConfig {
-  const channelUsername = sanitizeTelegramUsername(
+  const explicitChannelUsername = sanitizeTelegramUsername(
     process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_USERNAME,
-  ) ?? sanitizeTelegramUsername(process.env.NEXT_PUBLIC_TELEGRAM_BROADCAST_CHANNEL);
+  );
+  const legacyBroadcastChannel = sanitizeTelegramUsername(
+    process.env.NEXT_PUBLIC_TELEGRAM_BROADCAST_CHANNEL,
+  );
+  const channelUsername = explicitChannelUsername ?? legacyBroadcastChannel;
   const channelUrl = channelUsername ? `https://t.me/${channelUsername}` : null;
   const channelQrUrl = channelUrl
     ? `/api/qr?data=${encodeURIComponent(channelUrl)}`

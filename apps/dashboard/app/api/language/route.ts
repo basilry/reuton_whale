@@ -1,24 +1,28 @@
 import { NextResponse } from "next/server";
 
-import { createGenericErrorResponse, requireDashboardAuth } from "@/lib/auth";
+import { createGenericErrorResponse } from "@/lib/auth";
+import {
+  DASHBOARD_LANGUAGE_COOKIE,
+  DEFAULT_DASHBOARD_LANGUAGE,
+  SUPPORTED_DASHBOARD_LANGUAGES,
+  isDashboardLanguage,
+} from "@/lib/i18n/config";
 import { API_RATE_LIMIT, clientKey, rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
-const SUPPORTED = new Set(["ko", "en", "ja"]);
-const COOKIE_NAME = "dashboard_lang";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
 
 function readLangFromCookie(request: Request): string {
   const cookieHeader = request.headers.get("cookie") ?? "";
   for (const pair of cookieHeader.split(/;\s*/)) {
     const [name, ...rest] = pair.split("=");
-    if (name === COOKIE_NAME) {
+    if (name === DASHBOARD_LANGUAGE_COOKIE) {
       const value = rest.join("=").trim();
-      if (SUPPORTED.has(value)) return value;
+      if (isDashboardLanguage(value)) return value;
     }
   }
-  return "ko";
+  return DEFAULT_DASHBOARD_LANGUAGE;
 }
 
 export async function GET(request: Request) {
@@ -27,14 +31,9 @@ export async function GET(request: Request) {
     return rateLimitResponse(rl.retryAfter ?? 60);
   }
 
-  const unauthorized = requireDashboardAuth(request);
-  if (unauthorized) {
-    return unauthorized;
-  }
-
   const lang = readLangFromCookie(request);
   return NextResponse.json(
-    { lang, supported: Array.from(SUPPORTED) },
+    { lang, supported: Array.from(SUPPORTED_DASHBOARD_LANGUAGES) },
     { status: 200, headers: { "Cache-Control": "no-store" } }
   );
 }
@@ -45,11 +44,6 @@ export async function POST(request: Request) {
     return rateLimitResponse(rl.retryAfter ?? 60);
   }
 
-  const unauthorized = requireDashboardAuth(request);
-  if (unauthorized) {
-    return unauthorized;
-  }
-
   let payload: unknown;
   try {
     payload = await request.json();
@@ -58,7 +52,7 @@ export async function POST(request: Request) {
   }
 
   const lang = (payload as { lang?: unknown } | null)?.lang;
-  if (typeof lang !== "string" || !SUPPORTED.has(lang)) {
+  if (typeof lang !== "string" || !isDashboardLanguage(lang)) {
     return NextResponse.json({ error: "unsupported language." }, { status: 400 });
   }
 
@@ -68,7 +62,7 @@ export async function POST(request: Request) {
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
     response.cookies.set({
-      name: COOKIE_NAME,
+      name: DASHBOARD_LANGUAGE_COOKIE,
       value: lang,
       httpOnly: false,
       maxAge: COOKIE_MAX_AGE,

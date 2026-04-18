@@ -14,9 +14,161 @@ import {
   type DisplaySystemLogRow,
   type DisplayTransactionRow,
   type NormalizedDashboard,
+  type OperatorCheck,
+  type OpsServiceHealth,
+  type OpsServiceName,
+  type OpsServiceStatus,
+  type OpsSummary,
+  type SourceFailureKind,
+  type SourceHealth,
   type WhaleStory,
   type WhaleStoryTone,
 } from "./types";
+
+function toNullableNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function normalizeSourceFailureKind(value: unknown): SourceFailureKind | null {
+  const kind = toText(value).trim().toLowerCase();
+  switch (kind) {
+    case "auth":
+    case "quota":
+    case "schema":
+    case "network":
+    case "empty":
+    case "config":
+    case "unknown":
+      return kind;
+    default:
+      return null;
+  }
+}
+
+function defaultSourceHealth(
+  sourceState: NormalizedDashboard["sourceState"],
+  source: string,
+  updatedAt: string,
+): SourceHealth {
+  return {
+    connected: sourceState === "connected",
+    mode: sourceState === "connected" ? "live" : "fallback",
+    label: sourceState === "connected" ? "Live Sheets" : "Preview",
+    description:
+      sourceState === "connected"
+        ? "Google Sheets 운영 데이터를 읽고 있습니다."
+        : "운영 데이터 연결 전이라 fallback preview를 사용합니다.",
+    source,
+    lastUpdatedAt: updatedAt,
+    staleMinutes: null,
+    failureKind: sourceState === "connected" ? null : "config",
+  };
+}
+
+function defaultServiceHealth(
+  name: OpsServiceName,
+  fallback: {
+    title: string;
+    status: OpsServiceStatus;
+    label: string;
+    summary: string;
+    detail: string;
+    updatedAt?: string;
+    source?: string;
+  },
+): OpsServiceHealth {
+  return {
+    name,
+    title: fallback.title,
+    status: fallback.status,
+    label: fallback.label,
+    summary: fallback.summary,
+    detail: fallback.detail,
+    updatedAt: fallback.updatedAt,
+    source: fallback.source,
+  };
+}
+
+function normalizeServiceHealthEntry(
+  name: OpsServiceName,
+  input: Partial<OpsServiceHealth> | undefined,
+  fallback: OpsServiceHealth,
+): OpsServiceHealth {
+  return {
+    name,
+    title: toText(input?.title, fallback.title) || fallback.title,
+    status: (toText(input?.status, fallback.status) as OpsServiceStatus) || fallback.status,
+    label: toText(input?.label, fallback.label) || fallback.label,
+    summary: toText(input?.summary, fallback.summary) || fallback.summary,
+    detail: toText(input?.detail, fallback.detail) || fallback.detail,
+    updatedAt: toText(input?.updatedAt) || fallback.updatedAt,
+    source: toText(input?.source) || fallback.source,
+  };
+}
+
+function normalizeOperatorChecks(value: unknown): OperatorCheck[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item, index) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const row = item as Record<string, unknown>;
+      const status = toText(row.status).trim().toLowerCase();
+      return {
+        key: toText(row.key, `check-${index}`) || `check-${index}`,
+        label: toText(row.label) || "체크 항목",
+        status:
+          status === "ok" || status === "warn" || status === "missing"
+            ? status
+            : "warn",
+        detail: toText(row.detail) || "상세 정보가 없습니다.",
+      } as OperatorCheck;
+    })
+    .filter((item): item is OperatorCheck => Boolean(item));
+}
+
+function normalizeOpsSummary(
+  value: DashboardData["opsSummary"],
+  serviceHealth: Record<OpsServiceName, OpsServiceHealth>,
+  updatedAt: string,
+): OpsSummary {
+  const fallbackImpacted = Object.values(serviceHealth)
+    .filter((item) => item.status !== "healthy")
+    .map((item) => item.name);
+
+  return {
+    status:
+      (toText(value?.status) as OpsServiceStatus) ||
+      (fallbackImpacted.length > 0 ? serviceHealth[fallbackImpacted[0]].status : "healthy"),
+    headline:
+      toText(value?.headline) ||
+      (fallbackImpacted.length > 0
+        ? "운영 상태를 점검해야 합니다."
+        : "주요 운영 구성요소가 안정적으로 동작 중입니다."),
+    detail:
+      toText(value?.detail) ||
+      (fallbackImpacted.length > 0
+        ? `${fallbackImpacted.length}개 구성요소에 점검 포인트가 있습니다.`
+        : "Pipeline, Listener, Bot, Dashboard, Data source가 모두 정상 범위입니다."),
+    impactedServices:
+      Array.isArray(value?.impactedServices) && value?.impactedServices.length > 0
+        ? value.impactedServices.filter(Boolean) as OpsServiceName[]
+        : fallbackImpacted,
+    updatedAt: toText(value?.updatedAt) || updatedAt,
+  };
+}
 
 export function normalizeTransactions(value: unknown): DisplayTransactionRow[] {
   if (!Array.isArray(value)) {
@@ -188,6 +340,134 @@ export function normalizeDashboardData(input: DashboardData | null): NormalizedD
     event: toText(input?.listenerHealth?.event) || undefined,
   };
 
+  const sourceHealth = {
+    ...defaultSourceHealth(
+      sourceState,
+      input?.source || FALLBACK_SOURCE,
+      toText(input?.generatedAt) || latestRun.updatedAt || new Date().toISOString(),
+    ),
+    connected:
+      input?.sourceHealth?.connected === undefined
+        ? sourceState === "connected"
+        : Boolean(input?.sourceHealth?.connected),
+    mode:
+      toText(input?.sourceHealth?.mode) === "fallback"
+        ? "fallback"
+        : sourceState === "connected"
+          ? "live"
+          : "fallback",
+    label:
+      toText(input?.sourceHealth?.label) ||
+      (sourceState === "connected" ? "Live Sheets" : "Preview"),
+    description:
+      toText(input?.sourceHealth?.description) ||
+      (sourceState === "connected"
+        ? "Google Sheets 운영 데이터를 읽고 있습니다."
+        : "운영 데이터 연결 전이라 fallback preview를 사용합니다."),
+    source: toText(input?.sourceHealth?.source) || input?.source || FALLBACK_SOURCE,
+    lastUpdatedAt:
+      toText(input?.sourceHealth?.lastUpdatedAt) ||
+      metrics.lastUpdatedAt ||
+      latestRun.updatedAt,
+    staleMinutes: toNullableNumber(input?.sourceHealth?.staleMinutes),
+    failureKind: normalizeSourceFailureKind(input?.sourceHealth?.failureKind),
+  } satisfies SourceHealth;
+
+  const serviceHealth: Record<OpsServiceName, OpsServiceHealth> = {
+    pipeline: normalizeServiceHealthEntry(
+      "pipeline",
+      input?.serviceHealth?.pipeline,
+      defaultServiceHealth("pipeline", {
+        title: "정보수집 파이프라인",
+        status:
+          latestRun.status.toLowerCase().includes("failed")
+            ? "down"
+            : latestRun.errorCount > 0
+              ? "degraded"
+              : sourceState === "connected"
+                ? "healthy"
+                : "waiting",
+        label: latestRun.status || "unknown",
+        summary: latestRun.message || "최근 파이프라인 실행 상태를 확인합니다.",
+        detail: latestRun.updatedAt,
+        updatedAt: latestRun.updatedAt,
+        source: "system_log",
+      }),
+    ),
+    listener: normalizeServiceHealthEntry(
+      "listener",
+      input?.serviceHealth?.listener,
+      defaultServiceHealth("listener", {
+        title: "Telegram listener",
+        status:
+          listenerHealth.status === "ok"
+            ? "healthy"
+            : listenerHealth.status === "auth_required"
+              ? "config_required"
+              : listenerHealth.status === "attention"
+                ? "degraded"
+                : "waiting",
+        label: listenerHealth.label,
+        summary: listenerHealth.message,
+        detail: listenerHealth.updatedAt || "최근 listener heartbeat가 없습니다.",
+        updatedAt: listenerHealth.updatedAt,
+        source: "system_log/tg_whale_events",
+      }),
+    ),
+    bot: normalizeServiceHealthEntry(
+      "bot",
+      input?.serviceHealth?.bot,
+      defaultServiceHealth("bot", {
+        title: "Telegram bot",
+        status: metrics.subscriberCount > 0 ? "healthy" : "waiting",
+        label: metrics.subscriberCount > 0 ? "활성" : "대기",
+        summary:
+          metrics.subscriberCount > 0
+            ? `${metrics.subscriberCount.toLocaleString("ko-KR")}명의 구독자가 연결되어 있습니다.`
+            : "구독자 또는 발송 이력이 아직 충분하지 않습니다.",
+        detail: "Telegram 구독 봇과 브리핑 발송 상태를 함께 확인합니다.",
+        source: "subscribers/system_log",
+      }),
+    ),
+    dashboard: normalizeServiceHealthEntry(
+      "dashboard",
+      input?.serviceHealth?.dashboard,
+      defaultServiceHealth("dashboard", {
+        title: "Dashboard",
+        status: sourceState === "connected" ? "healthy" : "degraded",
+        label: sourceState === "connected" ? "연결됨" : "미리보기",
+        summary:
+          sourceState === "connected"
+            ? "운영 대시보드가 실제 Sheets 데이터를 읽고 렌더링합니다."
+            : "대시보드가 fallback preview 상태로 동작 중입니다.",
+        detail: "운영자 페이지와 보호된 API 계층 상태입니다.",
+        source: "nextjs",
+      }),
+    ),
+    data_source: normalizeServiceHealthEntry(
+      "data_source",
+      input?.serviceHealth?.data_source,
+      defaultServiceHealth("data_source", {
+        title: "Data source",
+        status:
+          !sourceHealth.connected
+            ? "down"
+            : sourceHealth.failureKind === "empty"
+              ? "waiting"
+              : "healthy",
+        label: sourceHealth.label,
+        summary: sourceHealth.description,
+        detail:
+          sourceHealth.lastUpdatedAt || "최근 데이터 타임스탬프를 아직 확인하지 못했습니다.",
+        updatedAt: sourceHealth.lastUpdatedAt,
+        source: sourceHealth.source,
+      }),
+    ),
+  };
+
+  const operatorChecks = normalizeOperatorChecks(input?.operatorChecks);
+  const opsSummary = normalizeOpsSummary(input?.opsSummary, serviceHealth, latestRun.updatedAt);
+
   const latestBrief: NormalizedDashboard["latestBrief"] = {
     date: toText(input?.latestBrief?.date) || undefined,
     generatedAt:
@@ -236,6 +516,10 @@ export function normalizeDashboardData(input: DashboardData | null): NormalizedD
     recentSignals,
     latestRun,
     listenerHealth,
+    sourceHealth,
+    serviceHealth,
+    operatorChecks,
+    opsSummary,
     systemLogs: normalizeSystemLogs(input?.systemLogs ?? [], latestRun),
     sourceState,
   };

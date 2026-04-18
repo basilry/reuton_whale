@@ -5,9 +5,22 @@ import {
   parseDateTimeSafe,
 } from "./format";
 import { readSheetRows } from "./sheets";
-import type { DailyBriefRow, NewsFeedRow, SignalRow } from "./schema";
+import type {
+  DailyBriefRow,
+  NewsFeedRow,
+  SignalRow,
+  SystemLogRow,
+} from "./schema";
 
 export type NewsDataSource = "news_feed" | "derived" | "fallback";
+
+export type NewsStalenessLevel = "warn" | "info";
+
+export type NewsStalenessReason =
+  | "pipeline_stale"
+  | "article_quiet"
+  | "derived_stale"
+  | "fallback";
 
 export interface NewsItem {
   id: string;
@@ -20,15 +33,54 @@ export interface NewsItem {
   tags: string[];
 }
 
+export interface NewsStaleness {
+  level: NewsStalenessLevel;
+  reason: NewsStalenessReason;
+  /**
+   * Minutes elapsed since the relevant timestamp. Null when the source
+   * timestamp itself is missing (e.g. fallback / first-ever run).
+   */
+  minutes: number | null;
+}
+
 export interface NewsWidgetData {
   generatedAt: string;
+  /**
+   * Back-compat: the more recent of `lastPollAt` and `lastArticleAt`.
+   * UI code that needs to distinguish poll vs. article should use the
+   * dedicated fields below.
+   */
   lastUpdatedAt: string;
+  /**
+   * When the RSS pipeline most recently observed *any* article (new or
+   * dedup hit). Reflects "is the pipeline polling?". Null-ish empty
+   * string means we have no evidence the pipeline ran recently.
+   */
+  lastPollAt: string;
+  /**
+   * When the most recent *new* article was published. Reflects "are
+   * upstream sources producing news?". Can lag hours behind lastPollAt
+   * during a quiet news cycle even when the pipeline is healthy.
+   */
+  lastArticleAt: string;
   source: NewsDataSource;
+  /** Structured staleness decision. Undefined when nothing is stale. */
+  staleness?: NewsStaleness;
   items: NewsItem[];
 }
 
 const DEFAULT_LIMIT = 4;
 const MAX_LIMIT = 8;
+/**
+ * If the pipeline hasn't polled in this long, something is wrong with
+ * the cron / RSS fetcher. Escalate as WARN (error-tone in UI).
+ */
+const POLL_STALE_MINUTES = 35;
+/**
+ * If the pipeline is polling fine but no new article has arrived in this
+ * long, it's usually just a quiet news cycle. Surface as INFO only.
+ */
+const ARTICLE_QUIET_MINUTES = 120;
 
 function clampLimit(limit: number | undefined): number {
   if (!Number.isFinite(limit) || !limit) {
@@ -79,6 +131,75 @@ function newestTimestamp(values: string[]): string {
   return latestTime == null ? "" : new Date(latestTime).toISOString();
 }
 
+function ageMinutes(iso: string): number | null {
+  const ms = parseDateTimeSafe(compactString(iso));
+  if (ms == null) {
+    return null;
+  }
+  return Math.max(0, (Date.now() - ms) / 60000);
+}
+
+function mostRecent(a: string, b: string): string {
+  const aMs = parseDateTimeSafe(compactString(a));
+  const bMs = parseDateTimeSafe(compactString(b));
+  if (aMs == null && bMs == null) {
+    return "";
+  }
+  if (aMs == null) {
+    return b;
+  }
+  if (bMs == null) {
+    return a;
+  }
+  return aMs >= bMs ? a : b;
+}
+
+function decideStaleness(
+  source: NewsDataSource,
+  lastPollAt: string,
+  lastArticleAt: string,
+): NewsStaleness | undefined {
+  if (source === "fallback") {
+    return { level: "warn", reason: "fallback", minutes: null };
+  }
+
+  if (source === "derived") {
+    // Derived has no independent poll concept — there is no news pipeline
+    // to check. Treat the combined "last updated" as the signal.
+    const combined = mostRecent(lastPollAt, lastArticleAt);
+    const age = ageMinutes(combined);
+    if (age == null || age <= POLL_STALE_MINUTES) {
+      return undefined;
+    }
+    return {
+      level: "warn",
+      reason: "derived_stale",
+      minutes: Math.floor(age),
+    };
+  }
+
+  // source === "news_feed"
+  const pollAge = ageMinutes(lastPollAt);
+  if (pollAge == null || pollAge > POLL_STALE_MINUTES) {
+    return {
+      level: "warn",
+      reason: "pipeline_stale",
+      minutes: pollAge == null ? null : Math.floor(pollAge),
+    };
+  }
+
+  const articleAge = ageMinutes(lastArticleAt);
+  if (articleAge != null && articleAge > ARTICLE_QUIET_MINUTES) {
+    return {
+      level: "info",
+      reason: "article_quiet",
+      minutes: Math.floor(articleAge),
+    };
+  }
+
+  return undefined;
+}
+
 function toNewsItem(row: NewsFeedRow): NewsItem | null {
   const title = compactString(stripHtml(row.title));
   if (!title) {
@@ -120,9 +241,46 @@ function pickNewsFeedItems(rows: NewsFeedRow[], limit: number): NewsItem[] {
     .slice(0, limit);
 }
 
-function getNewsFeedLastUpdated(rows: NewsFeedRow[]): string {
+/**
+ * The "last poll" is the most recent moment the RSS pipeline *saw* any
+ * article — including dedup hits. Prefer `last_seen_at` (added in v7.5);
+ * fall back to `fetched_at` for rows written before the schema migration,
+ * and ultimately to the latest `news_rss` run in system_log if the sheet
+ * is still on the old schema.
+ */
+function getNewsFeedLastPollAt(
+  rows: NewsFeedRow[],
+  systemLogRows: SystemLogRow[],
+): string {
+  const sheetPoll = newestTimestamp(
+    rows.flatMap((row) => [
+      compactString(row.last_seen_at),
+      compactString(row.fetched_at),
+    ]),
+  );
+  if (sheetPoll) {
+    return sheetPoll;
+  }
+
+  // Fall back to system_log if the sheet has no usable timestamps yet.
   return newestTimestamp(
-    rows.flatMap((row) => [compactString(row.fetched_at), compactString(row.published_at)])
+    systemLogRows
+      .filter((row) => row.run_type === "news_rss")
+      .flatMap((row) => [
+        compactString(row.finished_at),
+        compactString(row.started_at),
+      ]),
+  );
+}
+
+/**
+ * The "last article" is the most recent publication timestamp among
+ * collected rows. Only `published_at` counts — fetched_at and last_seen_at
+ * measure pipeline behavior, not news arrival.
+ */
+function getNewsFeedLastArticleAt(rows: NewsFeedRow[]): string {
+  return newestTimestamp(
+    rows.map((row) => compactString(row.published_at)),
   );
 }
 
@@ -219,6 +377,15 @@ async function tryReadNewsFeed(): Promise<NewsFeedRow[]> {
   }
 }
 
+async function tryReadSystemLog(): Promise<SystemLogRow[]> {
+  try {
+    return await readSheetRows("system_log");
+  } catch (error) {
+    console.error("[lib/news] Failed to read system_log.", error);
+    return [];
+  }
+}
+
 async function tryReadDerivedInputs(): Promise<{
   briefs: DailyBriefRow[];
   signals: SignalRow[];
@@ -241,13 +408,26 @@ export async function loadNewsWidgetData(
   const cappedLimit = clampLimit(limit);
   const generatedAt = new Date().toISOString();
 
-  const newsFeedRows = await tryReadNewsFeed();
+  // Read news_feed + system_log in parallel so the staleness check has
+  // both signals even if the sheet hasn't been migrated to last_seen_at.
+  const [newsFeedRows, systemLogRows] = await Promise.all([
+    tryReadNewsFeed(),
+    tryReadSystemLog(),
+  ]);
   const newsFeedItems = pickNewsFeedItems(newsFeedRows, cappedLimit);
+
   if (newsFeedItems.length > 0) {
+    const lastPollAt = getNewsFeedLastPollAt(newsFeedRows, systemLogRows);
+    const lastArticleAt = getNewsFeedLastArticleAt(newsFeedRows);
+    const lastUpdatedAt = mostRecent(lastPollAt, lastArticleAt);
+    const staleness = decideStaleness("news_feed", lastPollAt, lastArticleAt);
     return {
       generatedAt,
-      lastUpdatedAt: getNewsFeedLastUpdated(newsFeedRows),
+      lastUpdatedAt,
+      lastPollAt,
+      lastArticleAt,
       source: "news_feed",
+      staleness,
       items: newsFeedItems,
     };
   }
@@ -255,10 +435,15 @@ export async function loadNewsWidgetData(
   const { briefs, signals } = await tryReadDerivedInputs();
   const derivedItems = buildDerivedItems(briefs, signals, cappedLimit);
   if (derivedItems.length > 0) {
+    const lastUpdatedAt = getDerivedLastUpdated(briefs, signals);
+    const staleness = decideStaleness("derived", lastUpdatedAt, lastUpdatedAt);
     return {
       generatedAt,
-      lastUpdatedAt: getDerivedLastUpdated(briefs, signals),
+      lastUpdatedAt,
+      lastPollAt: lastUpdatedAt,
+      lastArticleAt: lastUpdatedAt,
       source: "derived",
+      staleness,
       items: derivedItems,
     };
   }
@@ -266,7 +451,10 @@ export async function loadNewsWidgetData(
   return {
     generatedAt,
     lastUpdatedAt: "",
+    lastPollAt: "",
+    lastArticleAt: "",
     source: "fallback",
+    staleness: decideStaleness("fallback", "", ""),
     items: buildFallbackItems(),
   };
 }

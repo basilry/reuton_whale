@@ -89,6 +89,18 @@
   color: var(--on-surface);
 }
 
+.warning {
+  margin: 0;
+  font-size: var(--text-2xs);
+  line-height: var(--leading-relaxed);
+  color: var(--bad);
+}
+
+.warning[data-level="info"] {
+  /* Non-urgent: quiet news cycle, not an operator problem. */
+  color: var(--muted);
+}
+
 .list {
   display: grid;
   gap: var(--space-xs);

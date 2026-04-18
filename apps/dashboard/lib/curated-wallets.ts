@@ -12,6 +12,7 @@ import type {
   SignalRow,
   SheetRowMap,
   TransactionRow,
+  WatchedAddressRow,
   WalletAliasRow,
   WatchlistOverrideRow,
 } from "./schema";
@@ -51,6 +52,21 @@ type WalletActivity = {
   lastSeenAt?: string;
   relatedSignalCount: number;
   activityScore: number;
+};
+
+export type CuratedWalletRegistrySource =
+  | "curated_wallets"
+  | "watched_addresses"
+  | "seed"
+  | "empty";
+
+export type CuratedWalletRegistryMeta = {
+  source: CuratedWalletRegistrySource;
+  label: string;
+  rowCount: number;
+  aliasCount: number;
+  overrideCount: number;
+  seedEnabled: boolean;
 };
 
 const curatedWalletSeed: CuratedWalletEntry[] = [
@@ -117,6 +133,14 @@ let curatedWalletRegistry: CuratedWalletEntry[] = sortWallets(
   curatedWalletBaseRegistry.map((entry) => applyOverride(entry)),
 );
 let curatedWalletLoadPromise: Promise<CuratedWalletEntry[]> | null = null;
+let curatedWalletRegistryMeta: CuratedWalletRegistryMeta = {
+  source: "seed",
+  label: "seed",
+  rowCount: curatedWalletSeed.length,
+  aliasCount: 0,
+  overrideCount: 0,
+  seedEnabled: true,
+};
 
 function normalizeAddress(value: string): string {
   return compactString(value).toLowerCase();
@@ -128,6 +152,13 @@ function normalizeText(value?: string): string {
 
 function normalizeWalletKey(value: string): string {
   return normalizeAddress(value);
+}
+
+function slugifyText(value: string): string {
+  return compactString(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function cloneWalletEntry(entry: CuratedWalletEntry): CuratedWalletEntry {
@@ -159,6 +190,12 @@ function parseLooseBoolean(value: string, fallback: boolean): boolean {
     return false;
   }
   return fallback;
+}
+
+function seedFallbackEnabled(): boolean {
+  return !["1", "true", "yes", "on"].includes(
+    normalizeText(process.env.WHALESCOPE_CURATED_DISABLE_SEED),
+  );
 }
 
 function ownerCategoryFromSheet(value: string, fallback: CuratedWalletCategory): CuratedWalletCategory {
@@ -213,9 +250,31 @@ function applyOverride(entry: CuratedWalletEntry): CuratedWalletEntry {
   return override === undefined ? cloneWalletEntry(entry) : { ...cloneWalletEntry(entry), enabled: override };
 }
 
-function refreshCuratedWalletRegistry(baseEntries: CuratedWalletEntry[]): CuratedWalletEntry[] {
+function updateCuratedWalletRegistryMeta(
+  nextMeta: Partial<CuratedWalletRegistryMeta> & Pick<CuratedWalletRegistryMeta, "source">,
+): void {
+  curatedWalletRegistryMeta = {
+    source: nextMeta.source,
+    label: nextMeta.label ?? nextMeta.source,
+    rowCount: nextMeta.rowCount ?? 0,
+    aliasCount: nextMeta.aliasCount ?? 0,
+    overrideCount: nextMeta.overrideCount ?? 0,
+    seedEnabled: nextMeta.seedEnabled ?? seedFallbackEnabled(),
+  };
+}
+
+function refreshCuratedWalletRegistry(
+  baseEntries: CuratedWalletEntry[],
+  meta?: Partial<CuratedWalletRegistryMeta> & Pick<CuratedWalletRegistryMeta, "source">,
+): CuratedWalletEntry[] {
   curatedWalletBaseRegistry = baseEntries.map((entry) => cloneWalletEntry(entry));
   curatedWalletRegistry = sortWallets(curatedWalletBaseRegistry.map((entry) => applyOverride(entry)));
+  if (meta) {
+    updateCuratedWalletRegistryMeta({
+      rowCount: curatedWalletBaseRegistry.length,
+      ...meta,
+    });
+  }
   return curatedWalletRegistry;
 }
 
@@ -273,6 +332,74 @@ function walletFromSheetRow(
   };
 }
 
+function ownerCategoryFromLegacyWatchedAddress(value: string): CuratedWalletCategory {
+  switch (normalizeText(value)) {
+    case "cex":
+    case "exchange":
+      return "exchange";
+    case "market_maker":
+      return "market_maker";
+    case "fund":
+    case "smart_money":
+      return "fund";
+    case "custody":
+      return "custody";
+    case "bridge":
+      return "bridge";
+    case "protocol":
+    case "token_whale":
+      return "protocol";
+    case "foundation":
+      return "foundation";
+    default:
+      return "unknown";
+  }
+}
+
+function gradeFromLegacyConfidence(value: string): CuratedWalletEntry["grade"] {
+  switch (normalizeText(value)) {
+    case "high":
+      return "A";
+    case "medium":
+      return "B";
+    case "low":
+      return "C";
+    default:
+      return "C";
+  }
+}
+
+function walletFromLegacyWatchedAddress(
+  row: WatchedAddressRow,
+  index: number,
+): CuratedWalletEntry | null {
+  const address = compactString(row.address);
+  if (!address) {
+    return null;
+  }
+
+  const chain = compactString(row.chain).toLowerCase() || "unknown";
+  const label = compactString(row.label) || address;
+  const category = ownerCategoryFromLegacyWatchedAddress(row.category);
+  const enabled = parseLooseBoolean(row.enabled, true);
+  const slug = slugifyText(label) || normalizeWalletKey(address).slice(0, 16) || `wallet-${index + 1}`;
+  const addressKey =
+    normalizeWalletKey(address).replace(/[^a-z0-9]/g, "").slice(0, 18) || `addr-${index + 1}`;
+
+  return {
+    id: `watched-${chain}-${slug}-${addressKey}`,
+    address,
+    chain,
+    label,
+    category,
+    grade: gradeFromLegacyConfidence(row.confidence),
+    priority: index + 1,
+    enabled,
+    aliases: dedupeStrings([label]),
+    note: compactString(row.notes) || compactString(row.source) || undefined,
+  };
+}
+
 function mergeAliasesForEntry(
   entry: CuratedWalletEntry,
   aliasRows: readonly WalletAliasRow[],
@@ -298,6 +425,7 @@ function loadWatchlistOverrides(
   rows: readonly WatchlistOverrideRow[],
   baseEntries: CuratedWalletEntry[],
 ): void {
+  watchlistOverrides.clear();
   const byId = new Map<string, CuratedWalletEntry>();
   const byAddress = new Map<string, CuratedWalletEntry>();
 
@@ -332,44 +460,20 @@ async function readOptionalSheetRows<T extends keyof SheetRowMap>(
   }
 }
 
-async function loadSheetBackedRegistry(): Promise<CuratedWalletEntry[]> {
-  const [walletRows, aliasRows, overrideRows] = await Promise.all([
-    readOptionalSheetRows("curated_wallets"),
-    readOptionalSheetRows("wallet_aliases"),
-    readOptionalSheetRows("watchlist_overrides"),
-  ]);
-
+function buildRegistryFromEntries(args: {
+  entries: CuratedWalletEntry[];
+  aliasRows: readonly WalletAliasRow[];
+  overrideRows: readonly WatchlistOverrideRow[];
+  meta: Partial<CuratedWalletRegistryMeta> & Pick<CuratedWalletRegistryMeta, "source">;
+}): CuratedWalletEntry[] {
+  const { entries, aliasRows, overrideRows, meta } = args;
   const entriesById = new Map<string, CuratedWalletEntry>();
   const orderedEntries: CuratedWalletEntry[] = [];
 
-  for (const seedEntry of curatedWalletSeed) {
-    const cloned = cloneWalletEntry(seedEntry);
+  for (const entry of entries) {
+    const cloned = cloneWalletEntry(entry);
     entriesById.set(normalizeWalletKey(cloned.id), cloned);
     orderedEntries.push(cloned);
-  }
-
-  for (let index = 0; index < walletRows.length; index += 1) {
-    const row = walletRows[index];
-    const normalizedId = normalizeWalletKey(row.id);
-    const fallback =
-      entriesById.get(normalizedId) ??
-      orderedEntries.find((entry) => normalizeWalletKey(entry.address) === normalizeWalletKey(row.address));
-
-    const nextEntry = walletFromSheetRow(row, index, fallback);
-    const current = entriesById.get(normalizeWalletKey(nextEntry.id));
-    if (current) {
-      const merged = {
-        ...current,
-        ...nextEntry,
-        aliases: dedupeStrings([...(current.aliases ?? []), ...(nextEntry.aliases ?? [])]),
-        focusSymbols: dedupeStrings([...(current.focusSymbols ?? []), ...(nextEntry.focusSymbols ?? [])]),
-      };
-      entriesById.set(normalizeWalletKey(merged.id), merged);
-      continue;
-    }
-
-    entriesById.set(normalizeWalletKey(nextEntry.id), nextEntry);
-    orderedEntries.push(nextEntry);
   }
 
   const aliasRowsByCanonicalId = new Map<string, WalletAliasRow[]>();
@@ -390,7 +494,111 @@ async function loadSheetBackedRegistry(): Promise<CuratedWalletEntry[]> {
   });
 
   loadWatchlistOverrides(overrideRows, mergedEntries);
-  return refreshCuratedWalletRegistry(mergedEntries);
+  return refreshCuratedWalletRegistry(mergedEntries, {
+    aliasCount: aliasRows.length,
+    overrideCount: overrideRows.length,
+    ...meta,
+  });
+}
+
+function buildCuratedRegistryFromSheetRows(
+  walletRows: readonly CuratedWalletRow[],
+  aliasRows: readonly WalletAliasRow[],
+  overrideRows: readonly WatchlistOverrideRow[],
+): CuratedWalletEntry[] {
+  const seedById = new Map(
+    curatedWalletSeed.map((entry) => [normalizeWalletKey(entry.id), entry] as const),
+  );
+  const seedByAddress = new Map(
+    curatedWalletSeed.map((entry) => [normalizeWalletKey(entry.address), entry] as const),
+  );
+  const entries = walletRows
+    .map((row, index) => {
+      const fallback =
+        seedById.get(normalizeWalletKey(row.id)) ??
+        seedByAddress.get(normalizeWalletKey(row.address));
+      return walletFromSheetRow(row, index, fallback);
+    })
+    .filter((entry, index, items) => {
+      const key = normalizeWalletKey(entry.id) || normalizeWalletKey(entry.address);
+      return items.findIndex((candidate) => {
+        const candidateKey =
+          normalizeWalletKey(candidate.id) || normalizeWalletKey(candidate.address);
+        return candidateKey === key;
+      }) === index;
+    });
+
+  return buildRegistryFromEntries({
+    entries,
+    aliasRows,
+    overrideRows,
+    meta: {
+      source: "curated_wallets",
+      label: "curated_wallets",
+      rowCount: walletRows.length,
+    },
+  });
+}
+
+function buildCuratedRegistryFromLegacyRows(
+  watchedRows: readonly WatchedAddressRow[],
+  overrideRows: readonly WatchlistOverrideRow[],
+): CuratedWalletEntry[] {
+  const entries = watchedRows
+    .map((row, index) => walletFromLegacyWatchedAddress(row, index))
+    .filter((entry): entry is CuratedWalletEntry => entry !== null);
+
+  return buildRegistryFromEntries({
+    entries,
+    aliasRows: [],
+    overrideRows,
+    meta: {
+      source: "watched_addresses",
+      label: "watched_addresses (legacy)",
+      rowCount: watchedRows.length,
+    },
+  });
+}
+
+async function loadSheetBackedRegistry(): Promise<CuratedWalletEntry[]> {
+  const [walletRows, watchedRows, aliasRows, overrideRows] = await Promise.all([
+    readOptionalSheetRows("curated_wallets"),
+    readOptionalSheetRows("watched_addresses"),
+    readOptionalSheetRows("wallet_aliases"),
+    readOptionalSheetRows("watchlist_overrides"),
+  ]);
+
+  if (walletRows.length > 0) {
+    return buildCuratedRegistryFromSheetRows(walletRows, aliasRows, overrideRows);
+  }
+
+  if (watchedRows.length > 0) {
+    return buildCuratedRegistryFromLegacyRows(watchedRows, overrideRows);
+  }
+
+  if (!seedFallbackEnabled()) {
+    loadWatchlistOverrides(overrideRows, []);
+    return refreshCuratedWalletRegistry([], {
+      source: "empty",
+      label: "empty",
+      rowCount: 0,
+      aliasCount: aliasRows.length,
+      overrideCount: overrideRows.length,
+      seedEnabled: false,
+    });
+  }
+
+  return buildRegistryFromEntries({
+    entries: curatedWalletSeed,
+    aliasRows: [],
+    overrideRows,
+    meta: {
+      source: "seed",
+      label: "seed",
+      rowCount: curatedWalletSeed.length,
+      seedEnabled: true,
+    },
+  });
 }
 
 function categoryLabel(category: CuratedWalletCategory): string {
@@ -484,12 +692,37 @@ export function listCuratedWalletEntries(): CuratedWalletEntry[] {
   return curatedWalletRegistry.map((entry) => cloneWalletEntry(entry));
 }
 
+export function getCuratedWalletRegistryMeta(): CuratedWalletRegistryMeta {
+  return { ...curatedWalletRegistryMeta };
+}
+
 export async function loadCuratedWalletEntries(forceRefresh = false): Promise<CuratedWalletEntry[]> {
   if (!forceRefresh && curatedWalletLoadPromise) {
     return curatedWalletLoadPromise;
   }
 
-  const loadPromise = loadSheetBackedRegistry().catch(() => refreshCuratedWalletRegistry(curatedWalletSeed));
+  const loadPromise = loadSheetBackedRegistry().catch(() => {
+    if (!seedFallbackEnabled()) {
+      loadWatchlistOverrides([], []);
+      return refreshCuratedWalletRegistry([], {
+        source: "empty",
+        label: "empty",
+        rowCount: 0,
+        seedEnabled: false,
+      });
+    }
+    return buildRegistryFromEntries({
+      entries: curatedWalletSeed,
+      aliasRows: [],
+      overrideRows: [],
+      meta: {
+        source: "seed",
+        label: "seed",
+        rowCount: curatedWalletSeed.length,
+        seedEnabled: true,
+      },
+    });
+  });
   curatedWalletLoadPromise = loadPromise;
 
   try {
@@ -499,6 +732,16 @@ export async function loadCuratedWalletEntries(forceRefresh = false): Promise<Cu
       curatedWalletLoadPromise = null;
     }
   }
+}
+
+export async function loadCuratedWalletEntriesWithMeta(
+  forceRefresh = false,
+): Promise<{ wallets: CuratedWalletEntry[]; meta: CuratedWalletRegistryMeta }> {
+  const wallets = await loadCuratedWalletEntries(forceRefresh);
+  return {
+    wallets,
+    meta: getCuratedWalletRegistryMeta(),
+  };
 }
 
 export function listEnabledCuratedWalletEntries(): CuratedWalletEntry[] {

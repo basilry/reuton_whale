@@ -32,6 +32,7 @@ from src.storage.schema import (
     TAB_LLM_BUDGET_LOG,
     TAB_NEWS_FEED,
     TAB_SIGNALS,
+    TAB_SERVICE_HEALTH,
     TAB_SUBSCRIBERS,
     TAB_SYSTEM_LOG,
     TAB_TG_WHALE_EVENTS,
@@ -46,6 +47,7 @@ from src.storage.schema import (
     WATCHED_ADDRESSES_HEADERS,
     WEEKLY_TREND_HEADERS,
     WHALE_STORIES_HEADERS,
+    SERVICE_HEALTH_HEADERS,
 )
 from src.utils.errors import StorageError
 from src.utils.logger import get_logger
@@ -126,6 +128,18 @@ def _json_loads_safe(value: str) -> dict | list | None:
         return json.loads(raw)
     except json.JSONDecodeError:
         return None
+
+
+def _column_letter(index_1based: int) -> str:
+    """Convert a 1-based column index to A1 notation (1 -> A, 27 -> AA)."""
+    if index_1based <= 0:
+        raise ValueError(f"column index must be >= 1, got {index_1based}")
+    letters = ""
+    n = index_1based
+    while n > 0:
+        n, rem = divmod(n - 1, 26)
+        letters = chr(ord("A") + rem) + letters
+    return letters
 
 
 class SheetsClient:
@@ -551,6 +565,61 @@ class SheetsClient:
                 raise StorageError(f"Failed to append system log: {e}") from e
 
     @retry(max_retries=3, base_delay=2.0)
+    def list_system_log(
+        self,
+        *,
+        run_type: str | None = None,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
+        try:
+            ws = self._worksheet(TAB_SYSTEM_LOG)
+            all_values = ws.get_all_values()
+            if len(all_values) <= 1:
+                return []
+
+            rows = [row_to_dict(row, SYSTEM_LOG_HEADERS) for row in all_values[1:]]
+            if run_type:
+                rows = [row for row in rows if str(row.get("run_type", "")).strip() == run_type]
+
+            if since is not None:
+                filtered: list[dict] = []
+                for row in rows:
+                    row_time = _parse_row_time(row.get("started_at") or row.get("finished_at", ""))
+                    if row_time is None:
+                        continue
+                    if row_time >= since:
+                        filtered.append(row)
+                rows = filtered
+
+            if limit is not None and limit >= 0:
+                rows = rows[-limit:] if limit else []
+            return rows
+        except gspread.exceptions.APIError as e:
+            raise StorageError(f"Failed to list system log: {e}") from e
+
+    def has_logged_run_in_window(
+        self,
+        *,
+        run_type: str,
+        window_start: datetime,
+        window_end: datetime,
+        statuses: set[str] | None = None,
+    ) -> bool:
+        rows = self.list_system_log(run_type=run_type, since=window_start)
+        for row in reversed(rows):
+            row_time = _parse_row_time(row.get("started_at") or row.get("finished_at", ""))
+            if row_time is None:
+                continue
+            if row_time < window_start or row_time >= window_end:
+                continue
+            status = str(row.get("status", "")).strip().lower()
+            if statuses is not None and status not in statuses:
+                continue
+            return True
+        return False
+
+    @retry(max_retries=3, base_delay=2.0)
     def append_broadcast_log(self, entry: dict) -> None:
         with self._write_lock:
             try:
@@ -941,6 +1010,22 @@ class SheetsClient:
 
     @retry(max_retries=3, base_delay=2.0)
     def append_news_feed(self, items: list[dict]) -> int:
+        """Insert new news_feed rows and refresh last_seen_at for dedup hits.
+
+        Behavior:
+            * Pre-existing rows whose hash is seen again get their ``last_seen_at``
+              column set to ``now``. This lets the dashboard distinguish
+              "pipeline is polling" from "new article arrived".
+            * Brand-new rows are appended with both ``fetched_at`` and
+              ``last_seen_at`` set to ``now``.
+            * If the physical sheet header row is missing ``last_seen_at`` (older
+              deployments predating this migration), the header cell is extended
+              in place before any writes. Downstream readers key by header
+              position, so this self-heals without a separate migration step.
+
+        Returns:
+            Count of NEW rows inserted (not including refreshed dedup hits).
+        """
         with self._write_lock:
             try:
                 if not items:
@@ -948,15 +1033,20 @@ class SheetsClient:
 
                 ws = self._worksheet(TAB_NEWS_FEED)
                 all_values = ws.get_all_values()
+                self._ensure_news_feed_schema(ws, all_values)
+
                 hash_col = NEWS_FEED_HEADERS.index("hash")
-                existing_hashes = {
-                    row[hash_col]
-                    for row in all_values[1:]
-                    if hash_col < len(row) and row[hash_col]
-                }
+                last_seen_col = NEWS_FEED_HEADERS.index("last_seen_at")
+                existing: dict[str, int] = {}
+                # Row index in sheet = data row index + 2 (1 for header, 1 for 1-based).
+                for offset, row in enumerate(all_values[1:]):
+                    if hash_col < len(row) and row[hash_col]:
+                        existing[row[hash_col]] = offset + 2
 
                 now = now_iso()
-                new_rows = []
+                new_rows: list[list[str]] = []
+                refresh_rows: list[int] = []
+
                 for item in items:
                     entry = dict(item)
                     title = str(entry.get("title", "")).strip()
@@ -972,7 +1062,8 @@ class SheetsClient:
                             f"{source}|{url}|{title}|{published_at}".encode("utf-8")
                         ).hexdigest()
 
-                    if digest in existing_hashes:
+                    if digest in existing:
+                        refresh_rows.append(existing[digest])
                         continue
 
                     entry.setdefault("id", digest[:16])
@@ -981,8 +1072,26 @@ class SheetsClient:
                     entry.setdefault("language", "en")
                     entry.setdefault("tags", "")
                     entry.setdefault("fetched_at", now)
+                    entry["last_seen_at"] = now
                     new_rows.append(dict_to_row(entry, NEWS_FEED_HEADERS))
-                    existing_hashes.add(digest)
+                    # reserve the slot so duplicate hashes within this batch dedup
+                    existing[digest] = -1
+
+                if refresh_rows:
+                    last_seen_letter = _column_letter(last_seen_col + 1)
+                    # One batch request instead of N cell updates.
+                    update_payload = [
+                        {
+                            "range": f"{last_seen_letter}{row_idx}",
+                            "values": [[now]],
+                        }
+                        for row_idx in sorted(set(refresh_rows))
+                    ]
+                    ws.batch_update(update_payload, value_input_option="RAW")
+                    logger.info(
+                        "Refreshed last_seen_at on %d existing news_feed rows",
+                        len(update_payload),
+                    )
 
                 if new_rows:
                     ws.append_rows(new_rows, value_input_option="RAW")
@@ -990,6 +1099,47 @@ class SheetsClient:
                 return len(new_rows)
             except gspread.exceptions.APIError as e:
                 raise StorageError(f"Failed to append news_feed: {e}") from e
+
+    def _ensure_news_feed_schema(
+        self,
+        ws: "gspread.Worksheet",
+        all_values: list[list[str]],
+    ) -> None:
+        """Add missing tail columns (e.g. last_seen_at) to an existing sheet.
+
+        Only appends — never reorders or removes columns. Safe to call every run.
+        """
+        if not all_values:
+            ws.append_row(list(NEWS_FEED_HEADERS))
+            return
+
+        header = all_values[0]
+        expected = list(NEWS_FEED_HEADERS)
+        if header == expected:
+            return
+
+        # Only extend if the existing header is a PREFIX of expected. Anything
+        # else (reordered / renamed columns) means manual review is needed.
+        existing_prefix = header[: len(expected)]
+        if expected[: len(existing_prefix)] != existing_prefix:
+            logger.warning(
+                "news_feed header layout unexpected, skipping auto-extension: %s",
+                header,
+            )
+            return
+
+        missing = expected[len(header) :]
+        if not missing:
+            return
+
+        start_col = _column_letter(len(header) + 1)
+        end_col = _column_letter(len(expected))
+        cell_range = f"{start_col}1:{end_col}1"
+        ws.update(cell_range, [missing], value_input_option="RAW")
+        logger.info(
+            "Extended news_feed header with columns: %s",
+            ",".join(missing),
+        )
 
     @retry(max_retries=3, base_delay=2.0)
     def list_tg_whale_events(
@@ -1289,6 +1439,33 @@ class SheetsClient:
                 )
             except gspread.exceptions.APIError as e:
                 raise StorageError(f"Failed to append channel health: {e}") from e
+
+    @retry(max_retries=3, base_delay=2.0)
+    def append_service_health(self, entry: dict) -> None:
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_SERVICE_HEALTH)
+                normalized = {
+                    "ts": entry.get("ts", now_iso()),
+                    "service": str(entry.get("service", "")),
+                    "component": str(entry.get("component", "")),
+                    "status": str(entry.get("status", "")),
+                    "heartbeat_key": str(entry.get("heartbeat_key", "")),
+                    "details": str(entry.get("details", ""))[:4000],
+                    "error": str(entry.get("error", ""))[:1000],
+                }
+                ws.append_row(
+                    dict_to_row(normalized, SERVICE_HEALTH_HEADERS),
+                    value_input_option="RAW",
+                )
+                logger.info(
+                    "Appended service health service=%s status=%s key=%s",
+                    normalized["service"],
+                    normalized["status"],
+                    normalized["heartbeat_key"],
+                )
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to append service health: {e}") from e
 
     # --- internal helpers ---
 

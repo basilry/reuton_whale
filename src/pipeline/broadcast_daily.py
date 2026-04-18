@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from src.distributor.telegram_bot import WhaleScopeBot
 from src.notify.telegram_broadcast import TelegramBroadcastAdapter
+from src.observability.service_health import append_service_heartbeat, pipeline_status_to_health
 from src.pipeline.common import (
     build_sheets_client,
     coerce_json_list,
@@ -19,6 +20,13 @@ from src.utils.logger import get_logger
 
 logger = get_logger("pipeline.broadcast_daily")
 _KST = ZoneInfo("Asia/Seoul")
+_TERMINAL_RUN_STATUSES = {
+    "completed",
+    "completed_with_errors",
+    "completed_empty",
+    "skipped_window",
+    "skipped_budget",
+}
 
 
 def _is_broadcast_window(now: datetime) -> bool:
@@ -31,6 +39,47 @@ def _should_force_broadcast() -> bool:
         os.getenv("FORCE_BROADCAST_DAILY", "").strip().lower() in {"1", "true", "yes", "on"}
         or os.getenv("GITHUB_EVENT_NAME", "").strip() == "workflow_dispatch"
     )
+
+
+def _broadcast_window(now: datetime) -> tuple[datetime, datetime]:
+    current = now.astimezone(_KST)
+    slot_start_kst = current.replace(hour=9, minute=0, second=0, microsecond=0)
+    slot_end_kst = slot_start_kst + timedelta(minutes=15)
+    return slot_start_kst.astimezone(timezone.utc), slot_end_kst.astimezone(timezone.utc)
+
+
+def _record_broadcast_heartbeat(
+    sheets,
+    result: dict[str, object],
+    *,
+    subscriber_result: dict[str, int] | None = None,
+    channel_status: str | None = None,
+) -> None:
+    append_service_heartbeat(
+        sheets,
+        service="pipeline.broadcast_daily",
+        component="pipeline",
+        status=pipeline_status_to_health(result.get("status")),
+        heartbeat_key=str(result.get("run_id", "")),
+        details={
+            "status": result.get("status"),
+            "details": result.get("details", ""),
+        },
+        error=result.get("errors", ""),
+    )
+    if subscriber_result is not None or channel_status is not None:
+        append_service_heartbeat(
+            sheets,
+            service="telegram.broadcast",
+            component="bot",
+            status=pipeline_status_to_health(result.get("status")),
+            heartbeat_key=str(result.get("run_id", "")),
+            details={
+                "channel_status": channel_status or "",
+                "subscriber_result": subscriber_result or {},
+            },
+            error=result.get("errors", ""),
+        )
 
 
 def run_broadcast_daily(*, force: bool = False) -> dict[str, object]:
@@ -49,6 +98,24 @@ def run_broadcast_daily(*, force: bool = False) -> dict[str, object]:
             details="Outside KST 09:00 broadcast window",
         )
         sheets.log_run(result)
+        _record_broadcast_heartbeat(sheets, result)
+        return result
+
+    window_start, window_end = _broadcast_window(now)
+    if sheets.has_logged_run_in_window(
+        run_type="broadcast_daily",
+        window_start=window_start,
+        window_end=window_end,
+        statuses=_TERMINAL_RUN_STATUSES,
+    ):
+        result.update(
+            status="skipped_duplicate",
+            finished_at=now_iso(),
+            errors="[]",
+            details="Broadcast already completed for current KST 09:00 slot",
+        )
+        sheets.log_run(result)
+        _record_broadcast_heartbeat(sheets, result)
         return result
 
     brief = sheets.get_latest_daily_brief()
@@ -60,6 +127,7 @@ def run_broadcast_daily(*, force: bool = False) -> dict[str, object]:
             details="No latest daily brief available",
         )
         sheets.log_run(result)
+        _record_broadcast_heartbeat(sheets, result)
         return result
 
     date_value = str(brief.get("date", "")).strip() or now.astimezone(_KST).strftime("%Y-%m-%d")
@@ -103,6 +171,12 @@ def run_broadcast_daily(*, force: bool = False) -> dict[str, object]:
         details=details,
     )
     sheets.log_run(result)
+    _record_broadcast_heartbeat(
+        sheets,
+        result,
+        subscriber_result=subscriber_result,
+        channel_status=broadcast_attempt.status,
+    )
     return result
 
 

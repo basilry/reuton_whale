@@ -11,6 +11,81 @@ export type DashboardMetrics = {
   lastUpdatedAt?: string;
 };
 
+export type SourceFailureKind =
+  | "auth"
+  | "quota"
+  | "schema"
+  | "network"
+  | "empty"
+  | "config"
+  | "unknown";
+
+export type SourceHealth = {
+  connected: boolean;
+  mode: "live" | "fallback";
+  label: string;
+  description: string;
+  source: string;
+  lastUpdatedAt?: string;
+  staleMinutes?: number | null;
+  failureKind?: SourceFailureKind | null;
+};
+
+export type OpsServiceName =
+  | "pipeline"
+  | "listener"
+  | "bot"
+  | "dashboard"
+  | "data_source";
+
+export type OpsServiceStatus =
+  | "healthy"
+  | "degraded"
+  | "down"
+  | "waiting"
+  | "config_required";
+
+export type OpsServiceHealth = {
+  name: OpsServiceName;
+  title: string;
+  status: OpsServiceStatus;
+  label: string;
+  summary: string;
+  detail: string;
+  updatedAt?: string;
+  source?: string;
+};
+
+export type OperatorCheckStatus = "ok" | "warn" | "missing";
+
+export type OperatorCheck = {
+  key: string;
+  label: string;
+  status: OperatorCheckStatus;
+  detail: string;
+};
+
+export type OpsSummary = {
+  status: OpsServiceStatus;
+  headline: string;
+  detail: string;
+  impactedServices: OpsServiceName[];
+  updatedAt?: string;
+};
+
+export type BriefMarketMoodDriver = {
+  label: string;
+  value: string;
+  direction?: string;
+};
+
+export type BriefMarketMood = {
+  mood: string;
+  score: number;
+  drivers: BriefMarketMoodDriver[];
+  asOf?: string;
+};
+
 export type DashboardBrief = {
   date?: string;
   generatedAt?: string;
@@ -19,6 +94,9 @@ export type DashboardBrief = {
   totalVolumeUsd?: number;
   highlights?: string[];
   signalThemes?: string[];
+  note?: string;
+  noteRaw?: string;
+  marketMood?: BriefMarketMood;
   topTransactions?: Array<{
     symbol?: unknown;
     amountUsd?: unknown;
@@ -50,6 +128,10 @@ export type DashboardData = {
     updatedAt?: string;
     event?: string;
   } | null;
+  sourceHealth?: Partial<SourceHealth> | null;
+  serviceHealth?: Partial<Record<OpsServiceName, Partial<OpsServiceHealth>>> | null;
+  operatorChecks?: OperatorCheck[] | null;
+  opsSummary?: Partial<OpsSummary> | null;
   systemLogs?: DisplaySystemLogRow[] | null;
   source?: string;
 };
@@ -62,6 +144,9 @@ export type NormalizedBrief = {
   totalVolumeUsd?: number;
   highlights?: string[];
   signalThemes?: string[];
+  note?: string;
+  noteRaw?: string;
+  marketMood?: BriefMarketMood;
   topTransactions?: Array<{
     symbol: string;
     amountUsd: number;
@@ -92,6 +177,24 @@ export type DisplaySignalRow = {
   source: string;
   summary: string;
   evidenceTxHashes: string[];
+  windowStart?: string;
+  windowEnd?: string;
+  narrativeAi?: string;
+  relatedWallets?: Array<
+    | {
+        address: string;
+        label: string | undefined;
+        chain: string | undefined;
+      }
+    | null
+  >;
+  relatedAssets?: Array<
+    | {
+        symbol: string;
+        direction: string | undefined;
+      }
+    | null
+  >;
 };
 
 export type DisplaySystemLogRow = {
@@ -122,6 +225,10 @@ export type NormalizedDashboard = {
     updatedAt?: string;
     event?: string;
   };
+  sourceHealth: SourceHealth;
+  serviceHealth: Record<OpsServiceName, OpsServiceHealth>;
+  operatorChecks: OperatorCheck[];
+  opsSummary: OpsSummary;
   systemLogs: DisplaySystemLogRow[];
   sourceState: "connected" | "fallback";
 };
@@ -204,6 +311,7 @@ export type WhaleStory = {
   symbol?: string;
   chain?: string;
   occurredAt?: string;
+  generatedAt?: string;
   priority: number;
   supportingSignalIds: string[];
   participants: WhaleStoryParticipant[];

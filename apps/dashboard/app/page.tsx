@@ -1,12 +1,18 @@
+import type { ComponentProps } from "react";
 import type { Metadata } from "next";
 import { TopNavbar } from "@/components/top-navbar";
 import { InsightsSidebar } from "@/components/insights-sidebar";
 import { MarketTickerStrip } from "@/components/market-ticker-strip";
 import { NewsWidget } from "@/components/news-widget";
+import { SignalSection } from "@/components/signal-section";
 import { TelegramConnectModal } from "@/components/telegram-connect-modal";
 import { cleanGeneratedBrief } from "@/lib/format";
+import { humanizeSourceFailureKind } from "@/lib/humanize";
+import { formatDashboardMessage } from "@/lib/i18n/get-dictionary";
+import { getCurrentDashboardDictionary, getCurrentDashboardLanguage } from "@/lib/i18n/server";
 import { getDashboardData, type DashboardData } from "@/lib/metrics";
 import { getTelegramPublicConfig } from "@/lib/public-app-config";
+import { formatStoryTimestamp } from "@/lib/whale-stories";
 import styles from "./insights/insights.module.css";
 
 export const runtime = "nodejs";
@@ -30,6 +36,9 @@ type BriefAnalysisItem = {
   description: string;
   tone: SignalTone;
 };
+
+type DashboardDictionary = Awaited<ReturnType<typeof getCurrentDashboardDictionary>>;
+type HomeSignal = ComponentProps<typeof SignalSection>["signals"][number];
 
 function safeText(value: unknown, fallback = ""): string {
   if (typeof value === "string") {
@@ -70,29 +79,15 @@ function formatCompactNumber(value: number): string {
   }).format(value);
 }
 
-function truncateHash(value?: string): string {
+function truncateHash(value?: string, fallback = "Detail"): string {
   const text = safeText(value, "");
   if (!text) {
-    return "상세";
+    return fallback;
   }
   if (text.startsWith("0x") && text.length > 8) {
     return `${text.slice(0, 6)}…${text.slice(-4)}`;
   }
   return text.length <= 14 ? text : `${text.slice(0, 6)}…${text.slice(-4)}`;
-}
-
-function getSignalLabel(rule: string): string {
-  const normalized = rule.toLowerCase();
-  const map: Record<string, string> = {
-    cex_inflow_spike: "거래소 유입 급증",
-    cex_outflow_spike: "거래소 유출 급증",
-    smart_money_accumulation: "스마트머니 매집 가능성",
-    cold_to_hot_transfer: "보관 지갑에서 활동 지갑 이동",
-    corroborated_move: "온체인과 알림이 함께 확인된 움직임",
-    whale_cluster_move: "고래 군집 이동",
-  };
-
-  return map[normalized] ?? rule.replace(/[_-]+/g, " ");
 }
 
 function getSignalTone(severity: string, score: number): SignalTone {
@@ -109,50 +104,35 @@ function getSignalTone(severity: string, score: number): SignalTone {
   return "neutral";
 }
 
-function getToneLabel(tone: SignalTone): string {
-  switch (tone) {
-    case "critical":
-      return "강한 주의";
-    case "watch":
-      return "관찰 필요";
-    case "positive":
-      return "긍정";
-    default:
-      return "중립";
-  }
-}
-
-function getCuratedCategoryLabel(category: string): string {
+function getCuratedCategoryLabel(category: string, dictionary: DashboardDictionary): string {
   const normalized = category.trim().toLowerCase();
-  const map: Record<string, string> = {
-    exchange: "거래소",
-    market_maker: "마켓메이커",
-    fund: "펀드",
-    custody: "커스터디",
-    bridge: "브리지",
-    protocol: "프로토콜",
-    foundation: "재단",
-    unknown: "미분류",
-  };
-
-  return map[normalized] ?? category;
+  return (
+    dictionary.curated.categoryLabels[
+      normalized as keyof typeof dictionary.curated.categoryLabels
+    ] ?? category
+  );
 }
 
-function humanizeChain(chain: string): string {
+function humanizeChain(chain: string, dictionary: DashboardDictionary): string {
   const normalized = chain.trim().toLowerCase();
-  const map: Record<string, string> = {
-    ethereum: "Ethereum",
-    eth: "Ethereum",
-    solana: "Solana",
-    sol: "Solana",
-    bitcoin: "Bitcoin",
-    btc: "Bitcoin",
-  };
-
-  return map[normalized] ?? chain;
+  if (normalized === "ethereum" || normalized === "eth") {
+    return dictionary.chains.ethereum;
+  }
+  if (normalized === "solana" || normalized === "sol") {
+    return dictionary.chains.solana;
+  }
+  if (normalized === "bitcoin" || normalized === "btc") {
+    return dictionary.chains.bitcoin;
+  }
+  return chain || dictionary.chains.unknown;
 }
 
-function buildBriefAnalysis(data: DashboardData | null, brief: ReturnType<typeof buildBriefCopy>, mood: ReturnType<typeof buildMarketMood>): BriefAnalysisItem[] {
+function buildBriefAnalysis(
+  data: DashboardData | null,
+  brief: ReturnType<typeof buildBriefCopy>,
+  mood: ReturnType<typeof buildMarketMood>,
+  dictionary: DashboardDictionary,
+): BriefAnalysisItem[] {
   const latestBrief = data?.latestBrief;
   const signalThemes = latestBrief?.signalThemes ?? [];
   const highlights = latestBrief?.highlights ?? [];
@@ -162,76 +142,174 @@ function buildBriefAnalysis(data: DashboardData | null, brief: ReturnType<typeof
 
   return [
     {
-      label: "핵심 해석",
+      label: dictionary.home.briefAnalysisCore,
       value: brief.summary,
       description: mood.copy,
-      tone: mood.label === "주의" ? "critical" : mood.label === "관찰" ? "watch" : "neutral",
+      tone: mood.tone,
     },
     {
-      label: "주요 포인트",
+      label: dictionary.home.briefAnalysisPoints,
       value:
         highlights.slice(0, 2).join(" · ") ||
         signalThemes.slice(0, 2).join(" · ") ||
-        "아직 강조 포인트가 충분하지 않습니다.",
+        dictionary.home.briefAnalysisPointsFallback,
       description:
         signalThemes.length > 0
-          ? `${signalThemes.length}개의 시그널 테마가 브리핑에 반영되었습니다.`
-          : "시그널 테마가 더 쌓이면 분석이 구체화됩니다.",
+          ? formatDashboardMessage(dictionary.home.briefAnalysisPointsDescActive, {
+              count: signalThemes.length,
+            })
+          : dictionary.home.briefAnalysisPointsDesc,
       tone: signalCount > 0 ? "positive" : "neutral",
     },
     {
-      label: "규모 요약",
-      value: `${formatCurrency(totalVolumeUsd)} · ${formatCompactNumber(transactionCount)}건`,
+      label: dictionary.home.briefAnalysisScale,
+      value: formatDashboardMessage(dictionary.home.briefAnalysisScaleValue, {
+        volume: formatCurrency(totalVolumeUsd),
+        count: formatCompactNumber(transactionCount),
+      }),
       description:
         latestBrief?.alertCount && latestBrief.alertCount > 0
-          ? `경고 포인트 ${latestBrief.alertCount}건이 함께 기록되었습니다.`
-          : `최근 ${formatCompactNumber(signalCount)}개 신호가 관찰되었습니다.`,
+          ? formatDashboardMessage(dictionary.home.briefAnalysisScaleWithAlerts, {
+              count: latestBrief.alertCount,
+            })
+          : formatDashboardMessage(dictionary.home.briefAnalysisScaleNoAlerts, {
+              count: formatCompactNumber(signalCount),
+            }),
       tone: transactionCount > 0 ? "watch" : "neutral",
     },
   ];
 }
 
-function buildBriefCopy(data: DashboardData | null): {
+function buildBriefCopy(data: DashboardData | null, dictionary: DashboardDictionary): {
   title: string;
   summary: string;
   highlights: string[];
   note: string;
+  isFallback: boolean;
 } {
   const brief = data?.latestBrief;
   if (brief) {
     return {
-      title: "오늘의 고래 브리핑",
+      title: dictionary.home.briefTitle,
       summary: brief.summary
         ? cleanGeneratedBrief(brief.summary)
-        : "오늘 수집된 브리핑이 없습니다.",
+        : dictionary.home.briefNoSummary,
       highlights:
-        brief.highlights.length > 0
+        (brief.highlights?.length ?? 0) > 0
           ? brief.highlights
           : [
-              `주요 감지 건수 ${formatCompactNumber(data?.metrics.signalCount ?? 0)}건`,
-              `관측된 거래 ${formatCompactNumber(data?.metrics.transactionCount ?? 0)}건`,
+              formatDashboardMessage(dictionary.home.briefFallbackSignals, {
+                count: formatCompactNumber(data?.metrics.signalCount ?? 0),
+              }),
+              formatDashboardMessage(dictionary.home.briefFallbackTransactions, {
+                count: formatCompactNumber(data?.metrics.transactionCount ?? 0),
+              }),
             ],
       note:
         brief.alertCount > 0
-          ? `${brief.alertCount}개의 경고성 포인트가 함께 기록되었습니다.`
-          : "경고성 포인트는 제한적입니다.",
+          ? formatDashboardMessage(dictionary.home.briefNoteWithAlerts, { count: brief.alertCount })
+          : dictionary.home.briefNoteNoAlerts,
+      isFallback: safeText(brief.noteRaw, "").includes("fallback_tx_based"),
     };
   }
 
   return {
-    title: "오늘의 고래 브리핑",
-    summary:
-      "아직 연결된 브리핑이 없습니다. 정보수집 파이프라인이 실행되면 사람이 읽는 형태의 요약이 여기에 표시됩니다.",
-    highlights: ["실행 대기", "데이터 연결 필요"],
-    note: "데이터 수집이 다시 시작되면 실제 브리핑이 여기에 반영됩니다.",
+    title: dictionary.home.briefTitle,
+    summary: dictionary.home.briefWaitingSummary,
+    highlights: [dictionary.home.briefWaitingHighlightRun, dictionary.home.briefWaitingHighlightData],
+    note: dictionary.home.briefAnalysisPointsDesc,
+    isFallback: false,
   };
 }
 
-function buildMarketMood(data: DashboardData | null): {
+function humanizeMoodDriver(
+  label: string,
+  value: string,
+  language: "ko" | "en",
+): string {
+  switch (label) {
+    case "exchange_inflow":
+      return language === "ko" ? `거래소 유입 중심 ${value}` : `Exchange inflow · ${value}`;
+    case "exchange_outflow":
+      return language === "ko" ? `거래소 유출 중심 ${value}` : `Exchange outflow · ${value}`;
+    case "exchange_inflow_signals":
+      return language === "ko" ? `거래소 유입 신호 ${value}건` : `${value} exchange inflow signals`;
+    case "exchange_outflow_signals":
+      return language === "ko" ? `거래소 유출 신호 ${value}건` : `${value} exchange outflow signals`;
+    case "critical_signals":
+      return language === "ko" ? `강한 신호 ${value}건` : `${value} critical signals`;
+    case "watch_signals":
+      return language === "ko" ? `관찰 신호 ${value}건` : `${value} watch signals`;
+    case "transaction_count":
+      return language === "ko" ? `최근 거래 ${value}건` : `${value} recent transactions`;
+    case "priced_volume_usd":
+      return language === "ko" ? `USD 환산 규모 ${value}` : `USD volume ${value}`;
+    case "top_asset":
+      return language === "ko" ? `대표 자산 ${value}` : `Top asset ${value}`;
+    default:
+      return `${label}: ${value}`;
+  }
+}
+
+function buildMarketMood(
+  data: DashboardData | null,
+  dictionary: DashboardDictionary,
+  language: "ko" | "en",
+): {
   label: string;
   copy: string;
   detail: string;
+  tone: SignalTone;
+  drivers: string[];
 } {
+  const structuredMood = data?.latestBrief?.marketMood;
+  if (structuredMood) {
+    const drivers = structuredMood.drivers.map((driver) =>
+      humanizeMoodDriver(driver.label, driver.value, language),
+    );
+
+    if (structuredMood.mood === "risk_off") {
+      return {
+        label: dictionary.home.marketMoodCautionLabel,
+        copy: dictionary.home.briefAnalysisMoodCaution,
+        detail: drivers[0] ?? dictionary.home.marketMoodCautionDetail.replace("{critical}", "0").replace("{watch}", "0"),
+        tone: "critical",
+        drivers,
+      };
+    }
+
+    if (structuredMood.mood === "risk_on") {
+      return {
+        label: language === "ko" ? "위험 선호" : "Risk-on",
+        copy:
+          language === "ko"
+            ? "거래소 유출 또는 축적 흐름이 우세해 매수 심리가 상대적으로 강합니다."
+            : "Outflow and accumulation signals outweigh inflow pressure, suggesting stronger risk appetite.",
+        detail: drivers[0] ?? dictionary.home.marketMoodStableDetail,
+        tone: "positive",
+        drivers,
+      };
+    }
+
+    if (structuredMood.mood === "watch") {
+      return {
+        label: dictionary.home.marketMoodWatchLabel,
+        copy: dictionary.home.briefAnalysisMoodWatch,
+        detail: drivers[0] ?? dictionary.home.marketMoodWatchDetail.replace("{watch}", "0"),
+        tone: "watch",
+        drivers,
+      };
+    }
+
+    return {
+      label: dictionary.home.marketMoodStableLabel,
+      copy: dictionary.home.briefAnalysisMoodStable,
+      detail: drivers[0] ?? dictionary.home.marketMoodStableDetail,
+      tone: "neutral",
+      drivers,
+    };
+  }
+
   const recentSignals = data?.recentSignals ?? [];
   const criticalCount = recentSignals.filter((item) => {
     const tone = getSignalTone(safeText(item.severity, ""), safeNumber(item.score));
@@ -244,49 +322,224 @@ function buildMarketMood(data: DashboardData | null): {
 
   if (!data) {
     return {
-      label: "연결 대기",
-      copy: "데이터가 아직 연결되지 않았습니다.",
-      detail: "수집 워커를 실행하면 시장 분위기가 계산됩니다.",
+      label: dictionary.home.marketMoodWaitingLabel,
+      copy: dictionary.home.briefAnalysisMoodWaiting,
+      detail: dictionary.home.marketMoodWaitingDetail,
+      tone: "neutral",
+      drivers: [],
     };
   }
 
   if (criticalCount > 0) {
     return {
-      label: "주의",
-      copy: "거래소 유입과 단기 변동성 가능성이 함께 관찰됩니다.",
-      detail: `${criticalCount}개의 강한 신호와 ${watchCount}개의 관찰 신호가 있습니다.`,
+      label: dictionary.home.marketMoodCautionLabel,
+      copy: dictionary.home.briefAnalysisMoodCaution,
+      detail: formatDashboardMessage(dictionary.home.marketMoodCautionDetail, {
+        critical: criticalCount,
+        watch: watchCount,
+      }),
+      tone: "critical",
+      drivers: [],
     };
   }
 
   if (watchCount > 0) {
     return {
-      label: "관찰",
-      copy: "큰 방향 전환보다는 흐름 확인이 필요한 상태입니다.",
-      detail: `${watchCount}개의 관찰 신호가 있으며, 추세 확인이 필요합니다.`,
+      label: dictionary.home.marketMoodWatchLabel,
+      copy: dictionary.home.briefAnalysisMoodWatch,
+      detail: formatDashboardMessage(dictionary.home.marketMoodWatchDetail, {
+        watch: watchCount,
+      }),
+      tone: "watch",
+      drivers: [],
     };
   }
 
   return {
-    label: "안정",
-    copy: "특이 급변 신호는 적고, 브리핑은 완만한 흐름을 가리킵니다.",
-    detail: "현재 감지된 시그널이 적어 시장 분위기는 중립에 가깝습니다.",
+    label: dictionary.home.marketMoodStableLabel,
+    copy: dictionary.home.briefAnalysisMoodStable,
+    detail: dictionary.home.marketMoodStableDetail,
+    tone: "neutral",
+    drivers: [],
   };
 }
 
-function buildSignalNarrative(signal: DashboardData["recentSignals"][number]): string {
-  const label = getSignalLabel(signal.rule || "signal");
-  const score = safeNumber(signal.score);
-  const severity = safeText(signal.severity, "").toLowerCase();
-
-  if (severity.includes("critical") || score >= 80) {
-    return `${label}가 강하게 감지되었습니다. 관심이 필요한 구간입니다.`;
+function formatKstDateTime(value?: string): string {
+  const text = safeText(value, "");
+  if (!text) {
+    return "";
   }
 
-  if (severity.includes("high") || score >= 50) {
-    return `${label} 신호가 관찰되었습니다. 흐름을 함께 확인하세요.`;
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) {
+    return text;
   }
 
-  return `${label} 신호가 약하게 관찰되었습니다. 참고용으로 지켜볼 수 있습니다.`;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+
+  return `${values.year}.${values.month}.${values.day} ${values.hour}:${values.minute}:${values.second}`;
+}
+
+function formatKstTime(value: string | undefined, fallback: string): string {
+  const full = formatKstDateTime(value);
+  if (!full) {
+    return fallback;
+  }
+  return full.slice(-8, -3);
+}
+
+function humanizePipelineStatus(status: string | undefined, dictionary: DashboardDictionary): string {
+  const normalized = safeText(status, "").toLowerCase();
+  if (!normalized) {
+    return dictionary.status.checking;
+  }
+  if (normalized.includes("completed_with_errors") || normalized.includes("warn")) {
+    return dictionary.status.completedWithWarnings;
+  }
+  if (normalized.includes("completed")) {
+    return dictionary.status.completed;
+  }
+  if (normalized.includes("failed") || normalized.includes("error")) {
+    return dictionary.status.failed;
+  }
+  if (normalized.includes("started") || normalized.includes("running")) {
+    return dictionary.status.running;
+  }
+  return status ?? dictionary.status.checking;
+}
+
+function buildPipelineSummary(data: DashboardData | null, dictionary: DashboardDictionary): string {
+  if (!data?.latestRun) {
+    return dictionary.status.pipelineSummaryPending;
+  }
+
+  const statusLabel = humanizePipelineStatus(data.latestRun.status, dictionary);
+  const updatedAt = formatKstDateTime(data.latestRun.updatedAt) || dictionary.home.timePending;
+  const errorCount = safeNumber(data.latestRun.errorCount);
+
+  if (errorCount > 0) {
+    return formatDashboardMessage(dictionary.status.pipelineSummaryWithErrors, {
+      status: statusLabel,
+      count: errorCount,
+      time: updatedAt,
+    });
+  }
+
+  return formatDashboardMessage(dictionary.status.pipelineSummaryOk, {
+    status: statusLabel,
+    time: updatedAt,
+  });
+}
+
+function buildConnectionTone(data: DashboardData | null): "good" | "warn" | "bad" | "neutral" {
+  if (!data?.sourceHealth) {
+    return "neutral";
+  }
+  if (!data.sourceHealth.connected) {
+    return data.sourceHealth.failureKind === "config" ? "bad" : "warn";
+  }
+  if ((data.sourceHealth.staleMinutes ?? 0) > 30) {
+    return "warn";
+  }
+  return "good";
+}
+
+function buildWatchlistBadge(
+  item: NonNullable<DashboardData["watchlist"]>[number],
+  dictionary: DashboardDictionary,
+): string {
+  if (item.relatedSignalCount > 0) {
+    return formatDashboardMessage(dictionary.curated.signalBadge, {
+      count: item.relatedSignalCount,
+    });
+  }
+
+  return formatDashboardMessage(dictionary.curated.gradeBadge, {
+    grade: item.grade,
+    category: getCuratedCategoryLabel(item.category, dictionary),
+  });
+}
+
+function buildWatchlistNote(
+  item: NonNullable<DashboardData["watchlist"]>[number],
+  dictionary: DashboardDictionary,
+): string {
+  if (item.relatedSignalCount > 0) {
+    return dictionary.curated.noteSignal;
+  }
+  if (item.lastSeenAt) {
+    return dictionary.curated.noteRecent;
+  }
+  return dictionary.curated.noteIdle;
+}
+
+function buildStoryCopy(
+  story: NonNullable<DashboardData["whaleStories"]>[number],
+  dictionary: DashboardDictionary,
+): { title: string; body: string; meta: string } {
+  if (story.kind === "empty") {
+    return {
+      title: dictionary.stories.emptyTitle,
+      body: dictionary.stories.emptyBody,
+      meta: dictionary.stories.emptyMeta,
+    };
+  }
+
+  if (story.kind === "signal") {
+    return {
+      title: dictionary.stories.signalTitle,
+      body: dictionary.stories.signalBody,
+      meta: story.generatedAt ? formatStoryTimestamp(story.generatedAt) : story.meta,
+    };
+  }
+
+  if (story.kind === "brief") {
+    return {
+      title: dictionary.stories.briefTitle,
+      body: dictionary.stories.briefBody,
+      meta: story.generatedAt ? formatStoryTimestamp(story.generatedAt) : story.meta,
+    };
+  }
+
+  const participants = Array.isArray(story.participants) ? story.participants : [];
+  const fromLabel =
+    participants.find((item) => item.role === "from")?.label ??
+    dictionary.stories.participantFallback;
+  const toLabel =
+    participants.find((item) => item.role === "to")?.label ??
+    dictionary.stories.participantFallback;
+  const asset = safeText(story.symbol, dictionary.stories.assetFallback);
+  const timestamp = story.occurredAt ? formatStoryTimestamp(story.occurredAt) : story.meta;
+  const chain = story.chain ? humanizeChain(story.chain, dictionary) : "";
+
+  return {
+    title: formatDashboardMessage(dictionary.stories.transactionMove, {
+      from: fromLabel,
+      to: toLabel,
+      asset,
+    }),
+    body: formatDashboardMessage(dictionary.stories.transactionBody, {
+      from: fromLabel,
+      to: toLabel,
+      asset,
+    }),
+    meta: [chain, timestamp].filter(Boolean).join(" · "),
+  };
 }
 
 async function loadInsightState(): Promise<InsightState> {
@@ -315,53 +568,84 @@ async function loadInsightState(): Promise<InsightState> {
 }
 
 export default async function InsightsPage() {
+  const dictionary = await getCurrentDashboardDictionary();
+  const language = await getCurrentDashboardLanguage();
   const state = await loadInsightState();
   const data = state.data;
-  const brief = buildBriefCopy(data);
-  const mood = buildMarketMood(data);
-  const briefAnalysis = buildBriefAnalysis(data, brief, mood);
+  const brief = buildBriefCopy(data, dictionary);
+  const mood = buildMarketMood(data, dictionary, language);
+  const briefAnalysis = buildBriefAnalysis(data, brief, mood, dictionary);
   const telegramConfig = getTelegramPublicConfig();
   const watchlist = data?.watchlist ?? [];
   const stories = data?.whaleStories ?? [];
-
-  const connectedLabel = state.sourceConnected ? "데이터 연결됨" : "데이터 연결 대기";
+  const recentSignals = ((data?.recentSignals ?? []) as HomeSignal[]).slice(0, 3);
+  const connectionTone = buildConnectionTone(data);
+  const connectedLabel = !data?.sourceHealth
+    ? dictionary.home.sourceWaiting
+    : !data.sourceHealth.connected
+      ? data.sourceHealth.mode === "fallback"
+        ? dictionary.home.sourceFallback
+        : dictionary.home.sourceWaiting
+      : (data.sourceHealth.staleMinutes ?? 0) > 30
+        ? dictionary.home.sourceStale
+        : dictionary.home.sourceConnected;
+  const connectionMeta = data?.sourceHealth?.failureKind
+    ? `${dictionary.home.sourceFailurePrefix}: ${
+        language === "ko" ? humanizeSourceFailureKind(data.sourceHealth.failureKind) : data.sourceHealth.failureKind
+      }`
+    : data?.sourceHealth?.lastUpdatedAt
+      ? `${dictionary.home.sourceLastUpdatedPrefix}: ${formatKstDateTime(data.sourceHealth.lastUpdatedAt)}`
+      : "";
   const telegramSubscribers = data?.metrics.subscriberCount ?? 0;
-
-  const signalIcons: Record<SignalTone, string> = {
-    critical: "trending_up",
-    watch: "waves",
-    positive: "cognition",
-    neutral: "sensors",
-  };
+  const pipelineSummary = buildPipelineSummary(data, dictionary);
+  const briefRefreshLabel = data?.latestBrief?.generatedAt
+    ? formatDashboardMessage(dictionary.home.briefRefreshLabel, {
+        time: formatKstTime(data.latestBrief.generatedAt, dictionary.home.timePending),
+      })
+    : data?.latestBrief?.date ?? dictionary.home.briefDateFallback;
 
   const briefAnalysisIcons = ["analytics", "diversity_3", "warning"];
 
   return (
     <main className={styles.page}>
-      <TopNavbar />
+      <TopNavbar initialLanguage={language} />
 
       {/* ── Layout Shell: InsightsSidebar + content + news rail ── */}
       <div className={styles.layoutShell}>
-        <InsightsSidebar />
+        <InsightsSidebar
+          ariaLabel={dictionary.sidebar.ariaLabel}
+          brandSubtitle={dictionary.sidebar.brandSubtitle}
+          labels={{
+            "#market-ticker": dictionary.sidebar.marketTicker,
+            "#brief": dictionary.sidebar.brief,
+            "#signals": dictionary.sidebar.signals,
+            "#watchlist": dictionary.sidebar.watchlist,
+            "#telegram": dictionary.sidebar.telegram,
+          }}
+        />
 
         {/* ── Content ── */}
         <div className={styles.content}>
           {/* ── Page Header ── */}
           <section className={styles.pageHeader}>
             <div>
-              <h1 className={styles.pageTitle}>시장 인텔리전스</h1>
-              <p className={styles.pageSubtitle}>전략적 통찰을 위한 연구 중심 큐레이션</p>
-              <div className={styles.connectionChip}>
-                <span className={styles.connectionDot} />
-                {connectedLabel}
+              <h1 className={styles.pageTitle}>{dictionary.home.title}</h1>
+              <p className={styles.pageSubtitle}>{dictionary.home.subtitle}</p>
+              <div className={styles.connectionBlock}>
+                <div className={styles.connectionChip} data-tone={connectionTone}>
+                  <span className={styles.connectionDot} data-tone={connectionTone} />
+                  {connectedLabel}
+                </div>
+                {connectionMeta ? <p className={styles.connectionMeta}>{connectionMeta}</p> : null}
               </div>
             </div>
           </section>
 
           <section id="market-ticker" className={styles.tickerSlot}>
             <MarketTickerStrip
-              eyebrow="Public Market Feed"
-              title="실시간 시장 티커"
+              eyebrow={dictionary.home.marketTickerEyebrow}
+              title={dictionary.home.marketTickerTitle}
+              initialLanguage={language}
             />
           </section>
 
@@ -372,10 +656,13 @@ export default async function InsightsPage() {
               <div className={styles.heroCardGlow} aria-hidden="true" />
               <div className={styles.heroCardInner}>
                 <div className={styles.heroTopline}>
-                  <span className={styles.labelPill}>데일리 리포트</span>
-                  <span className={styles.dateMuted}>{data?.latestBrief?.date ?? "오늘"}</span>
+                  <span className={styles.labelPill}>{dictionary.home.briefPill}</span>
+                  {brief.isFallback ? (
+                    <span className={styles.labelPill}>{dictionary.home.briefFallbackBadge}</span>
+                  ) : null}
+                  <span className={styles.dateMuted}>{briefRefreshLabel}</span>
                 </div>
-                <h2 className={styles.heroTitle}>{brief.title}</h2>
+                <h2 className={styles.heroTitle}>{dictionary.home.briefTitle}</h2>
                 <p className={styles.heroSummary}>&ldquo;{brief.summary}&rdquo;</p>
 
                 <div className={styles.analysisItems}>
@@ -394,7 +681,7 @@ export default async function InsightsPage() {
 
                 <div className={styles.riskBanner}>
                   <p className={styles.riskBannerText}>
-                    <strong>리스크 고지:</strong> {brief.note}
+                    <strong>{dictionary.home.riskBannerLabel}:</strong> {brief.note}
                   </p>
                 </div>
               </div>
@@ -402,7 +689,7 @@ export default async function InsightsPage() {
 
             {/* ── 2. Market Mood ── */}
             <div className={styles.moodCard}>
-              <h3 className={styles.moodLabel}>시장 분위기</h3>
+              <h3 className={styles.moodLabel}>{mood.label}</h3>
               <div className={styles.moodGauge}>
                 <svg viewBox="0 0 192 192">
                   <circle className={styles.moodGaugeBg} cx="96" cy="96" r="80" />
@@ -415,46 +702,30 @@ export default async function InsightsPage() {
               </div>
               <h4 className={styles.moodTitle}>{mood.copy}</h4>
               <p className={styles.moodDesc}>{mood.detail}</p>
+              {mood.drivers.length > 0 ? (
+                <div className={styles.moodDrivers}>
+                  {mood.drivers.map((driver) => (
+                    <span key={driver} className={styles.moodDriverChip}>
+                      {driver}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             {/* ── 3. Key Signals ── */}
-            <div className={styles.signalSection} id="signals">
-              <h3 className={styles.signalSectionTitle}>감지된 주요 시그널</h3>
-              <div className={styles.signalGrid}>
-                {(data?.recentSignals ?? []).length > 0 ? (
-                  (data?.recentSignals ?? []).slice(0, 3).map((signal, index) => {
-                    const tone = getSignalTone(safeText(signal.severity, ""), safeNumber(signal.score));
-                    const label = getSignalLabel(signal.rule || "signal");
-                    return (
-                      <article key={signal.signal_id || String(index)} className={styles.signalCard} data-tone={tone}>
-                        <div className={styles.signalCardTop}>
-                          <span className={styles.materialIcon} style={{ fontVariationSettings: "'FILL' 1" }}>
-                            {signalIcons[tone]}
-                          </span>
-                          <span className={styles.signalToneBadge}>{getToneLabel(tone)}</span>
-                        </div>
-                        <h4 className={styles.signalCardTitle}>{label}</h4>
-                        <p className={styles.signalCardDesc}>{buildSignalNarrative(signal)}</p>
-                        <span className={styles.signalCardLink}>분석 내용 보기 →</span>
-                      </article>
-                    );
-                  })
-                ) : (
-                  <article className={styles.emptyCard}>
-                    <h4>아직 감지된 시그널이 없습니다.</h4>
-                    <p>수집 워커가 실행되면 이 영역에 이해하기 쉬운 경고와 관찰 신호가 표시됩니다.</p>
-                  </article>
-                )}
-              </div>
-            </div>
+            <SignalSection
+              initialLanguage={language}
+              signals={recentSignals}
+            />
 
             {/* ── 4. Watchlist + Whale Stories ── */}
             <div className={styles.watchStoryRow} style={{ gridColumn: "1 / -1" }}>
               {/* Watchlist */}
               <div className={styles.watchlistCard} id="watchlist">
-                <h3 className={styles.watchlistTitle}>큐레이션 감시 지갑</h3>
+                <h3 className={styles.watchlistTitle}>{dictionary.home.watchlistTitle}</h3>
                 <p className={styles.watchlistLead}>
-                  거래소, 커스터디, 주요 참여자 주소 중 시장 해석에 의미가 있는 지갑만 선별해 보여줍니다.
+                  {dictionary.home.watchlistLead}
                 </p>
                 {watchlist.length > 0 ? (
                   <div className={styles.watchlistItems}>
@@ -470,17 +741,17 @@ export default async function InsightsPage() {
                                 className={styles.watchNote}
                                 data-tone={item.tone === "critical" ? "critical" : item.tone === "positive" ? "positive" : undefined}
                               >
-                                {item.note}
+                                {buildWatchlistNote(item, dictionary)}
                               </p>
                               <div className={styles.watchMeta}>
-                                <span>{humanizeChain(item.chain)}</span>
-                                <span>{getCuratedCategoryLabel(item.category)} · Grade {item.grade}</span>
+                                <span>{humanizeChain(item.chain, dictionary)}</span>
+                                <span>{buildWatchlistBadge(item, dictionary)}</span>
                               </div>
                             </div>
                           </div>
                           <div className={styles.watchItemRight}>
                             <span className={styles.watchBadge} data-tone={item.tone}>
-                              {item.badge}
+                              {buildWatchlistBadge(item, dictionary)}
                             </span>
                           </div>
                         </div>
@@ -489,34 +760,45 @@ export default async function InsightsPage() {
                   </div>
                 ) : (
                   <article className={styles.emptyCard}>
-                    <h4>아직 큐레이션 감시 지갑이 준비되지 않았습니다.</h4>
-                    <p>큐레이션 지갑 레지스트리가 연결되면, 시장 해석에 중요한 주소만 이 영역에 표시됩니다.</p>
+                    <h4>{dictionary.curated.emptyTitle}</h4>
+                    <p>{dictionary.curated.emptyBody}</p>
                   </article>
                 )}
               </div>
 
               {/* Whale Stories */}
               <div className={styles.storiesCard}>
-                <h3 className={styles.storiesTitle}>고래 스토리</h3>
-                {stories.map((story) => (
-                  <div
-                    key={story.id}
-                    className={styles.storyItem}
-                  >
-                    <div className={styles.storyItemInner}>
-                      <div className={styles.storyDot} data-tone={story.tone} />
-                      <div>
-                        <p className={styles.storyBody}>
-                          <strong>{story.title}</strong> {story.body}
-                        </p>
-                        <div className={styles.storyMeta}>
-                          <span>{story.meta}</span>
-                          {story.hash ? <span>{truncateHash(story.hash)}</span> : null}
+                <h3 className={styles.storiesTitle}>{dictionary.home.storiesTitle}</h3>
+                {stories.map((story) => {
+                  const storyCopy = buildStoryCopy(story, dictionary);
+                  return (
+                    <div
+                      key={story.id}
+                      className={styles.storyItem}
+                    >
+                      <div className={styles.storyItemInner}>
+                        <div className={styles.storyDot} data-tone={story.tone} />
+                        <div>
+                          <p className={styles.storyBody}>
+                            <strong>{storyCopy.title}</strong> {storyCopy.body}
+                          </p>
+                          <div className={styles.storyMeta}>
+                            <span>{storyCopy.meta}</span>
+                            {story.generatedAt ? (
+                              <span>
+                                {dictionary.home.storyGeneratedPrefix}{" "}
+                                {formatStoryTimestamp(story.generatedAt)}
+                              </span>
+                            ) : null}
+                            {story.hash ? (
+                              <span>{truncateHash(story.hash, dictionary.home.detailFallback)}</span>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -524,11 +806,20 @@ export default async function InsightsPage() {
             <div className={styles.telegramCta} id="telegram">
               <div className={styles.telegramCtaContent}>
                 <h2 className={styles.telegramCtaTitle}>
-                  WhaleScope 공개 채널에서<br />실시간 브리핑을 받아보세요.
+                  {dictionary.home.telegramTitle.split("\n").map((line, index) => (
+                    <span key={`${line}-${index}`}>
+                      {index > 0 ? <br /> : null}
+                      {line}
+                    </span>
+                  ))}
                 </h2>
                 <p className={styles.telegramCtaDesc}>
-                  채널 QR 또는 링크로 바로 입장해, 핵심 브리핑과 공용 시그널 업데이트를 빠르게 확인할 수 있습니다.
-                  현재 구독자 수는 <strong>{telegramSubscribers}</strong>명입니다.
+                  {dictionary.home.telegramDescription}{" "}
+                  <strong>
+                    {formatDashboardMessage(dictionary.home.telegramAudienceTemplate, {
+                      count: telegramSubscribers,
+                    })}
+                  </strong>
                 </p>
               </div>
               <TelegramConnectModal
@@ -537,18 +828,19 @@ export default async function InsightsPage() {
                 channelUsername={telegramConfig.channelUsername}
                 className={styles.telegramCtaBtn}
                 subscriberCount={telegramSubscribers}
+                initialLanguage={language}
               />
             </div>
 
             {/* ── 6. AI Explainability ── */}
             <div className={styles.explainSection}>
-              <h3 className={styles.explainTitle}>WhaleScope 지능형 분석 작동 방식</h3>
+              <h3 className={styles.explainTitle}>{dictionary.home.explainTitle}</h3>
               <div className={styles.explainFlow}>
                 <div className={styles.explainStep}>
                   <div className={styles.explainStepIcon}>
                     <span className={styles.materialIcon}>database</span>
                   </div>
-                  <span className={styles.explainStepLabel}>원시 데이터</span>
+                  <span className={styles.explainStepLabel}>{dictionary.home.explainRawData}</span>
                 </div>
                 <div className={styles.explainConnector}>
                   <div className={styles.explainConnectorDot} />
@@ -557,7 +849,7 @@ export default async function InsightsPage() {
                   <div className={styles.explainStepIcon}>
                     <span className={styles.materialIcon}>sensors</span>
                   </div>
-                  <span className={styles.explainStepLabel}>시그널 추출</span>
+                  <span className={styles.explainStepLabel}>{dictionary.home.explainSignalExtraction}</span>
                 </div>
                 <div className={styles.explainConnector}>
                   <div className={styles.explainConnectorDot} />
@@ -566,7 +858,7 @@ export default async function InsightsPage() {
                   <div className={styles.explainStepIcon} data-highlight="true">
                     <span className={styles.materialIcon}>auto_awesome</span>
                   </div>
-                  <span className={styles.explainStepLabel} data-highlight="true">AI 브리핑</span>
+                  <span className={styles.explainStepLabel} data-highlight="true">{dictionary.home.explainAiBrief}</span>
                 </div>
                 <div className={styles.explainConnector}>
                   <div className={styles.explainConnectorDot} />
@@ -575,7 +867,7 @@ export default async function InsightsPage() {
                   <div className={styles.explainStepIcon} data-highlight="filled">
                     <span className={styles.materialIcon}>notifications_active</span>
                   </div>
-                  <span className={styles.explainStepLabel} data-highlight="true">실시간 알림</span>
+                  <span className={styles.explainStepLabel} data-highlight="true">{dictionary.home.explainRealtimeAlert}</span>
                 </div>
               </div>
             </div>
@@ -583,16 +875,15 @@ export default async function InsightsPage() {
 
           {/* ── Risk Disclaimer ── */}
           <article className={styles.riskCard} id="risk">
-            <h3>리스크 고지</h3>
-            <p>
-              WhaleScope는 투자 조언을 제공하지 않습니다. 모든 정보는 공개 데이터와 AI 요약을 기반으로 한 참고용
-              리서치입니다.
-            </p>
-            {!state.sourceConnected ? <p className={styles.riskMeta}>데이터 연결을 확인 중입니다. 잠시 후 다시 시도하세요.</p> : null}
+            <h3>{dictionary.home.riskTitle}</h3>
+            <p>{dictionary.home.riskBody}</p>
+            <p className={styles.riskMeta}>{pipelineSummary}</p>
+            {data?.opsSummary?.detail ? <p className={styles.riskMeta}>{data.opsSummary.detail}</p> : null}
+            {!state.sourceConnected ? <p className={styles.riskMeta}>{dictionary.home.riskWaiting}</p> : null}
           </article>
         </div>
 
-        <aside className={styles.newsRail} aria-label="뉴스 및 큐레이션">
+        <aside className={styles.newsRail} aria-label={dictionary.home.newsRailAriaLabel}>
           <NewsWidget limit={4} />
         </aside>
       </div>
@@ -602,16 +893,14 @@ export default async function InsightsPage() {
       <footer className={styles.footer}>
         <div className={styles.footerInner}>
           <div>
-            <h3 className={styles.footerBrand}>WhaleScope</h3>
+            <h3 className={styles.footerBrand}>{dictionary.home.footerTitle}</h3>
             <p className={styles.footerDesc}>
-              WhaleScope는 대규모 블록체인 이동에 대한 통찰을 제공하는 AI 기반 큐레이션 서비스입니다.
-              우리는 자연어 해석을 통해 정교한 데이터를 대중화하는 것을 목표로 합니다.
+              {dictionary.home.footerDescription}
             </p>
           </div>
           <div className={styles.footerRight}>
             <p>
-              <strong>리스크 경고:</strong> WhaleScope는 투자 조언을 제공하지 않습니다.
-              암호화폐 투자는 상당한 위험을 수반합니다. 손실을 감당할 수 있는 금액 내에서만 거래해야 합니다.
+              <strong>{dictionary.home.riskTitle}:</strong> {dictionary.home.footerWarning}
             </p>
           </div>
         </div>

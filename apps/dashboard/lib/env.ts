@@ -40,7 +40,7 @@ function stripEnvQuotes(value: string): string {
     (quote === "\"" || quote === "'") &&
     trimmed[trimmed.length - 1] === quote
   ) {
-    return trimmed.slice(1, -1);
+    return trimmed.slice(1, -1).replace(/\\"/g, "\"");
   }
 
   return trimmed;
@@ -79,30 +79,30 @@ function parseEnvFile(path: string): EnvMap {
 
 function candidateEnvFiles(): string[] {
   const cwd = resolve(process.cwd());
-  const dirs = new Set<string>();
-  const files = new Set<string>();
+  const orderedFiles: string[] = [];
+  const seenDirs = new Set<string>();
   const addForDir = (dir: string) => {
-    dirs.add(dir);
-    files.add(join(dir, ".env.local"));
-    files.add(join(dir, ".env"));
+    if (seenDirs.has(dir)) {
+      return;
+    }
+    seenDirs.add(dir);
+    orderedFiles.push(join(dir, ".env.local"));
+    orderedFiles.push(join(dir, ".env"));
   };
-
-  addForDir(cwd);
 
   const appFromRepoRoot = join(cwd, "apps", "dashboard");
   if (existsSync(join(appFromRepoRoot, "package.json"))) {
     addForDir(appFromRepoRoot);
   }
 
+  addForDir(cwd);
+
   const repoRootFromApp = resolve(cwd, "..", "..");
-  if (
-    !dirs.has(repoRootFromApp) &&
-    existsSync(join(repoRootFromApp, "apps", "dashboard", "package.json"))
-  ) {
+  if (existsSync(join(repoRootFromApp, "apps", "dashboard", "package.json"))) {
     addForDir(repoRootFromApp);
   }
 
-  return [...files];
+  return orderedFiles;
 }
 
 function readEnvValue(key: string): string | undefined {

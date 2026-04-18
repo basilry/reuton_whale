@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useId, useMemo, useState } from "react";
+import type { DashboardLanguage } from "@/lib/i18n/config";
+import { useDashboardI18n } from "@/lib/i18n/client";
 import {
   appendMarketTickerChartPoint,
   DEFAULT_MARKET_TICKER_SYMBOLS,
@@ -39,6 +41,7 @@ type MarketTickerStripProps = {
   title?: string;
   eyebrow?: string;
   className?: string;
+  initialLanguage: DashboardLanguage;
 };
 
 type Phase = "loading" | "ready" | "fallback";
@@ -222,7 +225,9 @@ export function MarketTickerStrip({
   title = "시장 티커 스트립",
   eyebrow = "Market pulse",
   className,
+  initialLanguage,
 }: MarketTickerStripProps) {
+  const { language } = useDashboardI18n(initialLanguage);
   const stripId = useId();
   const [items, setItems] = useState<MarketTickerItem[]>([]);
   const [miniCharts, setMiniCharts] = useState<Record<string, MarketTickerChartPoint[]>>({});
@@ -235,6 +240,83 @@ export function MarketTickerStrip({
     createInitialSourceHealth(),
   );
   const [clock, setClock] = useState(() => Date.now());
+  const copy = useMemo(
+    () =>
+      language === "ko"
+        ? {
+            liveDisconnectedSnapshot: "실시간 연결이 끊겨 최신 스냅샷 기준으로 유지합니다.",
+            allUnavailableLocal: "실시간/스냅샷 연결이 모두 없어 예시 USD/KRW 시세를 표시합니다.",
+            snapshotHolding: "최신 스냅샷 기준으로 시세를 유지합니다.",
+            snapshotRefreshFailed: "스냅샷 새로고침에 실패해 이전 데이터 기준으로 유지합니다.",
+            networkLimitedLocal: "네트워크 접근이 제한되어 예시 USD/KRW 시세를 표시합니다.",
+            binanceUnavailable: "Binance 실시간 연결이 열리지 않아 예시 시세로 대체했습니다.",
+            binanceInitFailed: "Binance 실시간 스트림을 열 수 없어 예시 USD/KRW 시세를 표시합니다.",
+            upbitUnavailable: "Upbit 실시간 연결이 열리지 않아 예시 시세로 대체했습니다.",
+            upbitInitFailed: "Upbit 실시간 스트림을 열 수 없어 예시 USD/KRW 시세를 표시합니다.",
+            offlineLocal: "오프라인 상태라 예시 USD/KRW 시세를 먼저 표시합니다.",
+            mobileCollapse: "접기",
+            mobileExpand: "펼치기",
+            mobileCollapseAria: "시장 티커 접기",
+            mobileExpandAria: (count: number) => `시장 티커 ${count}개 더 펼치기`,
+            emptySymbolsTitle: "티커 심볼이 비어 있습니다.",
+            emptySymbolsBody: "마운트 시 `symbols`를 전달하면 고정된 심볼 스트립으로 사용할 수 있습니다.",
+            sourceAria: "시장 데이터 소스 상태",
+            statusConnecting: "연결 중",
+            statusLive: "실시간",
+            statusStale: "지연",
+            statusDown: "중단",
+            updatedAtLabel: "마지막 갱신",
+            updatedAtPending: "업데이트 대기",
+            usdWaiting: "USD 24h 대기",
+            krwWaiting: "KRW 24h 대기",
+            currentUsdWaiting: "USD 대기",
+            currentKrwWaiting: "KRW 대기",
+            premiumWaiting: "김프 대기",
+            sourceLocal: "예시 시세",
+            sourceLive: "실시간",
+            sourceSnapshot: "스냅샷",
+            detailChart: "상세 차트",
+            emptyTitle: "표시할 시세가 없습니다.",
+            emptyBody: "공개 API 응답이 비어 있거나 아직 초기 USD/KRW 데이터가 준비되지 않았습니다.",
+          }
+        : {
+            liveDisconnectedSnapshot: "Live streams disconnected. Holding the latest snapshot.",
+            allUnavailableLocal: "Live and snapshot feeds are unavailable, so preview USD/KRW prices are shown.",
+            snapshotHolding: "Holding prices from the latest snapshot.",
+            snapshotRefreshFailed: "Snapshot refresh failed. Keeping the previous data.",
+            networkLimitedLocal: "Network access is limited, so preview USD/KRW prices are shown.",
+            binanceUnavailable: "Binance live stream is unavailable, so preview prices are shown.",
+            binanceInitFailed: "Could not open the Binance live stream, so preview USD/KRW prices are shown.",
+            upbitUnavailable: "Upbit live stream is unavailable, so preview prices are shown.",
+            upbitInitFailed: "Could not open the Upbit live stream, so preview USD/KRW prices are shown.",
+            offlineLocal: "You are offline, so preview USD/KRW prices are shown first.",
+            mobileCollapse: "Collapse",
+            mobileExpand: "Show more",
+            mobileCollapseAria: "Collapse market ticker cards",
+            mobileExpandAria: (count: number) => `Show ${count} more market ticker cards`,
+            emptySymbolsTitle: "No ticker symbols are configured.",
+            emptySymbolsBody: "Pass `symbols` when mounting this component to render a fixed market ticker strip.",
+            sourceAria: "Market data source status",
+            statusConnecting: "Connecting",
+            statusLive: "Live",
+            statusStale: "Stale",
+            statusDown: "Down",
+            updatedAtLabel: "Last update",
+            updatedAtPending: "Waiting for update",
+            usdWaiting: "Waiting for USD 24h",
+            krwWaiting: "Waiting for KRW 24h",
+            currentUsdWaiting: "Waiting for USD",
+            currentKrwWaiting: "Waiting for KRW",
+            premiumWaiting: "Waiting for premium",
+            sourceLocal: "Preview",
+            sourceLive: "Live",
+            sourceSnapshot: "Snapshot",
+            detailChart: "Detail chart",
+            emptyTitle: "No market prices are available.",
+            emptyBody: "The public APIs returned no rows, or the initial USD/KRW data has not been prepared yet.",
+          },
+    [language],
+  );
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -313,13 +395,13 @@ export function MarketTickerStrip({
       if (hasSnapshot) {
         setPhase(hasEverReceivedLive ? "fallback" : "ready");
         setNotice(
-          hasEverReceivedLive ? "실시간 연결이 끊겨 최신 스냅샷 기준으로 유지합니다." : null,
+          hasEverReceivedLive ? copy.liveDisconnectedSnapshot : null,
         );
         setErrorMessage(hasEverReceivedLive ? "stream_closed" : null);
         return;
       }
 
-      applyLocalFallback("실시간/스냅샷 연결이 모두 없어 예시 USD/KRW 시세를 표시합니다.", "stream_closed");
+      applyLocalFallback(copy.allUnavailableLocal, "stream_closed");
     };
 
     const refreshSnapshot = async (mode: "initial" | "background") => {
@@ -370,7 +452,7 @@ export function MarketTickerStrip({
         }
 
         setPhase(mode === "initial" && !hasEverReceivedLive ? "ready" : "fallback");
-        setNotice(mode === "initial" && !hasEverReceivedLive ? null : "최신 스냅샷 기준으로 시세를 유지합니다.");
+        setNotice(mode === "initial" && !hasEverReceivedLive ? null : copy.snapshotHolding);
         setErrorMessage(null);
       } catch (error) {
         if (cancelled) {
@@ -389,7 +471,7 @@ export function MarketTickerStrip({
 
         if (!hasSnapshot && !hasAnyLive()) {
           applyLocalFallback(
-            "네트워크 접근이 제한되어 예시 USD/KRW 시세를 표시합니다.",
+            copy.networkLimitedLocal,
             error instanceof Error ? error.message : "snapshot_unavailable",
           );
           return;
@@ -397,7 +479,7 @@ export function MarketTickerStrip({
 
         if (!hasAnyLive()) {
           setPhase("fallback");
-          setNotice("스냅샷 새로고침에 실패해 이전 데이터 기준으로 유지합니다.");
+          setNotice(copy.snapshotRefreshFailed);
         }
         setErrorMessage(error instanceof Error ? error.message : "snapshot_refresh_failed");
       }
@@ -469,7 +551,7 @@ export function MarketTickerStrip({
 
           if (!hasSnapshot && !hasAnyLive()) {
             applyLocalFallback(
-              "Binance 실시간 연결이 열리지 않아 예시 시세로 대체했습니다.",
+              copy.binanceUnavailable,
               "binance_live_stream_unavailable",
             );
             return;
@@ -488,7 +570,7 @@ export function MarketTickerStrip({
         };
       } catch (error) {
         applyLocalFallback(
-          "Binance 실시간 스트림을 열 수 없어 예시 USD/KRW 시세를 표시합니다.",
+          copy.binanceInitFailed,
           error instanceof Error ? error.message : "binance_stream_init_failed",
         );
       }
@@ -574,7 +656,7 @@ export function MarketTickerStrip({
 
           if (!hasSnapshot && !hasAnyLive()) {
             applyLocalFallback(
-              "Upbit 실시간 연결이 열리지 않아 예시 시세로 대체했습니다.",
+              copy.upbitUnavailable,
               "upbit_live_stream_unavailable",
             );
             return;
@@ -593,7 +675,7 @@ export function MarketTickerStrip({
         };
       } catch (error) {
         applyLocalFallback(
-          "Upbit 실시간 스트림을 열 수 없어 예시 USD/KRW 시세를 표시합니다.",
+          copy.upbitInitFailed,
           error instanceof Error ? error.message : "upbit_stream_init_failed",
         );
       }
@@ -612,7 +694,7 @@ export function MarketTickerStrip({
     hasEverReceivedLive = false;
 
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      applyLocalFallback("오프라인 상태라 예시 USD/KRW 시세를 먼저 표시합니다.", "offline");
+      applyLocalFallback(copy.offlineLocal, "offline");
       return;
     }
 
@@ -668,7 +750,7 @@ export function MarketTickerStrip({
         upbitSocket = null;
       }
     };
-  }, [symbols]);
+  }, [copy, symbols]);
 
   const rootClassName = combineClassName(styles.panel, className);
   const lastUpdatedAt = items.reduce<number | null>((latest, item) => {
@@ -707,6 +789,12 @@ export function MarketTickerStrip({
     ],
     [clock, phase, sourceHealth],
   );
+  const sourceStatusLabels = {
+    connecting: copy.statusConnecting,
+    live: copy.statusLive,
+    stale: copy.statusStale,
+    down: copy.statusDown,
+  } as const;
   const selectedItem = selectedItemId
     ? items.find((item) => item.id === selectedItemId) ?? null
     : null;
@@ -718,10 +806,10 @@ export function MarketTickerStrip({
   const cardCount = phase === "loading" ? symbols.length : items.length;
   const shouldShowMobileToggle = cardCount > 2;
   const hiddenCardCount = Math.max(cardCount - 2, 0);
-  const mobileToggleLabel = isExpanded ? "접기" : "펼치기";
+  const mobileToggleLabel = isExpanded ? copy.mobileCollapse : copy.mobileExpand;
   const mobileToggleAriaLabel = isExpanded
-    ? "시장 티커 접기"
-    : `시장 티커 ${hiddenCardCount}개 더 펼치기`;
+    ? copy.mobileCollapseAria
+    : copy.mobileExpandAria(hiddenCardCount);
 
   if (symbols.length === 0) {
     return (
@@ -733,10 +821,8 @@ export function MarketTickerStrip({
           </div>
         </div>
         <div className={styles.emptyState}>
-          <p className={styles.emptyTitle}>티커 심볼이 비어 있습니다.</p>
-          <p className={styles.emptyBody}>
-            마운트 시 `symbols`를 전달하면 고정된 심볼 스트립으로 사용할 수 있습니다.
-          </p>
+          <p className={styles.emptyTitle}>{copy.emptySymbolsTitle}</p>
+          <p className={styles.emptyBody}>{copy.emptySymbolsBody}</p>
         </div>
       </section>
     );
@@ -751,9 +837,17 @@ export function MarketTickerStrip({
         </div>
 
         <div className={styles.headerMeta}>
-          <MarketTickerSourceChips sources={sourceChips} />
+          <MarketTickerSourceChips
+            sources={sourceChips}
+            ariaLabel={copy.sourceAria}
+            statusLabels={sourceStatusLabels}
+          />
           <span className={styles.updatedAt}>
-            마지막 갱신 {formatMarketTickerUpdatedAt(visibleUpdatedAt)} KST
+            {copy.updatedAtLabel}{" "}
+            {visibleUpdatedAt == null
+              ? copy.updatedAtPending
+              : formatMarketTickerUpdatedAt(visibleUpdatedAt)}{" "}
+            KST
           </span>
         </div>
       </div>
@@ -818,9 +912,15 @@ export function MarketTickerStrip({
                 </div>
 
                 <div className={styles.priceBlock}>
-                  <strong className={styles.price}>{formatMarketTickerPrice(item.priceUsd)}</strong>
+                  <strong className={styles.price}>
+                    {item.priceUsd == null
+                      ? copy.currentUsdWaiting
+                      : formatMarketTickerPrice(item.priceUsd)}
+                  </strong>
                   <span className={styles.secondaryPrice}>
-                    {formatMarketTickerKrwPrice(item.priceKrw)}
+                    {item.priceKrw == null
+                      ? copy.currentKrwWaiting
+                      : formatMarketTickerKrwPrice(item.priceKrw)}
                   </span>
                 </div>
 
@@ -836,7 +936,7 @@ export function MarketTickerStrip({
                   <span className={styles.metricLabel}>{item.usdMarketLabel}</span>
                   <span className={styles.metricValue}>
                     {item.usdChange24hPct == null
-                      ? "USD 24h 대기"
+                      ? copy.usdWaiting
                       : `USD 24h ${formatMarketTickerChange(item.usdChange24hPct)}`}
                   </span>
                 </div>
@@ -845,22 +945,24 @@ export function MarketTickerStrip({
                   <span className={styles.metricLabel}>{item.krwMarketLabel}</span>
                   <span className={styles.metricValue}>
                     {item.krwChange24hPct == null
-                      ? "KRW 24h 대기"
+                      ? copy.krwWaiting
                       : `KRW 24h ${formatMarketTickerChange(item.krwChange24hPct)}`}
                   </span>
                 </div>
 
                 <div className={styles.cardFooter}>
                   <span className={styles.premiumPill} data-tone={premiumTone}>
-                    {formatKimchiPremium(item.kimchiPremiumPct)}
+                    {item.kimchiPremiumPct == null
+                      ? copy.premiumWaiting
+                      : formatKimchiPremium(item.kimchiPremiumPct)}
                   </span>
                   <div className={styles.cardFooterActions}>
                     <span>
                       {item.source === "local"
-                        ? "예시 시세"
+                        ? copy.sourceLocal
                         : item.source === "live"
-                          ? "실시간"
-                          : "스냅샷"}
+                          ? copy.sourceLive
+                          : copy.sourceSnapshot}
                     </span>
                     {definition ? (
                       <button
@@ -869,7 +971,7 @@ export function MarketTickerStrip({
                         aria-haspopup="dialog"
                         onClick={() => setSelectedItemId(item.id)}
                       >
-                        상세 차트
+                        {copy.detailChart}
                       </button>
                     ) : null}
                   </div>
@@ -880,10 +982,8 @@ export function MarketTickerStrip({
         </div>
       ) : (
         <div className={styles.emptyState}>
-          <p className={styles.emptyTitle}>표시할 시세가 없습니다.</p>
-          <p className={styles.emptyBody}>
-            공개 API 응답이 비어 있거나 아직 초기 USD/KRW 데이터가 준비되지 않았습니다.
-          </p>
+          <p className={styles.emptyTitle}>{copy.emptyTitle}</p>
+          <p className={styles.emptyBody}>{copy.emptyBody}</p>
         </div>
       )}
 
@@ -892,6 +992,7 @@ export function MarketTickerStrip({
         item={selectedItem}
         isOpen={selectedItem != null && selectedDefinition != null}
         onClose={() => setSelectedItemId(null)}
+        initialLanguage={initialLanguage}
       />
     </section>
   );

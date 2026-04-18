@@ -106,6 +106,7 @@ TAB_BROADCAST_LOG = "broadcast_log"
 TAB_LLM_BUDGET_LOG = "llm_budget_log"
 TAB_CURATED_WALLET_BALANCES = "curated_wallet_balances"
 TAB_CHANNEL_HEALTH = "channel_health"
+TAB_SERVICE_HEALTH = "service_health"
 
 WATCHED_ADDRESSES_HEADERS = [
     "address", "chain", "category", "label", "source",
@@ -157,6 +158,10 @@ WATCHLIST_OVERRIDES_HEADERS = [
 NEWS_FEED_HEADERS = [
     "id", "source", "title", "summary", "url",
     "published_at", "language", "tags", "fetched_at", "hash",
+    # last_seen_at = when we most recently observed this article in ANY RSS poll,
+    # including dedup hits. Distinct from fetched_at (first insertion time) so the
+    # dashboard can tell "pipeline is polling" apart from "new article arrived".
+    "last_seen_at",
 ]
 
 MARKET_SNAPSHOTS_HEADERS = [
@@ -214,6 +219,16 @@ CHANNEL_HEALTH_HEADERS = [
     "error",
 ]
 
+SERVICE_HEALTH_HEADERS = [
+    "ts",
+    "service",
+    "component",
+    "status",
+    "heartbeat_key",
+    "details",
+    "error",
+]
+
 ALL_TABS.extend([
     TAB_WATCHED_ADDRESSES,
     TAB_ADDRESS_ACTIVITY,
@@ -232,6 +247,7 @@ ALL_TABS.extend([
     TAB_LLM_BUDGET_LOG,
     TAB_CURATED_WALLET_BALANCES,
     TAB_CHANNEL_HEALTH,
+    TAB_SERVICE_HEALTH,
 ])
 
 TAB_HEADERS.update({
@@ -252,4 +268,5 @@ TAB_HEADERS.update({
     TAB_LLM_BUDGET_LOG: LLM_BUDGET_LOG_HEADERS,
     TAB_CURATED_WALLET_BALANCES: CURATED_WALLET_BALANCES_HEADERS,
     TAB_CHANNEL_HEALTH: CHANNEL_HEALTH_HEADERS,
+    TAB_SERVICE_HEALTH: SERVICE_HEALTH_HEADERS,
 })

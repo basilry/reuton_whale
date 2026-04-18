@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from src.ingestion.news_rss import _entry_id
+from src.ingestion.news_rss import FeedFetchResult, _entry_id, run_news_rss_refresh
 from src.storage.schema import ALL_TABS, NEWS_FEED_HEADERS
 
 
@@ -97,3 +99,49 @@ def test_append_news_feed_skips_duplicate_rows_within_same_batch():
 
     assert inserted == 1
     mock_ws.append_rows.assert_called_once()
+
+
+def test_run_news_rss_refresh_returns_rich_metadata_and_logs_run():
+    client = MagicMock()
+    client.append_news_feed.return_value = 2
+
+    feed_results = [
+        FeedFetchResult(
+            source="CoinDesk",
+            url="https://example.com/a",
+            language="en",
+            status="ok",
+            items_fetched=2,
+            http_status=200,
+        ),
+        FeedFetchResult(
+            source="Decrypt",
+            url="https://example.com/b",
+            language="en",
+            status="error",
+            items_fetched=0,
+            http_status=503,
+            error="upstream timeout",
+        ),
+    ]
+    rows = [
+        {"id": "1", "hash": "h1", "source": "CoinDesk", "title": "One"},
+        {"id": "2", "hash": "h2", "source": "CoinDesk", "title": "Two"},
+    ]
+
+    with patch(
+        "src.ingestion.news_rss.load_listener_config",
+        return_value=SimpleNamespace(sheet_id="sheet", google_credentials="{}"),
+    ), patch("src.ingestion.news_rss.SheetsClient", return_value=client), patch(
+        "src.ingestion.news_rss.NewsRssIngestor.fetch",
+        return_value=(rows, feed_results),
+    ):
+        result = run_news_rss_refresh()
+
+    assert result["status"] == "completed_with_errors"
+    assert result["items_fetched"] == 2
+    assert result["items_new"] == 2
+    assert result["feeds_ok"] == 1
+    assert result["feeds_failed"] == 1
+    assert json.loads(result["details"])["feeds_failed"] == 1
+    client.log_run.assert_called_once()

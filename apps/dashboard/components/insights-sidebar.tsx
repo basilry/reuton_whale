@@ -17,10 +17,18 @@ const SIDEBAR_LINKS = [
 type SidebarHref = (typeof SIDEBAR_LINKS)[number]["href"];
 
 type InsightsSidebarProps = {
+  ariaLabel?: string;
+  brandSubtitle?: string;
   children?: ReactNode;
+  labels?: Partial<Record<SidebarHref, string>>;
 };
 
-export function InsightsSidebar({ children }: InsightsSidebarProps) {
+export function InsightsSidebar({
+  ariaLabel = "인사이트 내비게이션",
+  brandSubtitle = "User Home",
+  children,
+  labels,
+}: InsightsSidebarProps) {
   const [activeHref, setActiveHref] = useState<SidebarHref>(SIDEBAR_LINKS[0].href);
   const sectionTargets = useMemo(
     () => SIDEBAR_LINKS.map((item) => ({ href: item.href, id: item.href.slice(1) })),
@@ -126,10 +134,10 @@ export function InsightsSidebar({ children }: InsightsSidebarProps) {
   }
 
   return (
-    <aside className={styles.sidebar} aria-label="인사이트 내비게이션">
+    <aside className={styles.sidebar} aria-label={ariaLabel}>
       <div className={styles.brandBlock}>
         <span className={styles.brandTitle}>WhaleScope</span>
-        <span className={styles.brandSubtitle}>User Home</span>
+        <span className={styles.brandSubtitle}>{brandSubtitle}</span>
       </div>
 
       <nav className={styles.nav}>
@@ -145,7 +153,7 @@ export function InsightsSidebar({ children }: InsightsSidebarProps) {
             <span className="material-symbols-outlined" aria-hidden="true">
               {item.icon}
             </span>
-            {item.label}
+            {labels?.[item.href] ?? item.label}
           </a>
         ))}
       </nav>

@@ -6,6 +6,8 @@ import type {
   DisplaySystemLogRow,
   DisplayTransactionRow,
   MetricTone,
+  OpsServiceStatus,
+  SourceFailureKind,
 } from "./types";
 
 // ---------- Coercers ----------
@@ -229,6 +231,59 @@ export function toneForListenerStatus(status: string): ToneOutput {
     return "bad";
   }
   return "neutral";
+}
+
+export function toneForOpsStatus(status: OpsServiceStatus | string): ToneOutput {
+  switch (status) {
+    case "healthy":
+      return "good";
+    case "degraded":
+    case "waiting":
+      return "warn";
+    case "down":
+    case "config_required":
+      return "bad";
+    default:
+      return "neutral";
+  }
+}
+
+export function humanizeOpsStatus(status: OpsServiceStatus | string): string {
+  switch (status) {
+    case "healthy":
+      return "정상";
+    case "degraded":
+      return "주의";
+    case "down":
+      return "장애";
+    case "waiting":
+      return "대기";
+    case "config_required":
+      return "설정 필요";
+    default:
+      return status || "상태 미상";
+  }
+}
+
+export function humanizeSourceFailureKind(kind: SourceFailureKind | string | null | undefined): string {
+  switch (kind) {
+    case "auth":
+      return "인증 실패";
+    case "quota":
+      return "쿼터 초과";
+    case "schema":
+      return "시트 스키마 불일치";
+    case "network":
+      return "네트워크 오류";
+    case "empty":
+      return "데이터 비어 있음";
+    case "config":
+      return "환경변수/설정 누락";
+    case "unknown":
+      return "원인 미상";
+    default:
+      return "문제 없음";
+  }
 }
 
 export function humanizeSeverity(severity: string): string {

@@ -11,6 +11,8 @@ import {
 } from "lightweight-charts";
 
 import { resolveTokenColor, toRgba } from "@/lib/chart-colors";
+import type { DashboardLanguage } from "@/lib/i18n/config";
+import { useDashboardI18n } from "@/lib/i18n/client";
 import {
   createLocalMarketTickerDetailSeries,
   fetchMarketTickerDetailSeries,
@@ -31,6 +33,7 @@ type DetailPhase = "loading" | "ready" | "fallback";
 type MarketDetailChartProps = {
   definition: MarketTickerDefinition;
   item: MarketTickerItem;
+  initialLanguage: DashboardLanguage;
 };
 
 const RANGES: MarketTickerChartRange[] = ["1m", "5m", "1h", "1d"];
@@ -57,14 +60,12 @@ function rangeLabel(range: MarketTickerChartRange): string {
   return range.toUpperCase();
 }
 
-function metricLabel(metric: MarketTickerChartMetric): string {
-  return metric === "krw" ? "KRW 기준" : "USD 기준";
-}
-
 export function MarketDetailChart({
   definition,
   item,
+  initialLanguage,
 }: MarketDetailChartProps) {
+  const { language } = useDashboardI18n(initialLanguage);
   const [range, setRange] = useState<MarketTickerChartRange>("1h");
   const [metric, setMetric] = useState<MarketTickerChartMetric>(
     item.priceKrw != null ? "krw" : "usd",
@@ -168,6 +169,35 @@ export function MarketDetailChart({
     chartRef.current?.timeScale().fitContent();
   }, [activePoints, metric]);
 
+  const copy =
+    language === "ko"
+      ? {
+          metricUsd: "USD 기준",
+          metricKrw: "KRW 기준",
+          statusLoading: "차트 로딩 중",
+          statusFallback: "예시 차트",
+          statusReady: "실데이터 차트",
+          currentUsd: "현재 USD",
+          currentKrw: "현재 KRW",
+          kimchiPremium: "김치 프리미엄",
+          usdWaiting: "USD 대기",
+          krwWaiting: "KRW 대기",
+          premiumWaiting: "김프 대기",
+        }
+      : {
+          metricUsd: "USD view",
+          metricKrw: "KRW view",
+          statusLoading: "Loading chart",
+          statusFallback: "Preview chart",
+          statusReady: "Live chart",
+          currentUsd: "Current USD",
+          currentKrw: "Current KRW",
+          kimchiPremium: "Kimchi premium",
+          usdWaiting: "Waiting for USD",
+          krwWaiting: "Waiting for KRW",
+          premiumWaiting: "Waiting for premium",
+        };
+
   return (
     <div className={styles.panel}>
       <div className={styles.toolbar}>
@@ -194,17 +224,17 @@ export function MarketDetailChart({
               data-active={metric === entry ? "true" : undefined}
               onClick={() => setMetric(entry)}
             >
-              {metricLabel(entry)}
+              {entry === "krw" ? copy.metricKrw : copy.metricUsd}
             </button>
           ))}
         </div>
 
         <span className={styles.status}>
           {phase === "loading"
-            ? "차트 로딩 중"
+            ? copy.statusLoading
             : phase === "fallback"
-              ? "예시 차트"
-              : "실데이터 차트"}
+              ? copy.statusFallback
+              : copy.statusReady}
         </span>
       </div>
 
@@ -214,21 +244,23 @@ export function MarketDetailChart({
 
       <div className={styles.summaryGrid}>
         <div className={styles.summaryItem}>
-          <span className={styles.summaryLabel}>현재 USD</span>
+          <span className={styles.summaryLabel}>{copy.currentUsd}</span>
           <span className={styles.summaryValue}>
-            {formatMarketTickerPrice(item.priceUsd)}
+            {item.priceUsd == null ? copy.usdWaiting : formatMarketTickerPrice(item.priceUsd)}
           </span>
         </div>
         <div className={styles.summaryItem}>
-          <span className={styles.summaryLabel}>현재 KRW</span>
+          <span className={styles.summaryLabel}>{copy.currentKrw}</span>
           <span className={styles.summaryValue}>
-            {formatMarketTickerKrwPrice(item.priceKrw)}
+            {item.priceKrw == null ? copy.krwWaiting : formatMarketTickerKrwPrice(item.priceKrw)}
           </span>
         </div>
         <div className={styles.summaryItem}>
-          <span className={styles.summaryLabel}>김치 프리미엄</span>
+          <span className={styles.summaryLabel}>{copy.kimchiPremium}</span>
           <span className={styles.summaryValue}>
-            {formatKimchiPremium(item.kimchiPremiumPct)}
+            {item.kimchiPremiumPct == null
+              ? copy.premiumWaiting
+              : formatKimchiPremium(item.kimchiPremiumPct)}
           </span>
         </div>
       </div>

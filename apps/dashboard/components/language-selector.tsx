@@ -2,33 +2,28 @@
 
 import { useState } from "react";
 
+import {
+  SUPPORTED_DASHBOARD_LANGUAGES,
+  type DashboardLanguage,
+} from "@/lib/i18n/config";
+import { useDashboardI18n } from "@/lib/i18n/client";
 import styles from "./language-selector.module.css";
 
-const SUPPORTED = [
-  { code: "ko", label: "한국어" },
-  { code: "en", label: "English" },
-  { code: "ja", label: "日本語" },
-] as const;
-
-type LangCode = (typeof SUPPORTED)[number]["code"];
-
 export type LanguageSelectorProps = {
-  currentLang?: LangCode;
+  currentLang?: DashboardLanguage;
 };
 
 export function LanguageSelector({ currentLang = "ko" }: LanguageSelectorProps) {
-  const [lang, setLang] = useState<LangCode>(currentLang);
+  const { dictionary, language, setLanguage } = useDashboardI18n(currentLang);
   const [saving, setSaving] = useState(false);
 
   async function handleChange(event: React.ChangeEvent<HTMLSelectElement>) {
-    const next = event.target.value as LangCode;
-    if (next === lang || saving) return;
+    const next = event.target.value as DashboardLanguage;
+    if (next === language || saving) return;
 
     setSaving(true);
-    setLang(next);
+    setLanguage(next);
 
-    // Persist via cookie for server-side reads AND hit the API for
-    // the in-memory record (demo — future hook for per-user overrides).
     if (typeof document !== "undefined") {
       document.cookie = `dashboard_lang=${next}; path=/; max-age=31536000; SameSite=Lax`;
     }
@@ -46,25 +41,34 @@ export function LanguageSelector({ currentLang = "ko" }: LanguageSelectorProps) 
   }
 
   return (
-    <label className={styles.label} aria-label="대시보드 언어 선택">
-      <span className="material-symbols-outlined" aria-hidden="true">
+    <label
+      className={styles.label}
+      aria-label={dictionary.languageSelector.controlAriaLabel}
+      data-saving={saving ? "true" : undefined}
+    >
+      <span className={`${styles.icon} material-symbols-outlined`} aria-hidden="true">
         language
       </span>
+      <span className={styles.text}>{dictionary.languageSelector.label}</span>
       <select
         id="dashboard-language-selector"
         name="dashboard_lang"
-        aria-label="대시보드 언어"
+        aria-label={dictionary.languageSelector.selectAriaLabel}
         className={styles.select}
-        value={lang}
+        value={language}
         onChange={handleChange}
         disabled={saving}
+        aria-busy={saving}
       >
-        {SUPPORTED.map((entry) => (
-          <option key={entry.code} value={entry.code}>
-            {entry.label}
+        {SUPPORTED_DASHBOARD_LANGUAGES.map((entry) => (
+          <option key={entry} value={entry}>
+            {dictionary.languageSelector.options[entry]}
           </option>
         ))}
       </select>
+      <span className={`${styles.caret} material-symbols-outlined`} aria-hidden="true">
+        expand_more
+      </span>
     </label>
   );
 }

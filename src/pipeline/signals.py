@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from src.main import _event_to_address_activity, _event_to_dict, _load_signals_cfg
+from src.observability.service_health import append_service_heartbeat, pipeline_status_to_health
 from src.pipeline.common import (
     build_price_services,
     build_sheets_client,
@@ -19,6 +20,21 @@ from src.storage.queries import now_iso
 from src.utils.logger import get_logger
 
 logger = get_logger("pipeline.signals")
+
+
+def _record_signals_heartbeat(sheets, result: dict[str, object]) -> None:
+    append_service_heartbeat(
+        sheets,
+        service="pipeline.signals",
+        component="pipeline",
+        status=pipeline_status_to_health(result.get("status")),
+        heartbeat_key=str(result.get("run_id", "")),
+        details={
+            "status": result.get("status"),
+            "details": result.get("details", ""),
+        },
+        error=result.get("errors", ""),
+    )
 
 
 def run_signals_pipeline() -> dict[str, object]:
@@ -57,6 +73,7 @@ def run_signals_pipeline() -> dict[str, object]:
             details="No recent events found",
         )
         sheets.log_run(result)
+        _record_signals_heartbeat(sheets, result)
         return result
 
     signals, signal_errors = detect_signals(
@@ -87,6 +104,7 @@ def run_signals_pipeline() -> dict[str, object]:
         details=details,
     )
     sheets.log_run(result)
+    _record_signals_heartbeat(sheets, result)
     logger.info("signals pipeline finished status=%s details=%s", result["status"], details)
     return result
 

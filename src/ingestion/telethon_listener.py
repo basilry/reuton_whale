@@ -7,11 +7,13 @@ import os
 import re
 from datetime import datetime, timezone
 
+from src.observability.service_health import append_service_heartbeat, build_heartbeat_key
 from src.utils.logger import get_logger
 
 logger = get_logger("telethon_listener")
 
 _DEFAULT_STALENESS_SECONDS = 900
+_HEARTBEAT_INTERVAL_SECONDS = 300
 
 
 def _staleness_threshold_seconds() -> int:
@@ -102,6 +104,7 @@ class TelethonListener:
         self._phone = phone
         self._session_string = session_string
         self._last_message_at: datetime | None = None
+        self._last_heartbeat_at: datetime | None = None
         self._message_count: int = 0
         self._error_count: int = 0
 
@@ -159,6 +162,11 @@ class TelethonListener:
                         "channel": self._channel,
                     },
                 )
+                await self._record_service_heartbeat(
+                    status="error",
+                    event="auth_error",
+                    error="session_not_authenticated",
+                )
                 if not self._phone:
                     raise RuntimeError(
                         "Telethon session is not authenticated. "
@@ -179,6 +187,11 @@ class TelethonListener:
                             "channel": self._channel,
                         },
                     )
+                    await self._record_service_heartbeat(
+                        status="error",
+                        event="auth_error",
+                        error="invalid_phone",
+                    )
                     raise RuntimeError(
                         "Invalid TELETHON_PHONE. Use international E.164 format "
                         "with country code, for example +821012345678. "
@@ -196,6 +209,7 @@ class TelethonListener:
                     "session_string": "set" if self._session_string else "unset",
                 },
             )
+            await self._record_service_heartbeat(status="ok", event="listener_start", force=True)
             await client.run_until_disconnected()
         finally:
             await client.disconnect()
@@ -247,6 +261,7 @@ class TelethonListener:
 
         try:
             await asyncio.to_thread(self._storage.append_tg_whale_event, event_row)
+            await self._record_service_heartbeat(status="ok", event="message_processed")
             await self._record_system_log(
                 "info",
                 "telethon_listener",
@@ -272,6 +287,12 @@ class TelethonListener:
                     "error": str(exc),
                 },
             )
+            await self._record_service_heartbeat(
+                status="error",
+                event="message_error",
+                error=str(exc),
+                force=True,
+            )
 
     async def _record_system_log(self, level: str, category: str, payload: dict) -> None:
         if self._storage is None:
@@ -285,3 +306,41 @@ class TelethonListener:
                 category,
                 exc,
             )
+
+    async def _record_service_heartbeat(
+        self,
+        *,
+        status: str,
+        event: str,
+        error: str = "",
+        force: bool = False,
+    ) -> None:
+        if self._storage is None or not hasattr(self._storage, "append_service_health"):
+            return
+
+        now = datetime.now(timezone.utc)
+        if (
+            not force
+            and self._last_heartbeat_at is not None
+            and (now - self._last_heartbeat_at).total_seconds() < _HEARTBEAT_INTERVAL_SECONDS
+        ):
+            return
+
+        details = self.health_status()
+        details["channel"] = self._channel
+        details["event"] = event
+        try:
+            await asyncio.to_thread(
+                append_service_heartbeat,
+                self._storage,
+                service="telegram.listener",
+                component="listener",
+                status=status,
+                heartbeat_key=build_heartbeat_key("telegram.listener", self._channel, now.strftime("%Y%m%dT%H%M")),
+                details=details,
+                error=error,
+                observed_at=now,
+            )
+            self._last_heartbeat_at = now
+        except Exception as exc:
+            logger.warning("Listener heartbeat append failed event=%s: %s", event, exc)

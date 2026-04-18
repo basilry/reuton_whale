@@ -3,17 +3,24 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { DashboardLanguage } from "@/lib/i18n/config";
+import { useDashboardI18n } from "@/lib/i18n/client";
 import { ThemeToggle } from "./theme-toggle";
 import { LanguageSelector } from "./language-selector";
 import styles from "./top-navbar.module.css";
 
-const NAV_ITEMS = [
-  { label: "유저 홈", href: "/" },
-  { label: "운영", href: "/admin" },
-] as const;
+type TopNavbarProps = {
+  initialLanguage?: DashboardLanguage;
+};
 
-export function TopNavbar() {
+export function TopNavbar({ initialLanguage }: TopNavbarProps) {
   const pathname = usePathname();
+  const { dictionary, language } = useDashboardI18n(initialLanguage);
+
+  const NAV_ITEMS = [
+    { label: dictionary.navbar.userHome, href: "/" },
+    { label: dictionary.navbar.admin, href: "/admin" },
+  ] as const;
 
   function isActive(href: string): boolean {
     if (href.includes("#")) {
@@ -26,7 +33,7 @@ export function TopNavbar() {
   return (
     <header className={styles.navbar}>
       <div className={styles.inner}>
-        <Link href="/" className={styles.brand} aria-label="WhaleScope 홈">
+        <Link href="/" className={styles.brand} aria-label={dictionary.navbar.brandAriaLabel}>
           <Image
             src="/logo.png"
             alt=""
@@ -37,11 +44,11 @@ export function TopNavbar() {
           />
           <span className={styles.brandTextBlock}>
             <span className={styles.brandTitle}>WhaleScope</span>
-            <span className={styles.brandSubtitle}>Whale intelligence · v0.1</span>
+            <span className={styles.brandSubtitle}>{dictionary.navbar.brandSubtitle}</span>
           </span>
         </Link>
 
-        <nav className={styles.tabNav} aria-label="주요 내비게이션">
+        <nav className={styles.tabNav} aria-label={dictionary.navbar.primaryNavigation}>
           {NAV_ITEMS.map((item) => (
             <Link
               key={item.href}
@@ -56,8 +63,8 @@ export function TopNavbar() {
         </nav>
 
         <div className={styles.right}>
-          <ThemeToggle className={styles.themeBtn} />
-          <LanguageSelector />
+          <ThemeToggle className={styles.themeBtn} initialLanguage={initialLanguage} />
+          <LanguageSelector currentLang={language} />
         </div>
       </div>
     </header>

@@ -1,5 +1,6 @@
 /* eslint-disable @next/next/no-page-custom-font */
 import type { Metadata } from "next";
+import { getCurrentDashboardLanguage } from "@/lib/i18n/server";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -9,20 +10,16 @@ export const metadata: Metadata = {
 
 /**
  * Theme-boot: runs synchronously before first paint to set `data-theme`
- * on <html>. Prevents FOUC on dark-mode page loads. See DESIGN.md §12.
- * Order of precedence:
- *   1. localStorage['whalescope.theme'] ('light' | 'dark')
- *   2. prefers-color-scheme media query
- *   3. 'light' fallback
+ * on <html>. The default theme is always light unless the user has already
+ * stored an explicit override in localStorage.
  */
 const themeBootScript = `
 (() => {
   try {
     const stored = localStorage.getItem('whalescope.theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const theme = stored === 'dark' || stored === 'light'
       ? stored
-      : (prefersDark ? 'dark' : 'light');
+      : 'light';
     document.documentElement.setAttribute('data-theme', theme);
   } catch (_) {
     document.documentElement.setAttribute('data-theme', 'light');
@@ -30,13 +27,15 @@ const themeBootScript = `
 })();
 `.trim();
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const language = await getCurrentDashboardLanguage();
+
   return (
-    <html lang="ko" suppressHydrationWarning>
+    <html lang={language} data-dashboard-lang={language} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
         <link rel="icon" href="/favicon.ico?v=1cfb8185" sizes="any" />

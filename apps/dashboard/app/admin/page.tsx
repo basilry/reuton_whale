@@ -12,18 +12,19 @@ import {
   formatScore,
   formatTime,
   formatUsd,
-  humanizeLatestRunStatus,
   humanizeLog,
   humanizeLogMessage,
+  humanizeOpsStatus,
+  humanizeSourceFailureKind,
   humanizeSignal,
   humanizeTransaction,
-  toneForListenerStatus,
-  toneForStatus,
+  toneForOpsStatus,
 } from "@/lib/humanize";
 import { getDashboardData } from "@/lib/metrics";
+import { getCurrentDashboardLanguage } from "@/lib/i18n/server";
 import { normalizeDashboardData } from "@/lib/normalize";
 import { cookies } from "next/headers";
-import type { DashboardData, NormalizedDashboard } from "@/lib/types";
+import type { DashboardData, NormalizedDashboard, OpsServiceName } from "@/lib/types";
 import styles from "../page.module.css";
 
 export const runtime = "nodejs";
@@ -43,119 +44,104 @@ async function loadDashboardData(): Promise<DashboardData | null> {
   }
 }
 
-function buildServiceCards(data: NormalizedDashboard) {
-  const runTone = toneForStatus(data.latestRun.status);
-  const connected = data.sourceState === "connected";
-  const latestRunMessage = humanizeLogMessage(data.latestRun.message, data.latestRun.status);
-  const listenerUpdatedAt = data.listenerHealth.updatedAt
-    ? `최근 상태: ${formatTime(data.listenerHealth.updatedAt, { dateStyle: "medium", timeStyle: "short" })}`
-    : "system_log에 listener heartbeat가 기록되면 상태가 갱신됩니다.";
-
-  return [
-    {
-      title: "정보수집 파이프라인 워커",
-      status: humanizeLatestRunStatus(data.latestRun.status),
-      tone: runTone,
-      description:
-        latestRunMessage ||
-        "최근 파이프라인 실행 상태를 확인합니다.",
-      hint:
-        data.latestRun.errorCount > 0
-          ? `${data.latestRun.errorCount}건의 경고가 남아 있습니다.`
-          : "마지막 실행은 정상적으로 마무리되었습니다.",
-    },
-    {
-      title: "Telegram bot 워커",
-      status:
-        data.metrics.subscriberCount > 0 ? "정상" : "설정 필요",
-      tone: data.metrics.subscriberCount > 0 ? "good" : "warn",
-      description:
-        data.metrics.subscriberCount > 0
-          ? `${formatCompactCount(data.metrics.subscriberCount)}명의 구독자에게 알림을 보냅니다.`
-          : "구독자가 아직 없어 브리핑 발송이 0건일 수 있습니다.",
-      hint: "브리핑 발송과 구독자 상태를 함께 확인합니다.",
-    },
-    {
-      title: "Telegram listener 워커",
-      status: data.listenerHealth.label,
-      tone: toneForListenerStatus(data.listenerHealth.status),
-      description: data.listenerHealth.message,
-      hint: listenerUpdatedAt,
-    },
-    {
-      title: "Next.js dashboard",
-      status: connected ? "연결됨" : "미리보기",
-      tone: connected ? "good" : "neutral",
-      description: connected
-        ? "Google Sheets 데이터를 실제로 읽어 렌더링합니다."
-        : "연결 전에는 fallback data로 레이아웃만 확인할 수 있습니다.",
-      hint: "운영 화면의 최종 렌더링 계층입니다.",
-    },
-  ] as const;
-}
-
-function buildOperatorChecklist(data: NormalizedDashboard) {
-  return [
-    {
-      label: "Google Sheets 연결",
-      tone: data.sourceState === "connected" ? ("good" as const) : ("warn" as const),
-      status: data.sourceState === "connected" ? "완료" : "확인",
-      detail:
-        data.sourceState === "connected"
-          ? "운영 데이터가 실제 Sheets에서 들어오고 있습니다."
-          : "로컬/미리보기 상태에서는 연결 여부만 확인합니다.",
-    },
-    {
-      label: "정보수집 파이프라인",
-      tone: data.latestRun.status.toLowerCase().includes("failed")
-        ? ("bad" as const)
-        : data.latestRun.status.toLowerCase().includes("completed")
-          ? ("good" as const)
-          : ("warn" as const),
-      status: humanizeLatestRunStatus(data.latestRun.status),
-      detail:
-        data.latestRun.updatedAt
-          ? `최근 실행: ${formatTime(data.latestRun.updatedAt, { dateStyle: "medium", timeStyle: "short" })}`
-          : "최근 실행 기록이 아직 없습니다.",
-    },
-    {
-      label: "Telegram listener",
-      tone:
-        data.listenerHealth.status === "ok"
-          ? ("good" as const)
-          : data.listenerHealth.status === "auth_required"
-            ? ("bad" as const)
-            : ("warn" as const),
-      status: data.listenerHealth.label,
-      detail: data.listenerHealth.message,
-    },
-    {
-      label: "운영 알림",
-      tone: data.metrics.subscriberCount > 0 ? ("good" as const) : ("neutral" as const),
-      status: data.metrics.subscriberCount > 0 ? "활성" : "대기",
-      detail:
-        data.metrics.subscriberCount > 0
-          ? `${formatCompactCount(data.metrics.subscriberCount)}명의 구독자에게 브리핑을 보낼 수 있습니다.`
-          : "구독자가 아직 없어 발송 대상이 없습니다.",
-    },
-  ] as const;
-}
-
-const SERVICE_ICONS = ["dns", "smart_toy", "settings_input_antenna", "dashboard"] as const;
-
-const SERVICE_ACTIONS: ReadonlyArray<{
-  label: string;
-  icon: string;
-  variant: "primary" | "secondary";
-  href: string;
-} | null> = [
-  { label: "실행 로그", icon: "list_alt", variant: "primary", href: "#log" },
-  { label: "시그널 보기", icon: "search", variant: "secondary", href: "#signals" },
-  { label: "상태 로그", icon: "monitor_heart", variant: "secondary", href: "#log" },
-  null,
+const SERVICE_ORDER: OpsServiceName[] = [
+  "pipeline",
+  "listener",
+  "bot",
+  "dashboard",
+  "data_source",
 ];
 
+const SERVICE_META: Record<OpsServiceName, {
+  icon: string;
+  action: {
+    label: string;
+    icon: string;
+    variant: "primary" | "secondary";
+    href: string;
+  } | null;
+}> = {
+  pipeline: {
+    icon: "dns",
+    action: { label: "실행 로그", icon: "list_alt", variant: "primary", href: "#log" },
+  },
+  listener: {
+    icon: "settings_input_antenna",
+    action: { label: "상태 로그", icon: "monitor_heart", variant: "secondary", href: "#log" },
+  },
+  bot: {
+    icon: "smart_toy",
+    action: { label: "운영 요약", icon: "campaign", variant: "secondary", href: "#operator-checklist" },
+  },
+  dashboard: {
+    icon: "dashboard",
+    action: null,
+  },
+  data_source: {
+    icon: "database",
+    action: { label: "시그널 보기", icon: "search", variant: "secondary", href: "#signals" },
+  },
+};
+
+function buildServiceCards(data: NormalizedDashboard) {
+  return SERVICE_ORDER.map((name) => {
+    const item = data.serviceHealth[name];
+    const hintParts = [
+      item.updatedAt
+        ? `최근 상태: ${formatTime(item.updatedAt, { dateStyle: "medium", timeStyle: "short" })}`
+        : "",
+      item.source ? `관측 소스: ${item.source}` : "",
+      name === "data_source" && data.sourceHealth.failureKind
+        ? `원인 분류: ${humanizeSourceFailureKind(data.sourceHealth.failureKind)}`
+        : "",
+    ].filter(Boolean);
+
+    return {
+      key: name,
+      title: item.title,
+      status: item.label || humanizeOpsStatus(item.status),
+      tone: toneForOpsStatus(item.status),
+      description:
+        name === "pipeline"
+          ? humanizeLogMessage(item.summary, data.latestRun.status)
+          : item.summary,
+      hint: hintParts.join(" · ") || item.detail,
+      action: SERVICE_META[name].action,
+      icon: SERVICE_META[name].icon,
+    };
+  });
+}
+
+function buildRuntimeChecklist(data: NormalizedDashboard) {
+  return SERVICE_ORDER.map((name) => {
+    const item = data.serviceHealth[name];
+    return {
+      key: name,
+      label: item.title,
+      tone: toneForOpsStatus(item.status),
+      status: item.label || humanizeOpsStatus(item.status),
+      detail: item.detail,
+    };
+  });
+}
+
+function buildConfigChecklist(data: NormalizedDashboard) {
+  return data.operatorChecks.map((item) => ({
+    key: item.key,
+    label: item.label,
+    tone:
+      item.status === "ok"
+        ? ("good" as const)
+        : item.status === "missing"
+          ? ("bad" as const)
+          : ("warn" as const),
+    status: item.status === "ok" ? "완료" : item.status === "missing" ? "누락" : "확인",
+    detail: item.detail,
+  }));
+}
+
 export default async function DashboardPage() {
+  const language = await getCurrentDashboardLanguage();
   const cookieStore = await cookies();
   const auth = getDashboardAuthResult({
     sessionCookie: cookieStore.get(DASHBOARD_SESSION_COOKIE_NAME)?.value ?? undefined,
@@ -164,7 +150,7 @@ export default async function DashboardPage() {
   if (auth.productionLocked) {
     return (
       <>
-        <TopNavbar />
+        <TopNavbar initialLanguage={language} />
 
         <main className={styles.main}>
           <section className={styles.colSpan12}>
@@ -178,7 +164,7 @@ export default async function DashboardPage() {
   if (!auth.authorized && auth.passwordConfigured) {
     return (
       <>
-        <TopNavbar />
+        <TopNavbar initialLanguage={language} />
 
         <main className={styles.main}>
           <section className={styles.colSpan12}>
@@ -191,7 +177,8 @@ export default async function DashboardPage() {
 
   const data = normalizeDashboardData(await loadDashboardData());
   const serviceCards = buildServiceCards(data);
-  const operatorChecklist = buildOperatorChecklist(data);
+  const runtimeChecklist = buildRuntimeChecklist(data);
+  const configChecklist = buildConfigChecklist(data);
   const signals = data.recentSignals.slice(0, 6).map(humanizeSignal);
   const transactions = data.recentTransactions.slice(0, 6).map(humanizeTransaction);
   const logs = data.systemLogs.slice(0, 6).map(humanizeLog);
@@ -205,7 +192,7 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <TopNavbar />
+      <TopNavbar initialLanguage={language} />
 
       <main className={styles.main}>
         {auth.passwordConfigured ? (
@@ -228,9 +215,10 @@ export default async function DashboardPage() {
               <div className={styles.heroSummaryBox}>
                 <span className="material-symbols-outlined">auto_awesome</span>
                 <p className={styles.heroSummaryText}>
-                  오늘 감지된 주요 고래 이동은 <strong>{formatCompactCount(data.metrics.transactionCount)}건</strong>이며,
-                  CEX 유입 시그널 <strong>{formatCompactCount(data.metrics.signalCount)}건</strong>과
-                  일일 브리핑 <strong>{formatCompactCount(data.metrics.dailyBriefCount)}건</strong>이 확인되었습니다.
+                  <strong>{data.opsSummary.headline}</strong> {data.opsSummary.detail} 오늘 감지된 주요 고래 이동은{" "}
+                  <strong>{formatCompactCount(data.metrics.transactionCount)}건</strong>이며, CEX 유입 시그널{" "}
+                  <strong>{formatCompactCount(data.metrics.signalCount)}건</strong>과 일일 브리핑{" "}
+                  <strong>{formatCompactCount(data.metrics.dailyBriefCount)}건</strong>이 확인되었습니다.
                 </p>
               </div>
             </div>
@@ -240,11 +228,11 @@ export default async function DashboardPage() {
         {/* Service Health Grid */}
         <section className={styles.colSpan12}>
           <div className={styles.serviceGrid}>
-            {serviceCards.map((card, idx) => {
-              const action = SERVICE_ACTIONS[idx] ?? null;
-              const icon = SERVICE_ICONS[idx] ?? "dns";
+            {serviceCards.map((card) => {
+              const action = card.action;
+              const icon = card.icon;
               return (
-                <div key={card.title} className={styles.serviceCard}>
+                <div key={card.key} className={styles.serviceCard}>
                   <div>
                     <div className={styles.serviceCardHeader}>
                       <div className={styles.serviceIcon} data-tone={card.tone}>
@@ -256,6 +244,9 @@ export default async function DashboardPage() {
                     </div>
                     <h3 className={styles.serviceTitle}>{card.title}</h3>
                     <p className={styles.serviceDesc}>{card.description}</p>
+                    <p className={styles.serviceDesc} style={{ marginTop: "var(--space-xs)" }}>
+                      {card.hint}
+                    </p>
                   </div>
                   {action ? (
                     <a
@@ -382,20 +373,73 @@ export default async function DashboardPage() {
               <span className="material-symbols-outlined">checklist</span> 운영 체크리스트
             </h3>
             <div>
-              {operatorChecklist.map((item) => {
+              {runtimeChecklist.map((item) => {
                 const isDone = item.tone === "good";
                 const checkedAttr = isDone ? "true" : "false";
                 return (
-                  <div key={item.label} className={styles.checklistItem}>
+                  <div key={item.key} className={styles.checklistItem} style={{ alignItems: "flex-start" }}>
                     <div className={styles.checklistCheckbox} data-checked={checkedAttr}>
                       {isDone && <span className="material-symbols-outlined">check</span>}
                     </div>
-                    <span className={styles.checklistLabel} data-checked={checkedAttr}>
-                      {item.label}
-                    </span>
-                    <span className={styles.checklistStatus} data-checked={checkedAttr}>
-                      {item.status}
-                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+                        <span className={styles.checklistLabel} data-checked={checkedAttr}>
+                          {item.label}
+                        </span>
+                        <span className={styles.checklistStatus} data-checked={checkedAttr}>
+                          {item.status}
+                        </span>
+                      </div>
+                      <p
+                        style={{
+                          margin: "4px 0 0",
+                          fontSize: "var(--text-2xs)",
+                          color: "var(--inverse-on-surface-muted)",
+                          lineHeight: "var(--leading-normal)",
+                        }}
+                      >
+                        {item.detail}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className={styles.checklistCard}>
+            <h3 className={styles.checklistCardTitle}>
+              <span className="material-symbols-outlined">tune</span> 환경/연결 체크
+            </h3>
+            <div>
+              {configChecklist.map((item) => {
+                const isDone = item.tone === "good";
+                const checkedAttr = isDone ? "true" : "false";
+                return (
+                  <div key={item.key} className={styles.checklistItem} style={{ alignItems: "flex-start" }}>
+                    <div className={styles.checklistCheckbox} data-checked={checkedAttr}>
+                      {isDone && <span className="material-symbols-outlined">check</span>}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+                        <span className={styles.checklistLabel} data-checked={checkedAttr}>
+                          {item.label}
+                        </span>
+                        <span className={styles.checklistStatus} data-checked={checkedAttr}>
+                          {item.status}
+                        </span>
+                      </div>
+                      <p
+                        style={{
+                          margin: "4px 0 0",
+                          fontSize: "var(--text-2xs)",
+                          color: "var(--inverse-on-surface-muted)",
+                          lineHeight: "var(--leading-normal)",
+                        }}
+                      >
+                        {item.detail}
+                      </p>
+                    </div>
                   </div>
                 );
               })}

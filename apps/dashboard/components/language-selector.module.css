@@ -10,28 +10,44 @@
 .label {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-2xs) var(--space-sm);
+  gap: var(--space-2xs);
+  min-height: 40px;
+  padding: 0 var(--space-sm);
   border-radius: var(--radius-full);
-  background: var(--panel);
+  background: var(--surface-container);
   border: 1px solid var(--line);
-  box-shadow: var(--elev-1);
-  color: var(--on-surface-variant);
+  color: var(--on-surface);
   font-size: var(--text-sm);
   cursor: pointer;
   transition: var(--transition-bg), var(--transition-border);
   position: relative;
   z-index: var(--z-raised);
+  white-space: nowrap;
 }
 
 .label:hover {
-  border-color: var(--accent);
+  background: var(--surface-container-high);
 }
 
 .label:focus-within {
   border-color: var(--accent);
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
+}
+
+.label[data-saving="true"] {
+  opacity: 0.72;
+}
+
+.icon {
+  font-size: 18px;
+  color: var(--on-surface-variant);
+}
+
+.text {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--on-surface-variant);
 }
 
 /* ── Native select ──────────────────────────────────────────────────────── */
@@ -43,13 +59,22 @@
   font-size: var(--text-sm);
   cursor: pointer;
   outline: none;
-  padding-right: var(--space-sm);
+  padding: 0 var(--space-lg) 0 0;
   appearance: none;
-  /* Inherit font stack from globals so Pretendard applies */
   font-family: inherit;
+  min-width: 86px;
+  line-height: 40px;
 }
 
 .select:disabled {
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+.caret {
+  position: absolute;
+  right: var(--space-sm);
+  font-size: 18px;
+  color: var(--on-surface-variant);
+  pointer-events: none;
 }

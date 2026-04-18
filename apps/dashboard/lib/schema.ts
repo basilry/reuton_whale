@@ -5,6 +5,7 @@ export const TAB_SYSTEM_LOG = "system_log" as const;
 export const TAB_SUBSCRIBERS = "subscribers" as const;
 export const TAB_TG_WHALE_EVENTS = "tg_whale_events" as const;
 export const TAB_CURATED_WALLETS = "curated_wallets" as const;
+export const TAB_WATCHED_ADDRESSES = "watched_addresses" as const;
 export const TAB_WALLET_ALIASES = "wallet_aliases" as const;
 export const TAB_WATCHLIST_OVERRIDES = "watchlist_overrides" as const;
 export const TAB_NEWS_FEED = "news_feed" as const;
@@ -33,6 +34,9 @@ export const DAILY_BRIEF_HEADERS = [
   "total_volume_usd",
   "alert_count",
   "created_at",
+  "highlights",
+  "signal_themes",
+  "note",
 ] as const;
 
 export const SIGNALS_HEADERS = [
@@ -104,6 +108,18 @@ export const CURATED_WALLETS_HEADERS = [
   "updated_at",
 ] as const;
 
+export const WATCHED_ADDRESSES_HEADERS = [
+  "address",
+  "chain",
+  "category",
+  "label",
+  "source",
+  "confidence",
+  "enabled",
+  "added_at",
+  "notes",
+] as const;
+
 export const WALLET_ALIASES_HEADERS = [
   "canonical_id",
   "alias_id",
@@ -132,6 +148,10 @@ export const NEWS_FEED_HEADERS = [
   "tags",
   "fetched_at",
   "hash",
+  // last_seen_at = most recent RSS poll that observed this article (including dedup hits).
+  // Distinct from fetched_at (first insert) so the dashboard can tell
+  // "pipeline is polling" apart from "new article arrived".
+  "last_seen_at",
 ] as const;
 
 export interface TransactionRow {
@@ -158,6 +178,9 @@ export interface DailyBriefRow {
   total_volume_usd: string;
   alert_count: string;
   created_at: string;
+  highlights: string;
+  signal_themes: string;
+  note: string;
 }
 
 export interface SignalRow {
@@ -219,6 +242,18 @@ export interface CuratedWalletRow {
   updated_at: string;
 }
 
+export interface WatchedAddressRow {
+  address: string;
+  chain: string;
+  category: string;
+  label: string;
+  source: string;
+  confidence: string;
+  enabled: string;
+  added_at: string;
+  notes: string;
+}
+
 export interface WalletAliasRow {
   canonical_id: string;
   alias_id: string;
@@ -247,6 +282,7 @@ export interface NewsFeedRow {
   tags: string;
   fetched_at: string;
   hash: string;
+  last_seen_at: string;
 }
 
 export interface SubscriberRow {
@@ -267,6 +303,7 @@ export interface SheetRowMap {
   subscribers: SubscriberRow;
   tg_whale_events: TgWhaleEventRow;
   curated_wallets: CuratedWalletRow;
+  watched_addresses: WatchedAddressRow;
   wallet_aliases: WalletAliasRow;
   watchlist_overrides: WatchlistOverrideRow;
   news_feed: NewsFeedRow;
@@ -282,6 +319,7 @@ export const TAB_HEADERS = {
   subscribers: SUBSCRIBERS_HEADERS,
   tg_whale_events: TG_WHALE_EVENTS_HEADERS,
   curated_wallets: CURATED_WALLETS_HEADERS,
+  watched_addresses: WATCHED_ADDRESSES_HEADERS,
   wallet_aliases: WALLET_ALIASES_HEADERS,
   watchlist_overrides: WATCHLIST_OVERRIDES_HEADERS,
   news_feed: NEWS_FEED_HEADERS,
