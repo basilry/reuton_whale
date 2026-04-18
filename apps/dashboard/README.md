@@ -28,7 +28,7 @@ The dashboards are read-only. They do not collect blockchain data by themselves.
 |---|---|---|
 | Dashboard UI | Vercel / Next.js | Render `/` user-facing view and `/admin` operations view |
 | Data source | Google Sheets | MVP persistent store |
-| Pipeline | Render Cron Job or Worker | Run `python -m src.main` and write Sheets |
+| Pipeline | Render Cron Job | Run `python -m src.pipeline.run_all` and write Sheets |
 | Telegram bot | Render Worker | Handle user commands |
 | Telegram listener | Render Worker | Listen to public whale alert channels |
 
@@ -74,7 +74,7 @@ Current required values:
 | `GOOGLE_SHEET_ID` | Yes | server-only | Spreadsheet ID, not the full URL |
 | `GOOGLE_CREDENTIALS_JSON` | Yes | server-only | Full service account JSON as a single-line string |
 | `NEXT_PUBLIC_APP_NAME` | No | public | Display-only app name |
-| `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` | No* | public | Public Telegram bot handle without the leading `@`. Current WhaleScope demo bot: `whalescope_demo_bot` (<https://t.me/whalescope_demo_bot>). Used by the user home CTA and the internal `/api/qr` endpoint to build the Telegram link and QR image. Must stay in sync with the root `.env.example` `TELEGRAM_BOT_USERNAME`. *No* = not required for the app to boot, but the Telegram CTA will be disabled (no link, no QR) when unset. |
+| `NEXT_PUBLIC_TELEGRAM_CHANNEL_USERNAME` | No* | public | Public Telegram channel handle without the leading `@`. Current WhaleScope public channel: `whalescope_alertz` (<https://t.me/whalescope_alertz>). Used by the user home CTA and the internal `/api/qr` endpoint to build the public channel link and QR image. `NEXT_PUBLIC_TELEGRAM_BROADCAST_CHANNEL` is kept as a one-release fallback. *No* = not required for the app to boot, but the Telegram CTA will be disabled (no link, no QR) when unset. |
 | `DASHBOARD_PASSWORD` | Yes in production, no in local dev | server-only | Enables operator API auth when set. Production requests fail closed with `401 {"error":"missing-production-password"}` if it is missing. Use `Authorization: Bearer <password>` in production; `x-dashboard-password` stays for local/manual checks. The `/admin` page also exchanges this password for an httpOnly browser session cookie so protected APIs can be used without manually attaching headers. |
 
 Reserved values for planned run-trigger extensions:
@@ -144,7 +144,7 @@ All routes use the Node.js runtime and read Google Sheets on the server side.
 
 The curated wallet registry prefers Sheets-backed rows when the optional `curated_wallets`, `wallet_aliases`, and `watchlist_overrides` tabs exist. If those tabs are missing, the dashboard falls back to the in-repo seed and keeps the UI contract stable. Watchlist toggles are written as append-only override rows so the latest value wins without needing an in-place sheet update.
 
-The user-home news foundation follows the same pattern. `src/ingestion/news_rss.py` can append public RSS headlines into the optional `news_feed` tab, the public `/api/news` route reads those rows for the homepage, and `NewsWidget` is a compact server component sized to sit beneath the left sidebar. If `news_feed` is empty or unavailable, the widget degrades to brief/signal-derived context instead of throwing a hard empty state.
+The user-home news foundation follows the same pattern. `src/ingestion/news_rss.py` can append public RSS headlines into the optional `news_feed` tab, the public `/api/news` route reads those rows for the homepage, and `NewsWidget` now keeps data fetching on the server while a small client presenter handles the mobile `2개+펼치기` interaction in the right news rail. If `news_feed` is empty or unavailable, the widget degrades to brief/signal-derived context instead of throwing a hard empty state.
 
 ## Vercel Deployment
 
@@ -162,7 +162,7 @@ Register these environment variables in Vercel Project Settings:
 - `GOOGLE_SHEET_ID`
 - `GOOGLE_CREDENTIALS_JSON`
 - `NEXT_PUBLIC_APP_NAME`
-- `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` (set to `whalescope_demo_bot` to activate the Telegram CTA)
+- `NEXT_PUBLIC_TELEGRAM_CHANNEL_USERNAME` (set to `whalescope_alertz` to activate the Telegram CTA)
 - `DASHBOARD_PASSWORD` (required in production; if missing, operator API requests return 401)
 
 The `/admin` page uses the same `DASHBOARD_PASSWORD` value to mint a short-lived httpOnly cookie session. That keeps the operator browser authenticated across page loads and protected API calls without weakening the existing header-based API path.
@@ -192,7 +192,7 @@ The dashboard only reads Sheets. Run the backend first:
 ```bash
 python -m scripts.init_sheets
 python scripts/import_watched_addresses.py
-python -m src.main
+python -m src.pipeline.run_all
 ```
 
 Then refresh the dashboard.

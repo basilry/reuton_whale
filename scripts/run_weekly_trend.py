@@ -10,7 +10,6 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -26,7 +25,7 @@ from src.utils.logger import get_logger
 logger = get_logger("run_weekly_trend")
 
 
-async def run():
+async def _run_weekly_trend_async() -> dict[str, object]:
     config = load_config()
     sheets = SheetsClient(config.sheet_id, config.google_credentials)
     router = _build_router(config)
@@ -51,8 +50,21 @@ async def run():
         logger.info("Sent weekly trend: %s", result)
     except Exception as e:
         logger.error("Failed to send weekly trend: %s", e)
-        sys.exit(1)
+        raise
+
+    return {"commentary_length": len(commentary), "delivery": result}
+
+
+async def run():
+    return await _run_weekly_trend_async()
+
+
+def run_weekly_trend() -> dict[str, object]:
+    return asyncio.run(_run_weekly_trend_async())
 
 
 if __name__ == "__main__":
-    asyncio.run(run())
+    try:
+        run_weekly_trend()
+    except Exception:
+        sys.exit(1)

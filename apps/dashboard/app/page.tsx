@@ -358,12 +358,12 @@ export default async function InsightsPage() {
             </div>
           </section>
 
-          <div className={styles.tickerSlot}>
+          <section id="market-ticker" className={styles.tickerSlot}>
             <MarketTickerStrip
               eyebrow="Public Market Feed"
               title="실시간 시장 티커"
             />
-          </div>
+          </section>
 
           {/* ── Bento Grid ── */}
           <div className={styles.bentoGrid}>
@@ -524,22 +524,19 @@ export default async function InsightsPage() {
             <div className={styles.telegramCta} id="telegram">
               <div className={styles.telegramCtaContent}>
                 <h2 className={styles.telegramCtaTitle}>
-                  나만을 위한 고래 소식,<br />텔레그램 실시간 알림으로 받으세요.
+                  WhaleScope 공개 채널에서<br />실시간 브리핑을 받아보세요.
                 </h2>
                 <p className={styles.telegramCtaDesc}>
-                  관심 코인의 급격한 이동이나 AI가 선별한 핵심 브리핑을 놓치지 마세요.
+                  채널 QR 또는 링크로 바로 입장해, 핵심 브리핑과 공용 시그널 업데이트를 빠르게 확인할 수 있습니다.
                   현재 구독자 수는 <strong>{telegramSubscribers}</strong>명입니다.
                 </p>
               </div>
               <TelegramConnectModal
-                botUrl={telegramConfig.botUrl}
                 channelQrUrl={telegramConfig.channelQrUrl}
                 channelUrl={telegramConfig.channelUrl}
                 channelUsername={telegramConfig.channelUsername}
                 className={styles.telegramCtaBtn}
-                qrUrl={telegramConfig.qrUrl}
                 subscriberCount={telegramSubscribers}
-                username={telegramConfig.username}
               />
             </div>
 

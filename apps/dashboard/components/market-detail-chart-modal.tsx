@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import type { MarketTickerDefinition, MarketTickerItem } from "@/lib/market-ticker";
 
@@ -20,13 +21,22 @@ export function MarketDetailChartModal({
   isOpen,
   onClose,
 }: MarketDetailChartModalProps) {
+  const [isMounted, setIsMounted] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const descriptionId = useId();
 
   useEffect(() => {
-    if (!isOpen) {
+    setIsMounted(true);
+
+    return () => {
+      setIsMounted(false);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isMounted || !isOpen) {
       return undefined;
     }
 
@@ -54,13 +64,13 @@ export function MarketDetailChartModal({
       document.body.style.overflow = previousOverflow;
       previouslyFocusedRef.current?.focus();
     };
-  }, [isOpen, onClose]);
+  }, [isMounted, isOpen, onClose]);
 
-  if (!isOpen || !definition || !item) {
+  if (!isMounted || !isOpen || !definition || !item) {
     return null;
   }
 
-  return (
+  return createPortal(
     <div className={styles.backdrop} onClick={onClose}>
       <div
         aria-describedby={descriptionId}
@@ -97,6 +107,7 @@ export function MarketDetailChartModal({
           <MarketDetailChart definition={definition} item={item} />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

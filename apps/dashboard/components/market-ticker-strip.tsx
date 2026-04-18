@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import {
   appendMarketTickerChartPoint,
   DEFAULT_MARKET_TICKER_SYMBOLS,
@@ -223,9 +223,11 @@ export function MarketTickerStrip({
   eyebrow = "Market pulse",
   className,
 }: MarketTickerStripProps) {
+  const stripId = useId();
   const [items, setItems] = useState<MarketTickerItem[]>([]);
   const [miniCharts, setMiniCharts] = useState<Record<string, MarketTickerChartPoint[]>>({});
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [phase, setPhase] = useState<Phase>(symbols.length === 0 ? "ready" : "loading");
   const [notice, setNotice] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -713,6 +715,13 @@ export function MarketTickerStrip({
       DEFAULT_MARKET_TICKER_SYMBOLS.find((entry) => entry.id === selectedItem.id) ??
       null
     : null;
+  const cardCount = phase === "loading" ? symbols.length : items.length;
+  const shouldShowMobileToggle = cardCount > 2;
+  const hiddenCardCount = Math.max(cardCount - 2, 0);
+  const mobileToggleLabel = isExpanded ? "접기" : "펼치기";
+  const mobileToggleAriaLabel = isExpanded
+    ? "시장 티커 접기"
+    : `시장 티커 ${hiddenCardCount}개 더 펼치기`;
 
   if (symbols.length === 0) {
     return (
@@ -755,14 +764,39 @@ export function MarketTickerStrip({
         </p>
       ) : null}
 
+      {shouldShowMobileToggle ? (
+        <div className={styles.mobileToggleRow}>
+          <button
+            type="button"
+            className={styles.mobileToggleButton}
+            aria-expanded={isExpanded}
+            aria-controls={stripId}
+            aria-label={mobileToggleAriaLabel}
+            onClick={() => setIsExpanded((current) => !current)}
+          >
+            {mobileToggleLabel}
+          </button>
+        </div>
+      ) : null}
+
       {phase === "loading" ? (
-        <div className={styles.strip}>
+        <div
+          id={stripId}
+          className={styles.strip}
+          data-collapsible={shouldShowMobileToggle ? "true" : undefined}
+          data-expanded={isExpanded ? "true" : "false"}
+        >
           {symbols.map((item, index) => (
             <LoadingCard index={index} key={item.id} />
           ))}
         </div>
       ) : items.length > 0 ? (
-        <div className={styles.strip}>
+        <div
+          id={stripId}
+          className={styles.strip}
+          data-collapsible={shouldShowMobileToggle ? "true" : undefined}
+          data-expanded={isExpanded ? "true" : "false"}
+        >
           {items.map((item) => {
             const changeValue = item.usdChange24hPct ?? item.krwChange24hPct;
             const premiumTone = marketTickerTone(item.kimchiPremiumPct);

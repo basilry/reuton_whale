@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import styles from "./insights-sidebar.module.css";
 
 const SIDEBAR_LINKS = [
+  { label: "시장 티커", href: "#market-ticker", icon: "monitoring" },
   { label: "브리핑", href: "#brief", icon: "article" },
   { label: "시그널", href: "#signals", icon: "notifications" },
   { label: "감시 지갑", href: "#watchlist", icon: "visibility" },

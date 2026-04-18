@@ -181,13 +181,18 @@ class NewsRssIngestor:
         return rows
 
 
-def main() -> None:
+def run_news_rss_refresh() -> dict[str, int]:
     config = load_listener_config()
     client = SheetsClient(config.sheet_id, config.google_credentials)
     ingestor = NewsRssIngestor()
     rows = ingestor.fetch()
     inserted = client.append_news_feed(rows)
     logger.info("Stored %d news_feed rows", inserted)
+    return {"fetched": len(rows), "inserted": inserted}
+
+
+def main() -> None:
+    run_news_rss_refresh()
 
 
 if __name__ == "__main__":

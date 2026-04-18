@@ -1,8 +1,6 @@
 name: Whale News RSS
 
 on:
-  schedule:
-    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 concurrency:

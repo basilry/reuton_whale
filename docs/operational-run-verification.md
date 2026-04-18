@@ -1,6 +1,6 @@
 # WhaleScope 운영 실행 검증 가이드
 
-이 문서는 `python -m src.main`을 실제 운영 모드로 실행하기 전에 확인해야 할 준비 조건, 실행 순서, 합격 기준, 장애 대응 절차를 정의한다.
+이 문서는 `python -m src.pipeline.run_all`을 실제 운영 모드로 실행하기 전에 확인해야 할 준비 조건, 실행 순서, 합격 기준, 장애 대응 절차를 정의한다.
 
 대상 프로젝트는 뤼튼테크놀로지스 Product Engineer 과제 전형용 WhaleScope이며, 선택 도메인은 `C. AI 요약/큐레이션 서비스`다. 운영 실행은 온체인 API 호출, Google Sheets 쓰기, LLM API 호출, Telegram 발송까지 포함하므로 단순 테스트와 분리해서 검증해야 한다.
 
@@ -8,8 +8,8 @@
 
 - 기준 브랜치: `main`
 - 기준 커밋: 검증 시점의 `main` HEAD
-- 실행 명령: `python -m src.main`
-- 대시보드 실행: `streamlit run streamlit_app.py`
+- 실행 명령: `python -m src.pipeline.run_all`
+- 대시보드 실행: `npm run dashboard:dev`
 - 운영 저장소: Google Sheets
 - 운영 발송 채널: Telegram Bot
 - 검증된 자동 테스트: `pytest -q` 기준 `265 passed`
@@ -28,7 +28,7 @@
 | Signal | 생성된 시그널이 있으면 `signals` 탭에 저장된다. |
 | LLM 브리핑 | provider fallback을 포함해 한국어 브리핑이 생성된다. |
 | Telegram | 구독자가 있으면 브리핑 발송 결과가 기록된다. |
-| Dashboard | 실행 후 Streamlit에서 거래/시그널/브리핑을 읽을 수 있다. |
+| Dashboard | 실행 후 Next.js 대시보드에서 거래/시그널/브리핑을 읽을 수 있다. |
 | 로그 | `system_log`, `analysis_log`에 추적 가능한 실행 기록이 남는다. |
 
 ## 사전 조건
@@ -200,16 +200,14 @@ python -m src.main --dry-run
 운영 실행은 아래 명령으로 수행한다.
 
 ```bash
-python -m src.main
+python -m src.pipeline.run_all
 ```
 
-대시보드에서 실행할 수도 있다.
+대시보드는 별도 터미널에서 실행해 결과를 확인한다.
 
 ```bash
-streamlit run streamlit_app.py
+npm run dashboard:dev
 ```
-
-이후 sidebar의 `운영 액션`에서 `일일 파이프라인 실행` 버튼을 누른다.
 
 합격 기준:
 
@@ -250,27 +248,24 @@ streamlit run streamlit_app.py
 - 시그널이 생성된 경우 `signals`에 저장된다.
 - 브리핑이 생성된 경우 `daily_brief`에 저장된다.
 
-### Step 6. Streamlit dashboard 검증
+### Step 6. Next.js dashboard 검증
 
 ```bash
-streamlit run streamlit_app.py
+npm run dashboard:dev
 ```
 
 확인할 화면:
 
-- `오늘의 브리핑`
-- `거래 히스토리`
-- `시그널`
-- `통계`
-- sidebar `운영 액션`
+- `/` 사용자 홈의 브리핑, 시장 티커, 뉴스, Telegram CTA
+- `/admin` 운영 대시보드의 거래/시그널/로그/상태 카드
 
 합격 기준:
 
 - Google Sheets 연결 실패가 앱 전체 traceback으로 노출되지 않는다.
-- 거래가 있으면 `거래 히스토리`에 표시된다.
-- 시그널이 있으면 `시그널` 탭에 `created_at`, `rule`, `severity`, `score`, `source`, `summary`가 표시된다.
+- 거래가 있으면 `/admin` 최근 거래 영역에 표시된다.
+- 시그널이 있으면 `/admin` 또는 사용자 홈 시그널 카드에 `rule`, `severity`, `score`, `source`, `summary`가 표시된다.
 - 데이터가 없으면 empty state 문구가 표시된다.
-- 파이프라인 실행 버튼은 stdout/stderr tail을 표시한다.
+- 사용자 홈의 Telegram CTA가 공개 채널 링크/QR을 정상 표시한다.
 
 ### Step 7. Telegram bot 명령 검증
 
@@ -299,7 +294,7 @@ Telegram 앱에서 확인:
 
 주의:
 
-- `python -m src.main`은 일일 브리핑 발송 담당이다.
+- `python -m src.pipeline.run_all`은 Render production cadence를 실행하는 단일 오케스트레이터다.
 - `python scripts/run_bot.py`는 사용자 명령 처리 담당이다.
 - 둘은 같은 Telegram bot token을 쓰지만 역할이 다르다.
 
@@ -339,7 +334,7 @@ TG_CHANNEL=@whale_alert_io python scripts/run_listener.py
 - `pytest -q` 통과
 - `python scripts/test_connection.py`에서 필수 외부 연결 통과
 - `python -m src.main --dry-run` 통과
-- `python -m src.main` 실행 후 `system_log` 기록 생성
+- `python -m src.pipeline.run_all` 실행 후 `system_log` 기록 생성
 - 이벤트가 수집된 경우 `transactions`와 `address_activity` 저장 확인
 - 대시보드가 traceback 없이 렌더링
 - Telegram bot long polling 상태에서 일반 텍스트와 `/help` 응답 확인
