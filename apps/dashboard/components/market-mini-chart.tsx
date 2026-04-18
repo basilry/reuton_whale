@@ -10,6 +10,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 
+import { resolveTokenColor, toRgba } from "@/lib/chart-colors";
 import type { MarketTickerChartPoint } from "@/lib/market-ticker";
 
 import styles from "./market-mini-chart.module.css";
@@ -21,11 +22,6 @@ type MarketMiniChartProps = {
   points: MarketTickerChartPoint[];
   tone: MarketMiniChartTone;
 };
-
-function cssVar(node: HTMLElement, name: string, fallback: string): string {
-  const value = getComputedStyle(node).getPropertyValue(name).trim();
-  return value || fallback;
-}
 
 function toLineData(points: MarketTickerChartPoint[]) {
   return points.map((point) => ({
@@ -49,9 +45,10 @@ export function MarketMiniChart({
       return undefined;
     }
 
-    const positive = cssVar(root, "--good", "#149a52");
-    const negative = cssVar(root, "--bad", "#d14343");
-    const neutral = cssVar(root, "--accent", "#2676ff");
+    const positive = resolveTokenColor(root, "--good", "rgb(20, 154, 82)");
+    const negative = resolveTokenColor(root, "--bad", "rgb(209, 67, 67)");
+    const neutral = resolveTokenColor(root, "--accent", "rgb(38, 118, 255)");
+    const textColor = resolveTokenColor(root, "--muted", "rgb(107, 119, 140)");
     const lineColor =
       tone === "positive" ? positive : tone === "negative" ? negative : neutral;
 
@@ -60,7 +57,7 @@ export function MarketMiniChart({
       height: 84,
       layout: {
         background: { color: "transparent", type: ColorType.Solid },
-        textColor: cssVar(root, "--muted", "#6b778c"),
+        textColor,
         attributionLogo: false,
       },
       grid: {
@@ -87,8 +84,8 @@ export function MarketMiniChart({
 
     const series = chart.addSeries(AreaSeries, {
       lineColor,
-      topColor: `${lineColor}33`,
-      bottomColor: `${lineColor}03`,
+      topColor: toRgba(lineColor, 0.2, "rgba(38, 118, 255, 0.2)"),
+      bottomColor: toRgba(lineColor, 0.02, "rgba(38, 118, 255, 0.02)"),
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: false,

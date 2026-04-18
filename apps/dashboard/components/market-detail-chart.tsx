@@ -10,6 +10,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 
+import { resolveTokenColor, toRgba } from "@/lib/chart-colors";
 import {
   createLocalMarketTickerDetailSeries,
   fetchMarketTickerDetailSeries,
@@ -33,11 +34,6 @@ type MarketDetailChartProps = {
 };
 
 const RANGES: MarketTickerChartRange[] = ["1m", "5m", "1h", "1d"];
-
-function cssVar(node: HTMLElement, name: string, fallback: string): string {
-  const value = getComputedStyle(node).getPropertyValue(name).trim();
-  return value || fallback;
-}
 
 function toLineData(
   points: MarketTickerDetailSeries["usdPoints"],
@@ -110,8 +106,8 @@ export function MarketDetailChart({
       return undefined;
     }
 
-    const accent = cssVar(root, "--accent", "#2676ff");
-    const textColor = cssVar(root, "--muted", "#6b778c");
+    const accent = resolveTokenColor(root, "--accent", "rgb(38, 118, 255)");
+    const textColor = resolveTokenColor(root, "--muted", "rgb(107, 119, 140)");
 
     const chart = createChart(root, {
       autoSize: true,
@@ -122,8 +118,8 @@ export function MarketDetailChart({
         attributionLogo: false,
       },
       grid: {
-        vertLines: { color: `${accent}11` },
-        horzLines: { color: `${accent}11` },
+        vertLines: { color: toRgba(accent, 0.07, "rgba(38, 118, 255, 0.07)") },
+        horzLines: { color: toRgba(accent, 0.07, "rgba(38, 118, 255, 0.07)") },
       },
       rightPriceScale: {
         borderVisible: false,
@@ -139,8 +135,8 @@ export function MarketDetailChart({
 
     const chartSeries = chart.addSeries(AreaSeries, {
       lineColor: accent,
-      topColor: `${accent}33`,
-      bottomColor: `${accent}04`,
+      topColor: toRgba(accent, 0.2, "rgba(38, 118, 255, 0.2)"),
+      bottomColor: toRgba(accent, 0.03, "rgba(38, 118, 255, 0.03)"),
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: false,
