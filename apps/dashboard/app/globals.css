@@ -15,6 +15,8 @@
 
 html {
   background: var(--paper);
+  scroll-behavior: smooth;
+  scroll-padding-top: var(--inset-navbar);
 }
 
 body {
@@ -66,4 +68,10 @@ a {
 /* Anchor scroll offset so sticky navbar doesn't overlap section headers */
 section[id] {
   scroll-margin-top: var(--inset-navbar);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }

@@ -4,12 +4,18 @@ import { cleanGeneratedBrief } from "./format";
 import { toArray, toNumber, toText } from "./humanize";
 import {
   FALLBACK_SOURCE,
+  type CuratedWalletCategory,
+  type CuratedWalletEntry,
+  type CuratedWalletMatch,
+  type CuratedWatchlistItem,
   type DashboardData,
   type DashboardMetrics,
   type DisplaySignalRow,
   type DisplaySystemLogRow,
   type DisplayTransactionRow,
   type NormalizedDashboard,
+  type WhaleStory,
+  type WhaleStoryTone,
 } from "./types";
 
 export function normalizeTransactions(value: unknown): DisplayTransactionRow[] {
@@ -233,4 +239,213 @@ export function normalizeDashboardData(input: DashboardData | null): NormalizedD
     systemLogs: normalizeSystemLogs(input?.systemLogs ?? [], latestRun),
     sourceState,
   };
+}
+
+function normalizeWalletCategory(value: unknown): CuratedWalletCategory {
+  const category = toText(value).trim().toLowerCase();
+  switch (category) {
+    case "exchange":
+    case "market_maker":
+    case "fund":
+    case "custody":
+    case "bridge":
+    case "protocol":
+    case "foundation":
+      return category;
+    default:
+      return "unknown";
+  }
+}
+
+function normalizeStoryTone(value: unknown): WhaleStoryTone {
+  const tone = toText(value).trim().toLowerCase();
+  switch (tone) {
+    case "critical":
+    case "watch":
+    case "positive":
+      return tone;
+    default:
+      return "neutral";
+  }
+}
+
+function normalizeBoolean(value: unknown): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  const text = toText(value).trim().toLowerCase();
+  if (!text) {
+    return false;
+  }
+  if (text === "false" || text === "0" || text === "off" || text === "no") {
+    return false;
+  }
+  return text === "true" || text === "1" || text === "on" || text === "yes";
+}
+
+function normalizeWalletGrade(
+  value: unknown,
+): CuratedWalletEntry["grade"] {
+  const grade = toText(value, "D").trim().toUpperCase();
+  switch (grade) {
+    case "A":
+    case "B":
+    case "C":
+      return grade;
+    default:
+      return "D";
+  }
+}
+
+export function normalizeCuratedWallets(value: unknown): CuratedWalletEntry[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const rows: CuratedWalletEntry[] = [];
+
+  value.forEach((item, index) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
+
+    const row = item as Record<string, unknown>;
+    const aliases = toArray(row.aliases);
+    const focusSymbols = toArray(row.focusSymbols || row.focus_symbols);
+
+    rows.push({
+      id: toText(row.id, `${index}`) || `${index}`,
+      address: toText(row.address),
+      chain: toText(row.chain, "unknown"),
+      label: toText(row.label, "Unnamed wallet"),
+      category: normalizeWalletCategory(row.category),
+      grade: normalizeWalletGrade(row.grade),
+      priority: toNumber(row.priority, 99),
+      enabled: normalizeBoolean(row.enabled),
+      aliases: aliases.length ? aliases : undefined,
+      note: toText(row.note) || undefined,
+      focusSymbols: focusSymbols.length ? focusSymbols : undefined,
+    });
+  });
+
+  return rows;
+}
+
+export function normalizeWatchlistItems(value: unknown): CuratedWatchlistItem[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const rows: CuratedWatchlistItem[] = [];
+
+  value.forEach((item, index) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
+
+    const row = item as Record<string, unknown>;
+    rows.push({
+      id: toText(row.id, `${index}`) || `${index}`,
+      symbol: toText(row.symbol, "UNKNOWN"),
+      title: toText(row.title, "Unnamed item"),
+      note: toText(row.note, "설명 없음"),
+      badge: toText(row.badge),
+      address: toText(row.address),
+      chain: toText(row.chain, "unknown"),
+      enabled: normalizeBoolean(row.enabled),
+      category: normalizeWalletCategory(row.category),
+      grade: normalizeWalletGrade(row.grade),
+      priority: toNumber(row.priority, 99),
+      tone: normalizeStoryTone(row.tone),
+      lastSeenAt: toText(row.lastSeenAt || row.last_seen_at) || undefined,
+      relatedSignalCount: toNumber(row.relatedSignalCount || row.related_signal_count),
+    });
+  });
+
+  return rows;
+}
+
+function normalizeCuratedWalletMatch(value: unknown): CuratedWalletMatch | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const row = value as Record<string, unknown>;
+  return {
+    walletId: toText(row.walletId || row.wallet_id),
+    label: toText(row.label),
+    category: normalizeWalletCategory(row.category),
+    grade: normalizeWalletGrade(row.grade),
+    priority: toNumber(row.priority, 99),
+    chain: toText(row.chain, "unknown"),
+    address: toText(row.address),
+    matchReason:
+      toText(row.matchReason || row.match_reason) === "address"
+        ? "address"
+        : toText(row.matchReason || row.match_reason) === "owner_label"
+          ? "owner_label"
+          : "alias",
+  };
+}
+
+export function normalizeWhaleStories(value: unknown): WhaleStory[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const rows: WhaleStory[] = [];
+
+  value.forEach((item, index) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
+
+    const row = item as Record<string, unknown>;
+    const participants: WhaleStory["participants"] = [];
+
+    if (Array.isArray(row.participants)) {
+      row.participants.forEach((participant) => {
+        if (!participant || typeof participant !== "object") {
+          return;
+        }
+        const participantRow = participant as Record<string, unknown>;
+        participants.push({
+          role: toText(participantRow.role) === "to" ? "to" : "from",
+          label: toText(participantRow.label, "미확인 참여자"),
+          address: toText(participantRow.address) || undefined,
+          curatedWallet: normalizeCuratedWalletMatch(
+            participantRow.curatedWallet || participantRow.curated_wallet,
+          ),
+        });
+      });
+    }
+
+    const kindValue = toText(row.kind);
+    const kind: WhaleStory["kind"] =
+      kindValue === "transaction" ||
+      kindValue === "signal" ||
+      kindValue === "brief"
+        ? kindValue
+        : "empty";
+
+    rows.push({
+      id: toText(row.id, `${index}`) || `${index}`,
+      kind,
+      title: toText(row.title, "Untitled story"),
+      body: toText(row.body, "설명 없음"),
+      meta: toText(row.meta),
+      tone: normalizeStoryTone(row.tone),
+      hash: toText(row.hash) || undefined,
+      symbol: toText(row.symbol) || undefined,
+      chain: toText(row.chain) || undefined,
+      occurredAt: toText(row.occurredAt || row.occurred_at) || undefined,
+      priority: toNumber(row.priority, 0),
+      supportingSignalIds: toArray(
+        row.supportingSignalIds || row.supporting_signal_ids,
+      ),
+      participants,
+    });
+  });
+
+  return rows;
 }

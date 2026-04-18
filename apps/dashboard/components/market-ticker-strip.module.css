@@ -1,0 +1,314 @@
+/* =============================================================================
+   market-ticker-strip.module.css — User home ticker strip MVP
+   -------------------------------------------------------------------------
+   Self-contained horizontal market strip with loading/fallback states.
+   Tokens only — no raw color literals.
+   ========================================================================== */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--line);
+  background: var(--panel-glass);
+  backdrop-filter: blur(20px);
+  box-shadow: var(--elev-2);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.eyebrow {
+  margin: 0 0 var(--space-2xs);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+  letter-spacing: var(--tracking-tight);
+}
+
+.headerMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.sourcePill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-2xs) var(--space-sm);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--line);
+  background: var(--surface-container-low);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+}
+
+.sourcePill[data-source="live"] {
+  background: var(--good-softer);
+  border-color: var(--good-soft);
+  color: var(--good);
+}
+
+.sourcePill[data-source="rest"] {
+  background: var(--accent-softer);
+  border-color: var(--accent-soft);
+  color: var(--accent);
+}
+
+.sourcePill[data-source="local"] {
+  background: var(--warn-softer);
+  border-color: var(--warn-soft);
+  color: var(--warn);
+}
+
+.sourceDot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: currentColor;
+}
+
+.updatedAt {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.notice {
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-low);
+  border: 1px solid var(--line);
+  font-size: var(--text-sm);
+  color: var(--on-surface-variant);
+  line-height: var(--leading-relaxed);
+}
+
+.notice[data-tone="warn"] {
+  background: var(--warn-softer);
+  border-color: var(--warn-soft);
+  color: var(--warn);
+}
+
+.notice[data-tone="bad"] {
+  background: var(--bad-softer);
+  border-color: var(--bad-soft);
+  color: var(--bad);
+}
+
+.strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(172px, 1fr));
+  gap: var(--space-sm);
+  overflow-x: auto;
+  padding-bottom: var(--space-2xs);
+  scrollbar-width: thin;
+}
+
+.card {
+  min-width: 172px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background: linear-gradient(
+    180deg,
+    var(--surface-container-low) 0%,
+    var(--surface) 100%
+  );
+  box-shadow: var(--elev-1);
+}
+
+.card[data-source="live"] {
+  border-color: var(--good-soft);
+}
+
+.card[data-source="local"] {
+  border-style: dashed;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-xs);
+}
+
+.asset {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+  letter-spacing: var(--tracking-tight);
+}
+
+.label {
+  margin: var(--space-3xs) 0 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.change {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 var(--space-sm);
+  border-radius: var(--radius-full);
+  background: var(--surface-container-high);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+}
+
+.change[data-tone="positive"] {
+  background: var(--good-softer);
+  color: var(--good);
+}
+
+.change[data-tone="negative"] {
+  background: var(--bad-softer);
+  color: var(--bad);
+}
+
+.price {
+  font-size: var(--text-xl);
+  line-height: var(--leading-tight);
+  font-weight: var(--weight-extrabold);
+  color: var(--on-surface);
+  letter-spacing: var(--tracking-tight);
+}
+
+.cardFooter {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-xs);
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+.loadingBlock,
+.loadingPrice,
+.loadingLine {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--surface-container-high);
+}
+
+.loadingBlock::after,
+.loadingPrice::after,
+.loadingLine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--panel-strong) 50%,
+    transparent 100%
+  );
+  animation: shimmer 1.4s infinite;
+}
+
+.loadingBlock {
+  width: 72px;
+  height: 34px;
+}
+
+.loadingPrice {
+  width: 100%;
+  height: 30px;
+}
+
+.loadingLine {
+  width: 100%;
+  height: 16px;
+}
+
+.emptyState {
+  padding: var(--space-lg);
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--line-strong);
+  background: var(--surface);
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.emptyTitle {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+}
+
+.emptyBody {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--on-surface-variant);
+  line-height: var(--leading-relaxed);
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (max-width: 960px) {
+  .strip {
+    grid-template-columns: repeat(6, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .panel {
+    padding: var(--space-md);
+  }
+
+  .title {
+    font-size: var(--text-md);
+  }
+
+  .strip {
+    grid-template-columns: repeat(6, minmax(148px, 1fr));
+  }
+
+  .card {
+    min-width: 148px;
+    padding: var(--space-sm);
+  }
+
+  .price {
+    font-size: var(--text-lg);
+  }
+}

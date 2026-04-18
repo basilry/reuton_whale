@@ -151,9 +151,12 @@ class SheetsClient:
             ws = self._worksheet(TAB_DAILY_BRIEF)
             rows = []
             for brief in briefs:
-                brief["date"] = date
-                brief.setdefault("created_at", now_iso())
-                rows.append(dict_to_row(brief, DAILY_BRIEF_HEADERS))
+                normalized = dict(brief)
+                if "signal_themes" not in normalized and "signalThemes" in normalized:
+                    normalized["signal_themes"] = normalized.pop("signalThemes")
+                normalized["date"] = date
+                normalized.setdefault("created_at", now_iso())
+                rows.append(dict_to_row(normalized, DAILY_BRIEF_HEADERS))
             if rows:
                 ws.append_rows(rows, value_input_option="RAW")
             logger.info("Saved %d daily brief entries for %s", len(rows), date)
@@ -701,7 +704,9 @@ class SheetsClient:
                             logger.debug("Duplicate signal skipped: %s", target)
                             return
                 signal.setdefault("created_at", now_iso())
-                if "extra_json" not in signal and "extra" in signal:
+                if "extra_json" in signal and not isinstance(signal["extra_json"], str):
+                    signal["extra_json"] = json.dumps(signal["extra_json"], ensure_ascii=False)
+                elif "extra_json" not in signal and "extra" in signal:
                     signal["extra_json"] = json.dumps(signal.pop("extra"), ensure_ascii=False)
                 ws.append_row(dict_to_row(signal, SIGNALS_HEADERS), value_input_option="RAW")
                 logger.info("Appended signal: %s", target)

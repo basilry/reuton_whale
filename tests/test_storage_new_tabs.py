@@ -9,6 +9,7 @@ import pytest
 from src.storage.schema import (
     ADDRESS_ACTIVITY_HEADERS,
     ALL_TABS,
+    DAILY_BRIEF_HEADERS,
     SIGNALS_HEADERS,
     TAB_USER_INTERESTS,
     TAB_WATCHED_ADDRESSES,
@@ -324,6 +325,49 @@ class TestSignals:
         row_written = mock_ws.append_row.call_args[0][0]
         extra_json_col = SIGNALS_HEADERS.index("extra_json")
         assert json.loads(row_written[extra_json_col]) == {"k": "v"}
+
+    def test_append_signal_serializes_extra_json_dict(self):
+        client, mock_ss = _make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [SIGNALS_HEADERS]
+
+        client.append_signal({"signal_id": "sig-3", "extra_json": {"asset": "BTC", "exchange": "Binance"}})
+        row_written = mock_ws.append_row.call_args[0][0]
+        extra_json_col = SIGNALS_HEADERS.index("extra_json")
+        assert json.loads(row_written[extra_json_col]) == {"asset": "BTC", "exchange": "Binance"}
+
+
+class TestDailyBrief:
+    def test_save_daily_brief_serializes_richer_fields(self):
+        client, mock_ss = _make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+
+        client.save_daily_brief(
+            "2026-04-18",
+            [
+                {
+                    "summary": "brief",
+                    "top_transactions": [{"symbol": "BTC"}],
+                    "total_volume_usd": 12345,
+                    "alert_count": 2,
+                    "highlights": ["BTC · $12.3M · 거래소 순유입 확대"],
+                    "signalThemes": ["거래소 순유입 확대", "온체인·텔레그램 교차확인"],
+                    "note": "온체인 3건, 텔레그램 1건 기반",
+                }
+            ],
+        )
+
+        row_written = mock_ws.append_rows.call_args[0][0][0]
+        assert row_written[DAILY_BRIEF_HEADERS.index("date")] == "2026-04-18"
+        assert json.loads(row_written[DAILY_BRIEF_HEADERS.index("top_transactions")]) == [{"symbol": "BTC"}]
+        assert json.loads(row_written[DAILY_BRIEF_HEADERS.index("highlights")]) == ["BTC · $12.3M · 거래소 순유입 확대"]
+        assert json.loads(row_written[DAILY_BRIEF_HEADERS.index("signal_themes")]) == [
+            "거래소 순유입 확대",
+            "온체인·텔레그램 교차확인",
+        ]
+        assert row_written[DAILY_BRIEF_HEADERS.index("note")] == "온체인 3건, 텔레그램 1건 기반"
 
 
 # ---------------------------------------------------------------------------

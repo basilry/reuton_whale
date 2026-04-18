@@ -36,6 +36,9 @@ DAILY_BRIEF_HEADERS = [
     "total_volume_usd",
     "alert_count",
     "created_at",
+    "highlights",
+    "signal_themes",
+    "note",
 ]
 
 SUBSCRIBERS_HEADERS = [

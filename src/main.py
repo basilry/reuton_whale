@@ -61,6 +61,16 @@ _EVM_CHAINS = ("ETH", "ARB", "BASE", "BSC", "POLYGON")
 
 _CONFIG_DIR = Path(__file__).parent.parent / "config"
 _FIXTURES_PATH = Path(__file__).parent.parent / "tests" / "fixtures" / "sample_events.json"
+_SIGNAL_THEME_LABELS = {
+    "cex_outflow_spike": "거래소 순유출 확대",
+    "cex_inflow_spike": "거래소 순유입 확대",
+    "cold_to_hot_transfer": "콜드월렛 자금 이동",
+    "smart_money_accumulation": "스마트머니 축적",
+    "token_whale_concentration_shift": "고래 집중도 변화",
+    "tg_cex_inflow_burst": "텔레그램 거래소 유입 경보",
+    "corroborated_move": "온체인·텔레그램 교차확인",
+    "weekly_net_accumulation": "주간 순축적",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +162,116 @@ def _dict_to_event(d: dict) -> Event:
         block_time=_parse_dt_strict(d.get("block_time", "2024-01-01T00:00:00Z")),
         collected_at=_parse_dt_strict(d.get("collected_at", "2024-01-01T00:00:00Z")),
     )
+
+
+def _format_compact_usd(value: float | int | None) -> str:
+    amount = safe_float(value)
+    if amount >= 1_000_000_000:
+        return f"${amount / 1_000_000_000:.1f}B"
+    if amount >= 1_000_000:
+        return f"${amount / 1_000_000:.1f}M"
+    if amount >= 1_000:
+        return f"${amount / 1_000:.1f}K"
+    return f"${amount:,.0f}"
+
+
+def _signal_theme_label(rule: str) -> str:
+    return _SIGNAL_THEME_LABELS.get(rule, rule.replace("_", " "))
+
+
+def _build_brief_highlights(top_items: list[dict]) -> list[str]:
+    highlights: list[str] = []
+    seen: set[str] = set()
+    for item in top_items:
+        symbol = str(item.get("symbol") or "UNKNOWN")
+        theme = _signal_theme_label(str(item.get("rule") or item.get("type") or "signal"))
+        source = str(item.get("source") or "").strip()
+        amount_usd = item.get("amount_usd")
+
+        parts = [symbol]
+        if amount_usd not in (None, ""):
+            parts.append(_format_compact_usd(amount_usd))
+        parts.append(theme)
+        if source == "both":
+            parts.append("온체인·텔레그램 동시 포착")
+        elif source == "tg":
+            parts.append("텔레그램 포착")
+        elif source == "chain":
+            parts.append("온체인 포착")
+
+        highlight = " · ".join(part for part in parts if part)
+        if not highlight or highlight in seen:
+            continue
+        seen.add(highlight)
+        highlights.append(highlight)
+        if len(highlights) >= 4:
+            break
+    return highlights
+
+
+def _build_signal_themes(signals: list[Signal], top_items: list[dict]) -> list[str]:
+    theme_scores: dict[str, float] = {}
+    theme_counts: dict[str, int] = {}
+
+    for signal in signals:
+        label = _signal_theme_label(signal.rule)
+        theme_scores[label] = max(theme_scores.get(label, 0.0), float(signal.score))
+        theme_counts[label] = theme_counts.get(label, 0) + 1
+
+    if not theme_scores:
+        for item in top_items:
+            label = _signal_theme_label(str(item.get("rule") or item.get("type") or "signal"))
+            theme_scores[label] = max(
+                theme_scores.get(label, 0.0),
+                safe_float(item.get("importance_score")),
+            )
+            theme_counts[label] = theme_counts.get(label, 0) + 1
+
+    ordered = sorted(
+        theme_scores.items(),
+        key=lambda entry: (-theme_counts.get(entry[0], 0), -entry[1], entry[0]),
+    )
+    themes: list[str] = []
+    for label, _score in ordered[:4]:
+        count = theme_counts.get(label, 0)
+        themes.append(f"{label} {count}건" if count > 1 else label)
+    return themes
+
+
+def _build_brief_note(raw_events: list[Event], signals: list[Signal], top_items: list[dict]) -> str:
+    chain_count = sum(1 for event in raw_events if event.source == "chain")
+    tg_count = sum(1 for event in raw_events if event.source == "tg")
+    return (
+        f"온체인 {chain_count}건, 텔레그램 {tg_count}건을 기반으로 "
+        f"시그널 {len(signals)}건과 상위 {len(top_items)}개 항목을 요약했습니다. "
+        "USD 수치는 수집 시점 기준 추정치가 포함될 수 있습니다."
+    )
+
+
+def _serialize_top_transactions(top_items: list[dict]) -> list[dict]:
+    serialized: list[dict] = []
+    for tx in top_items:
+        serialized.append(
+            {
+                "hash": tx.get("hash", ""),
+                "symbol": tx.get("symbol", ""),
+                "chain": tx.get("chain", tx.get("blockchain", "")),
+                "amount_usd": tx.get("amount_usd"),
+                "amount_usd_known": tx.get("amount_usd_known", True),
+                "importance_score": tx.get("importance_score", 0),
+                "interpretation": tx.get("interpretation", ""),
+                "type": tx.get("type", ""),
+                "signal_id": tx.get("signal_id", ""),
+                "rule": tx.get("rule", tx.get("type", "")),
+                "severity": tx.get("severity", ""),
+                "source": tx.get("source", ""),
+                "confidence": tx.get("confidence", ""),
+                "evidence_count": tx.get("evidence_count", 0),
+                "window_start": tx.get("window_start", ""),
+                "window_end": tx.get("window_end", ""),
+            }
+        )
+    return serialized
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +515,7 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
         try:
             stored_signals = 0
             for signal in signals:
-                sheets.append_signal(signal_to_sheet_dict(signal))
+                sheets.append_signal(signal_to_sheet_dict(signal, raw_events))
                 stored_signals += 1
             logger.info("[%s] Stored %d signals", run_id, stored_signals)
         except Exception as e:
@@ -439,33 +559,18 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
         if brief_text:
             try:
                 total_volume = sum((tx.get("amount_usd") or 0) for tx in top5)
+                serialized_top = _serialize_top_transactions(top5)
+                highlights = _build_brief_highlights(top5)
+                signal_themes = _build_signal_themes(signals, top5)
+                note = _build_brief_note(raw_events, signals, top5)
                 sheets.save_daily_brief(today, [{
                     "summary": brief_text,
-                    "top_transactions": json.dumps(
-                        [
-                            {
-                                "hash": tx.get("hash", ""),
-                                "symbol": tx.get("symbol", ""),
-                                "amount_usd": tx.get("amount_usd"),
-                                "amount_usd_known": tx.get("amount_usd_known", True),
-                                "importance_score": tx.get("importance_score", 0),
-                                "interpretation": tx.get("interpretation", ""),
-                                "type": tx.get("type", ""),
-                                "signal_id": tx.get("signal_id", ""),
-                                "rule": tx.get("rule", tx.get("type", "")),
-                                "severity": tx.get("severity", ""),
-                                "source": tx.get("source", ""),
-                                "confidence": tx.get("confidence", ""),
-                                "evidence_count": tx.get("evidence_count", 0),
-                                "window_start": tx.get("window_start", ""),
-                                "window_end": tx.get("window_end", ""),
-                            }
-                            for tx in top5
-                        ],
-                        ensure_ascii=False,
-                    ),
+                    "top_transactions": json.dumps(serialized_top, ensure_ascii=False),
                     "total_volume_usd": total_volume,
                     "alert_count": len(top5),
+                    "highlights": highlights,
+                    "signal_themes": signal_themes,
+                    "note": note,
                 }])
                 logger.info("[%s] Saved daily brief for %s", run_id, today)
             except Exception as e:

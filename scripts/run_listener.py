@@ -10,8 +10,9 @@ Environment variables required (non-dry-run):
     TELETHON_API_ID, TELETHON_API_HASH, TELETHON_SESSION
     TELETHON_PHONE for first local login, or TELETHON_SESSION_STRING for workers
     TG_CHANNEL
-    One LLM provider key: ANTHROPIC_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY
     GOOGLE_SHEET_ID, GOOGLE_CREDENTIALS_JSON (storage)
+Optional:
+    ANTHROPIC_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY for LLM fallback parsing
 """
 from __future__ import annotations
 
@@ -23,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.config import load_config
+from src.config import has_llm_provider, load_listener_config
 from src.ingestion.telethon_listener import TelethonListener, parse_tg_message
 from src.main import _build_router
 from src.storage.sheets_client import SheetsClient
@@ -61,7 +62,7 @@ async def _dry_run():
 
 
 async def _run():
-    config = load_config()
+    config = load_listener_config()
 
     if not config.telethon_api_id or not config.telethon_api_hash:
         logger.error("TELETHON_API_ID / TELETHON_API_HASH not set")
@@ -80,7 +81,9 @@ async def _run():
         sys.exit(1)
 
     sheets = SheetsClient(config.sheet_id, config.google_credentials)
-    router = _build_router(config)  # LLM fallback for NL-intent parsing
+    router = _build_router(config) if has_llm_provider(config) else None
+    if router is None:
+        logger.info("No LLM provider configured; listener will use regex parsing only")
 
     listener = TelethonListener(
         api_id=config.telethon_api_id,

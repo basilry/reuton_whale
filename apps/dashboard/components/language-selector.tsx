@@ -51,6 +51,9 @@ export function LanguageSelector({ currentLang = "ko" }: LanguageSelectorProps) 
         language
       </span>
       <select
+        id="dashboard-language-selector"
+        name="dashboard_lang"
+        aria-label="대시보드 언어"
         className={styles.select}
         value={lang}
         onChange={handleChange}

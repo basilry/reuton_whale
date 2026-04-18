@@ -86,6 +86,7 @@ def test_signal_to_top_item_prefers_evidence_events():
     assert item["amount_usd"] == 750_000.0
     assert item["amount_usd_known"] is True
     assert item["symbol"] == "USDT"
+    assert item["chain"] == "ETH"
 
 
 def test_signal_to_top_item_zero_sum_falls_back_to_extra_usd():
@@ -132,3 +133,41 @@ def test_signal_to_sheet_dict_preserves_core_fields():
     assert payload["extra"] == {"note": "hi"}
     assert payload["window_start"] == signal.window_start.isoformat()
     assert payload["window_end"] == signal.window_end.isoformat()
+
+
+def test_signal_to_sheet_dict_enriches_exchange_metadata_from_events():
+    event = Event(
+        source="tg",
+        chain="ETH",
+        tx_hash=None,
+        watched_address=None,
+        from_addr="wallet",
+        to_addr="Binance",
+        direction="in",
+        token="BTC",
+        amount_token=10.0,
+        amount_usd=850_000.0,
+        counterparty_category="cex",
+        block_time=BASE_TIME,
+        collected_at=BASE_TIME,
+    )
+    signal = Signal(
+        signal_id="sig-meta",
+        rule="tg_cex_inflow_burst",
+        severity="high",
+        score=8.5,
+        confidence="high",
+        source="tg",
+        evidence_tx_hashes=[],
+        window_start=BASE_TIME - timedelta(minutes=1),
+        window_end=BASE_TIME + timedelta(minutes=1),
+        summary="meta",
+    )
+
+    payload = signal_to_sheet_dict(signal, [event])
+
+    assert payload["extra"]["asset"] == "BTC"
+    assert payload["extra"]["exchange"] == "Binance"
+    assert payload["extra"]["direction"] == "in"
+    assert payload["extra"]["quote_basis"] == "usd_notional"
+    assert payload["extra"]["chain"] == "ETH"

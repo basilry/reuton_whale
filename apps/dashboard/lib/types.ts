@@ -34,6 +34,9 @@ export type DashboardData = {
   latestBrief?: DashboardBrief | null;
   recentTransactions?: unknown[] | null;
   recentSignals?: unknown[] | null;
+  curatedWallets?: CuratedWalletEntry[] | null;
+  watchlist?: CuratedWatchlistItem[] | null;
+  whaleStories?: WhaleStory[] | null;
   latestRun?: {
     status?: string;
     message?: string;
@@ -126,3 +129,82 @@ export type NormalizedDashboard = {
 export type MetricTone = "accent" | "good" | "warn" | "bad" | "neutral" | "soft";
 
 export const FALLBACK_SOURCE = "local fallback";
+
+export type WhaleStoryTone = "critical" | "watch" | "positive" | "neutral";
+
+export type CuratedWalletCategory =
+  | "exchange"
+  | "market_maker"
+  | "fund"
+  | "custody"
+  | "bridge"
+  | "protocol"
+  | "foundation"
+  | "unknown";
+
+export type CuratedWalletGrade = "A" | "B" | "C" | "D";
+
+export type CuratedWalletEntry = {
+  id: string;
+  address: string;
+  chain: string;
+  label: string;
+  category: CuratedWalletCategory;
+  grade: CuratedWalletGrade;
+  priority: number;
+  enabled: boolean;
+  aliases?: string[];
+  note?: string;
+  focusSymbols?: string[];
+};
+
+export type CuratedWalletMatch = {
+  walletId: string;
+  label: string;
+  category: CuratedWalletCategory;
+  grade: CuratedWalletGrade;
+  priority: number;
+  chain: string;
+  address: string;
+  matchReason: "address" | "owner_label" | "alias";
+};
+
+export type CuratedWatchlistItem = {
+  id: string;
+  symbol: string;
+  title: string;
+  note: string;
+  badge: string;
+  address: string;
+  chain: string;
+  enabled: boolean;
+  category: CuratedWalletCategory;
+  grade: CuratedWalletGrade;
+  priority: number;
+  tone: WhaleStoryTone;
+  lastSeenAt?: string;
+  relatedSignalCount: number;
+};
+
+export type WhaleStoryParticipant = {
+  role: "from" | "to";
+  label: string;
+  address?: string;
+  curatedWallet?: CuratedWalletMatch;
+};
+
+export type WhaleStory = {
+  id: string;
+  kind: "transaction" | "signal" | "brief" | "empty";
+  title: string;
+  body: string;
+  meta: string;
+  tone: WhaleStoryTone;
+  hash?: string;
+  symbol?: string;
+  chain?: string;
+  occurredAt?: string;
+  priority: number;
+  supportingSignalIds: string[];
+  participants: WhaleStoryParticipant[];
+};

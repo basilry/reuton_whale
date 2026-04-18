@@ -36,6 +36,10 @@ class Signal:
     window_end: datetime
     summary: str
     extra: dict = field(default_factory=dict)
+    asset: Optional[str] = None
+    exchange: Optional[str] = None
+    flow_direction: Optional[str] = None
+    quote_basis: Optional[str] = None
 
 
 @dataclass

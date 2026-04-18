@@ -10,7 +10,7 @@
   background: var(--panel);
   backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--line);
-  box-shadow: var(--elev-1);
+  box-shadow: var(--elev-2);
 }
 
 .inner {
@@ -19,15 +19,18 @@
   justify-content: space-between;
   gap: var(--space-md);
   width: 100%;
-  max-width: 1920px;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: var(--space-sm) var(--space-xl);
+  padding: var(--space-md) var(--space-xl);
 }
 
 /* ── Brand ── */
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
   font-family: var(--font-display);
-  font-size: var(--text-md);
+  font-size: var(--text-lg);
   font-weight: var(--weight-extrabold);
   color: var(--accent-dark);
   font-style: italic;
@@ -35,6 +38,38 @@
   white-space: nowrap;
   flex-shrink: 0;
   transition: var(--transition-color);
+}
+
+.brandTextBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+  min-width: 0;
+}
+
+.brandTitle {
+  font: inherit;
+  line-height: 1;
+}
+
+.brandSubtitle {
+  display: none;
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  font-style: normal;
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  line-height: 1;
+}
+
+.brandLogo {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  display: block;
+  flex-shrink: 0;
 }
 
 .brand:hover {
@@ -53,7 +88,7 @@
 .tabNav {
   display: flex;
   align-items: center;
-  gap: var(--space-2xs);
+  gap: var(--space-xs);
   overflow-x: auto;
   flex: 1;
   justify-content: center;
@@ -68,6 +103,7 @@
 }
 
 .tabLink {
+  position: relative;
   flex-shrink: 0;
   scroll-snap-align: start;
   font-family: var(--font-body);
@@ -76,14 +112,13 @@
   color: var(--on-surface-variant);
   padding: var(--space-2xs) var(--space-sm);
   border-radius: var(--radius-full);
-  border-bottom: 2px solid transparent;
   transition: var(--transition-color), var(--transition-bg);
   white-space: nowrap;
 }
 
 .tabLink:hover {
   color: var(--accent);
-  background: var(--accent-soft);
+  background: var(--accent-softer);
 }
 
 .tabLink:focus-visible {
@@ -96,8 +131,22 @@
 .tabLink[data-active="true"] {
   color: var(--accent);
   font-weight: var(--weight-semibold);
-  background: var(--accent-soft);
-  border-bottom-color: var(--tertiary);
+  background: transparent;
+}
+
+.tabLink[data-active="true"]::after {
+  content: "";
+  position: absolute;
+  left: var(--space-sm);
+  right: var(--space-sm);
+  bottom: 0;
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: var(--tertiary);
+}
+
+.tabLink[data-active="true"]:hover {
+  background: transparent;
 }
 
 /* ── Right controls ── */
@@ -109,8 +158,8 @@
 }
 
 .themeBtn {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: var(--radius-full);
   border: 1px solid var(--line);
   background: var(--surface-container);
@@ -138,7 +187,7 @@
 /* ── Mobile: compact padding + scrollable tabs ── */
 @media (max-width: 640px) {
   .inner {
-    padding: var(--space-xs) var(--space-md);
+    padding: var(--space-md) var(--space-md);
     gap: var(--space-xs);
   }
 
@@ -151,6 +200,16 @@
   .tabLink {
     padding: var(--space-2xs) var(--space-xs);
     font-size: var(--text-xs);
+  }
+
+  .brandSubtitle {
+    display: none;
+  }
+}
+
+@media (min-width: 768px) {
+  .brandSubtitle {
+    display: inline;
   }
 }
 

@@ -2,8 +2,9 @@
 
 Next.js App Router dashboards for the WhaleScope Google Sheets backend. This package covers two routes:
 
-- `/` for the operations/admin dashboard
-- `/insights` for the user-facing insight dashboard
+- `/` for the user-facing insight home
+- `/admin` for the operations/admin dashboard
+- `/insights` as a legacy redirect to `/`
 
 This app is the Vercel deployment target for the Product Engineer assignment and replaces Streamlit as the primary presentation surface.
 
@@ -24,7 +25,7 @@ The dashboards are read-only. They do not collect blockchain data by themselves.
 
 | Part | Runtime | Responsibility |
 |---|---|---|
-| Dashboard UI | Vercel / Next.js | Render `/` admin operations view and `/insights` user-facing view |
+| Dashboard UI | Vercel / Next.js | Render `/` user-facing view and `/admin` operations view |
 | Data source | Google Sheets | MVP persistent store |
 | Pipeline | Render Cron Job or Worker | Run `python -m src.main` and write Sheets |
 | Telegram bot | Render Worker | Handle user commands |
@@ -34,9 +35,11 @@ Do not merge the Python workers into this Vercel app. Vercel should only serve t
 
 ## Route Purpose
 
-`/` is the operator-facing view. It is meant for checking pipeline health, Sheets-backed snapshots, and the latest operational state. The Telegram listener card is based on `system_log` rows where `run_type=telethon_listener`, and falls back to the latest `tg_whale_events` timestamp only when no listener heartbeat exists. It can show waiting, auth-required, attention-needed, or healthy states independently from Google Sheets connectivity.
+`/` is the user-facing view. It is meant for human-readable briefings, market mood, signal summaries, watchlist context, and Telegram onboarding. It should avoid raw worker logs and JSON-like operational details.
 
-`/insights` is the user-facing view. It is meant for human-readable briefings and signal summaries, not raw worker logs or JSON payloads.
+`/admin` is the operator-facing view. It is meant for checking pipeline health, Sheets-backed snapshots, and the latest operational state. The Telegram listener card is based on `system_log` rows where `run_type=telethon_listener`, and falls back to the latest `tg_whale_events` timestamp only when no listener heartbeat exists. It can show waiting, auth-required, attention-needed, or healthy states independently from Google Sheets connectivity.
+
+`/insights` is retained only for compatibility and redirects to `/`.
 
 ## Requirements
 
@@ -70,6 +73,7 @@ Current required values:
 | `GOOGLE_SHEET_ID` | Yes | server-only | Spreadsheet ID, not the full URL |
 | `GOOGLE_CREDENTIALS_JSON` | Yes | server-only | Full service account JSON as a single-line string |
 | `NEXT_PUBLIC_APP_NAME` | No | public | Display-only app name |
+| `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` | No* | public | Public Telegram bot handle without the leading `@`. Current WhaleScope demo bot: `whalescope_demo_bot` (<https://t.me/whalescope_demo_bot>). Used by the user home CTA and QR modal to build `tg://resolve?domain=...` and `https://t.me/...` links. Must stay in sync with the root `.env.example` `TELEGRAM_BOT_USERNAME`. *No* = not required for the app to boot, but the Telegram CTA will be disabled (no link, no QR) when unset. |
 | `DASHBOARD_PASSWORD` | No | server-only | Enables operator API auth when set. Use `Authorization: Bearer <password>` in production; `x-dashboard-password` stays for local/manual checks. |
 
 Reserved values for planned run-trigger extensions:
@@ -150,6 +154,7 @@ Register these environment variables in Vercel Project Settings:
 - `GOOGLE_SHEET_ID`
 - `GOOGLE_CREDENTIALS_JSON`
 - `NEXT_PUBLIC_APP_NAME`
+- `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` (set to `whalescope_demo_bot` to activate the Telegram CTA)
 
 Keep `GOOGLE_CREDENTIALS_JSON` as a server-only environment variable. The service account only needs read access for the dashboard, but the same account may have editor access because the Python pipeline writes to the same sheet.
 

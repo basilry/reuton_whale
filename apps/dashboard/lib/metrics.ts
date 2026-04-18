@@ -14,9 +14,21 @@ import {
   type TransactionRow,
 } from "./schema";
 import {
+  buildCuratedWatchlistItems,
+  listCuratedWalletEntries,
+  setCuratedWalletEnabled as setCuratedWalletEnabledInRegistry,
+  toLegacyWatchlistEntries,
+} from "./curated-wallets";
+import {
   readDashboardSnapshot,
   readSheetRows,
 } from "./sheets";
+import { buildWhaleStories, buildWhaleStoryCards } from "./whale-stories";
+import type {
+  CuratedWalletEntry,
+  CuratedWatchlistItem,
+  WhaleStory,
+} from "./types";
 
 export const LISTENER_STALE_MINUTES = 15;
 
@@ -81,6 +93,9 @@ export interface DashboardData {
   latestBrief: DashboardBrief | null;
   recentTransactions: TransactionRow[];
   recentSignals: SignalRow[];
+  curatedWallets: CuratedWalletEntry[];
+  watchlist: CuratedWatchlistItem[];
+  whaleStories: WhaleStory[];
   latestRun: (LatestRunSummary & {
     status: string;
     message: string;
@@ -404,16 +419,35 @@ export async function getDashboardData(options?: {
     ? normalizeLatestRun(currentLatestRunRow)
     : null;
   const currentLatestBrief = latestBrief(snapshot.daily_brief);
+  const normalizedBrief = normalizeBrief(currentLatestBrief);
   const latestRunErrorCount = errorCountForRun(currentLatestRunRow);
   const latestRunStatus = currentLatestRun?.status ?? "unknown";
   const latestRunUpdatedAt = currentLatestRun?.finished_at || currentLatestRun?.started_at || undefined;
+  const curatedWallets = listCuratedWalletEntries();
+
+  const dataShape = {
+    generatedAt,
+    latestBrief: normalizedBrief,
+    recentTransactions,
+    recentSignals,
+  };
+
+  const watchlist = buildDashboardWatchlist(dataShape, {
+    wallets: curatedWallets.filter((entry) => entry.enabled),
+  });
+  const whaleStories = buildDashboardWhaleStories(dataShape, {
+    wallets: curatedWallets,
+  });
 
   return {
     generatedAt,
     source: "google_sheets",
-    latestBrief: normalizeBrief(currentLatestBrief),
+    latestBrief: normalizedBrief,
     recentTransactions,
     recentSignals,
+    curatedWallets,
+    watchlist,
+    whaleStories,
     latestRun: currentLatestRun
       ? {
           ...currentLatestRun,
@@ -537,53 +571,59 @@ export function listSignalActions(): SignalActionRecord[] {
   return Array.from(signalActionStore.values());
 }
 
-// Seed watchlist — in production this would be loaded from the
-// `addresses` sheet. For the demo we keep a small hand-curated list.
-const watchlistSeed: WatchlistEntry[] = [
-  {
-    address: "0x28C6c06298d514Db089934071355E5743bf21d60",
-    chain: "ethereum",
-    label: "Binance 14",
-    enabled: true,
-  },
-  {
-    address: "0xDFd5293D8e347dFe59E90eFd55b2956a1343963d",
-    chain: "ethereum",
-    label: "Binance 16",
-    enabled: true,
-  },
-  {
-    address: "0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549",
-    chain: "ethereum",
-    label: "Binance 15",
-    enabled: false,
-  },
-  {
-    address: "bc1qm34lsc65zpw79lxes69zkqmk6ee3ewf0j77s3h",
-    chain: "bitcoin",
-    label: "Bitfinex cold wallet",
-    enabled: true,
-  },
-];
+export function listCuratedWalletRegistry(): CuratedWalletEntry[] {
+  return listCuratedWalletEntries();
+}
 
-const watchlistOverrides = new Map<string, boolean>();
+export function buildDashboardWatchlist(
+  data: Pick<DashboardData, "recentTransactions" | "recentSignals"> | null,
+  options?: { maxItems?: number; wallets?: CuratedWalletEntry[] },
+): CuratedWatchlistItem[] {
+  return buildCuratedWatchlistItems({
+    wallets: options?.wallets ?? listCuratedWalletEntries().filter((entry) => entry.enabled),
+    recentTransactions: data?.recentTransactions ?? [],
+    recentSignals: data?.recentSignals ?? [],
+    maxItems: options?.maxItems,
+  });
+}
+
+export function buildDashboardWhaleStories(
+  data: Pick<DashboardData, "generatedAt" | "latestBrief" | "recentTransactions" | "recentSignals"> | null,
+  options?: { maxItems?: number; wallets?: CuratedWalletEntry[] },
+): WhaleStory[] {
+  return buildWhaleStories({
+    recentTransactions: data?.recentTransactions ?? [],
+    recentSignals: data?.recentSignals ?? [],
+    latestBrief: data?.latestBrief ?? null,
+    generatedAt: data?.generatedAt,
+    maxItems: options?.maxItems,
+    curatedWallets: options?.wallets ?? listCuratedWalletEntries(),
+  });
+}
+
+export function buildDashboardWhaleStoryCards(
+  data: Pick<DashboardData, "generatedAt" | "latestBrief" | "recentTransactions" | "recentSignals"> | null,
+  options?: { maxItems?: number; wallets?: CuratedWalletEntry[] },
+) {
+  return buildWhaleStoryCards(buildDashboardWhaleStories(data, options));
+}
 
 export function listWatchlistEntries(): WatchlistEntry[] {
-  return watchlistSeed.map((entry) => {
-    const override = watchlistOverrides.get(entry.address);
-    return override === undefined ? entry : { ...entry, enabled: override };
-  });
+  return toLegacyWatchlistEntries(listCuratedWalletEntries());
 }
 
 export function setWatchlistEntryEnabled(
   address: string,
   enabled: boolean,
 ): WatchlistEntry | null {
-  const normalized = address.trim();
-  const entry = watchlistSeed.find((e) => e.address === normalized);
-  if (!entry) {
+  const updated = setCuratedWalletEnabledInRegistry(address, enabled);
+  if (!updated) {
     return null;
   }
-  watchlistOverrides.set(normalized, enabled);
-  return { ...entry, enabled };
+  return {
+    address: updated.address,
+    chain: updated.chain,
+    label: updated.label,
+    enabled: updated.enabled,
+  };
 }

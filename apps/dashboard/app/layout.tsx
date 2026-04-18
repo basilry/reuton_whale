@@ -5,9 +5,6 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "WhaleScope Dashboard",
   description: "WhaleScope operational dashboard backed by Google Sheets.",
-  icons: {
-    icon: "/icon.svg",
-  },
 };
 
 /**
@@ -42,6 +39,8 @@ export default function RootLayout({
     <html lang="ko" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+        <link rel="icon" href="/favicon.ico?v=1cfb8185" sizes="any" />
+        <link rel="shortcut icon" href="/favicon.ico?v=1cfb8185" />
         <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

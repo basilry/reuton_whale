@@ -1,5 +1,5 @@
 /* =============================================================================
-   /insights — user-persona market intelligence
+   / — user-persona market intelligence
    -------------------------------------------------------------------------
    Layer 4 (Components) — token-consumer only, zero hex/rgba/oklch literals.
    Structural shell: TopNavbar (fixed) + InsightsSidebar (left) + content (right).
@@ -31,6 +31,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-xl);
+}
+
+.tickerSlot {
+  width: 100%;
 }
 
 /* ── Page header ─────────────────────────────────────────────────────────── */
@@ -216,7 +220,7 @@
 .riskBanner {
   padding: var(--space-md);
   background: var(--bad-softer);
-  border-left: 4px solid var(--bad-soft);
+  border: 1px solid var(--bad-soft);
   border-radius: var(--radius-md);
 }
 
@@ -514,6 +518,13 @@
   color: var(--on-surface);
 }
 
+.watchlistLead {
+  margin: calc(var(--space-lg) * -1 + var(--space-xs)) 0 var(--space-lg);
+  font-size: var(--text-sm);
+  color: var(--on-surface-variant);
+  line-height: var(--leading-relaxed);
+}
+
 .watchlistItems {
   display: flex;
   flex-direction: column;
@@ -572,6 +583,65 @@
 .watchNote[data-tone="critical"] {
   color: var(--bad);
   font-weight: var(--weight-medium);
+}
+
+.watchNote[data-tone="positive"] {
+  color: var(--good);
+  font-weight: var(--weight-medium);
+}
+
+.watchMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+  margin-top: var(--space-xs);
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.watchMeta span + span::before {
+  content: "·";
+  margin-right: var(--space-2xs);
+  color: var(--outline-variant);
+}
+
+.watchItemRight {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.watchBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-2xs) var(--space-sm);
+  border-radius: var(--radius-full);
+  background: var(--surface-container-low);
+  border: 1px solid var(--line);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+}
+
+.watchBadge[data-tone="critical"] {
+  background: var(--bad-softer);
+  border-color: var(--bad-soft);
+  color: var(--bad);
+}
+
+.watchBadge[data-tone="watch"] {
+  background: var(--accent-softer);
+  border-color: var(--accent-soft);
+  color: var(--accent);
+}
+
+.watchBadge[data-tone="positive"] {
+  background: var(--good-softer);
+  border-color: var(--good-soft);
+  color: var(--good);
 }
 
 .watchItemRight .materialIcon {
@@ -725,21 +795,7 @@
 }
 
 .telegramCtaBtn {
-  position: relative;
-  z-index: var(--z-raised);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-md) var(--space-xl);
-  background: var(--surface);
-  color: var(--accent);
-  font-weight: var(--weight-black);
-  border-radius: var(--radius-full);
-  border: none;
-  box-shadow: var(--elev-3);
-  text-decoration: none;
-  transition: var(--transition-transform);
-  white-space: nowrap;
+  min-height: 56px;
 }
 
 .telegramCtaBtn:hover {

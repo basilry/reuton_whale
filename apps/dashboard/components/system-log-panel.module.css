@@ -5,7 +5,8 @@
    Backdrop rationale: spec required a scrim but all literal color forms are
    forbidden. Solution: --panel-glass + backdrop-filter: blur(12px) provides
    a frosted-glass scrim that reads as darkened overlay in both themes without
-   any literal value. This is the token-safe equivalent of rgba(21,28,34/0.55).
+   any literal value. This is the token-safe equivalent of the removed hardcoded
+   semi-transparent overlay.
    ============================================================================= */
 
 /* ── Panel root ───────────────────────────────────────────────────────────── */
@@ -182,7 +183,7 @@
 /* ── Modal backdrop ───────────────────────────────────────────────────────── */
 /*
    Spec required a scrim but forbids hex/rgba/oklch literals.
-   --panel-glass is an rgb(...) token defined in design-tokens.css, so it is
+   --panel-glass is a token defined in design-tokens.css, so it is
    token-safe here. Pairing it with backdrop-filter: blur(12px) produces a
    frosted-glass overlay that is functionally equivalent to a semi-transparent
    dark scrim in both light and dark themes.

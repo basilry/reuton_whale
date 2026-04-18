@@ -110,8 +110,10 @@
 }
 
 .themeBtn:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: var(--focus-ring-offset);
+  outline: none;
+  box-shadow:
+    0 0 0 var(--focus-ring-offset) var(--surface),
+    0 0 0 calc(var(--focus-ring-offset) + var(--focus-ring-width)) var(--focus-ring-color);
 }
 
 /* ── Hero intro ────────────────────────────────────────────────────────── */

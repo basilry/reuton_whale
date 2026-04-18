@@ -250,15 +250,27 @@ class TestRunDailyPipeline:
         entry = briefs_arg[0]
         assert entry["summary"] == "오늘의 브리프"
         assert entry["alert_count"] == 2
+        assert entry["highlights"]
+        assert entry["signal_themes"]
+        assert "온체인" in entry["note"]
 
         top_txs = json.loads(entry["top_transactions"])
         assert isinstance(top_txs, list)
         assert len(top_txs) == 2
-        required_keys = {"hash", "symbol", "amount_usd", "importance_score", "interpretation", "type"}
+        required_keys = {
+            "hash",
+            "symbol",
+            "chain",
+            "amount_usd",
+            "importance_score",
+            "interpretation",
+            "type",
+        }
         for tx in top_txs:
             assert isinstance(tx, dict)
             assert required_keys.issubset(tx.keys())
         assert top_txs[0]["symbol"] == "BTC"
+        assert top_txs[0]["chain"] == "ETH"
         assert top_txs[0]["importance_score"] == 8
 
     @patch("src.main.WhaleScopeBot")
@@ -576,12 +588,17 @@ class TestRunDailyPipeline:
         mock_sheets.append_address_activity.assert_called_once()
         mock_sheets.append_transactions.assert_called_once()
         mock_sheets.append_signal.assert_called_once()
+        stored_signal = mock_sheets.append_signal.call_args[0][0]
+        assert stored_signal["extra"]["asset"] == "BTC"
+        assert stored_signal["extra"]["direction"] == "out"
+        assert stored_signal["extra"]["quote_basis"] == "usd_notional"
 
         briefs_arg = mock_sheets.save_daily_brief.call_args[0][1]
         top_txs = json.loads(briefs_arg[0]["top_transactions"])
         assert top_txs == [{
             "hash": "h1",
             "symbol": "BTC",
+            "chain": "ETH",
             "amount_usd": 10_000_000.0,
             "amount_usd_known": True,
             "importance_score": 9.0,
@@ -596,6 +613,9 @@ class TestRunDailyPipeline:
             "window_start": "2024-01-01T00:00:00+00:00",
             "window_end": "2024-01-01T00:00:00+00:00",
         }]
+        assert briefs_arg[0]["highlights"]
+        assert briefs_arg[0]["signal_themes"]
+        assert "시그널 1건" in briefs_arg[0]["note"]
 
     @patch("src.main.WhaleScopeBot")
     @patch("src.main.SheetsClient")
@@ -751,6 +771,7 @@ def test_signals_to_top5_keeps_hashless_signal_summary_without_fake_amount():
     assert top_items == [{
         "hash": "",
         "symbol": "USDT",
+        "chain": "",
         "amount_usd": None,
         "amount_usd_known": False,
         "importance_score": 7.0,
