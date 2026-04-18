@@ -8,6 +8,7 @@ from google.oauth2.service_account import Credentials
 from src.storage.queries import dict_to_row, now_iso, row_to_dict
 from src.storage.schema import (
     ADDRESS_ACTIVITY_HEADERS,
+    CURATED_WALLETS_HEADERS,
     ALL_TABS,
     ANALYSIS_LOG_HEADERS,
     DAILY_BRIEF_HEADERS,
@@ -16,6 +17,7 @@ from src.storage.schema import (
     SYSTEM_LOG_HEADERS,
     TAB_ADDRESS_ACTIVITY,
     TAB_ANALYSIS_LOG,
+    TAB_CURATED_WALLETS,
     TAB_DAILY_BRIEF,
     TAB_HEADERS,
     TAB_SIGNALS,
@@ -491,6 +493,100 @@ class SheetsClient:
                 logger.info("Added watched address: %s", target)
             except gspread.exceptions.APIError as e:
                 raise StorageError(f"Failed to upsert watched address: {e}") from e
+
+    def _normalize_curated_wallet_address(self, address: str, chain: str) -> str:
+        value = str(address or "").strip()
+        if not value:
+            return ""
+        if chain.lower() in self._EVM_CHAINS or value.startswith("0x"):
+            return value.lower()
+        return value
+
+    @retry(max_retries=3, base_delay=2.0)
+    def upsert_curated_wallets(self, wallets: list[dict]) -> dict[str, int]:
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_CURATED_WALLETS)
+                all_values = ws.get_all_values()
+                id_col = CURATED_WALLETS_HEADERS.index("id")
+                address_col = CURATED_WALLETS_HEADERS.index("address")
+                chain_col = CURATED_WALLETS_HEADERS.index("chain")
+
+                existing_by_id: dict[str, tuple[int, dict]] = {}
+                existing_by_address: dict[str, tuple[int, dict]] = {}
+                for row_idx, row in enumerate(all_values[1:], start=2):
+                    entry = row_to_dict(row, CURATED_WALLETS_HEADERS)
+                    wallet_id = str(entry.get("id", "")).strip().lower()
+                    address = self._normalize_curated_wallet_address(
+                        entry.get("address", ""), entry.get("chain", "")
+                    )
+                    if wallet_id:
+                        existing_by_id[wallet_id] = (row_idx, entry)
+                    if address:
+                        existing_by_address[address] = (row_idx, entry)
+
+                now = now_iso()
+                inserted = 0
+                updated = 0
+                invalid = 0
+                seen_ids = set(existing_by_id.keys())
+                seen_addresses = set(existing_by_address.keys())
+
+                for wallet in wallets:
+                    entry = dict(wallet)
+                    wallet_id = str(entry.get("id", "")).strip()
+                    address = str(entry.get("address", "")).strip()
+                    chain = str(entry.get("chain", "")).strip()
+
+                    if not wallet_id or not address:
+                        invalid += 1
+                        continue
+
+                    normalized_id = wallet_id.lower()
+                    normalized_address = self._normalize_curated_wallet_address(
+                        address, chain
+                    )
+                    if not normalized_address:
+                        invalid += 1
+                        continue
+
+                    if normalized_id in seen_ids or normalized_address in seen_addresses:
+                        row_match = existing_by_id.get(normalized_id)
+                        if row_match is None:
+                            row_match = existing_by_address.get(normalized_address)
+                        if row_match is not None:
+                            row_idx, existing = row_match
+                            merged = {**existing, **entry}
+                            merged["id"] = wallet_id
+                            merged["address"] = address
+                            merged["created_at"] = existing.get("created_at", "") or now
+                            merged["updated_at"] = now
+                            self._write_row(ws, row_idx, merged, CURATED_WALLETS_HEADERS)
+                            updated += 1
+                        continue
+
+                    entry["id"] = wallet_id
+                    entry["address"] = address
+                    entry["chain"] = chain
+                    entry.setdefault("created_at", now)
+                    entry["updated_at"] = now
+                    ws.append_row(
+                        dict_to_row(entry, CURATED_WALLETS_HEADERS),
+                        value_input_option="RAW",
+                    )
+                    inserted += 1
+                    seen_ids.add(normalized_id)
+                    seen_addresses.add(normalized_address)
+
+                logger.info(
+                    "Upserted curated wallets: %d inserted, %d updated, %d invalid",
+                    inserted,
+                    updated,
+                    invalid,
+                )
+                return {"inserted": inserted, "updated": updated, "invalid": invalid}
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to upsert curated wallets: {e}") from e
 
     @retry(max_retries=3, base_delay=2.0)
     def append_missing_watched_addresses(self, addresses: list[dict]) -> dict[str, int]:

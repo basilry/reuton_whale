@@ -4,6 +4,9 @@ export const TAB_SIGNALS = "signals" as const;
 export const TAB_SYSTEM_LOG = "system_log" as const;
 export const TAB_SUBSCRIBERS = "subscribers" as const;
 export const TAB_TG_WHALE_EVENTS = "tg_whale_events" as const;
+export const TAB_CURATED_WALLETS = "curated_wallets" as const;
+export const TAB_WALLET_ALIASES = "wallet_aliases" as const;
+export const TAB_WATCHLIST_OVERRIDES = "watchlist_overrides" as const;
 
 export const TRANSACTIONS_HEADERS = [
   "raw_response_hash",
@@ -83,6 +86,40 @@ export const TG_WHALE_EVENTS_HEADERS = [
   "collected_at",
 ] as const;
 
+export const CURATED_WALLETS_HEADERS = [
+  "id",
+  "chain",
+  "address",
+  "owner_label",
+  "owner_category",
+  "owner_subcategory",
+  "approx_balance",
+  "tier",
+  "source_ref",
+  "source_url",
+  "note",
+  "is_active",
+  "created_at",
+  "updated_at",
+] as const;
+
+export const WALLET_ALIASES_HEADERS = [
+  "canonical_id",
+  "alias_id",
+  "chain",
+  "address",
+  "label",
+  "note",
+] as const;
+
+export const WATCHLIST_OVERRIDES_HEADERS = [
+  "wallet_id",
+  "enabled",
+  "actor",
+  "reason",
+  "updated_at",
+] as const;
+
 export interface TransactionRow {
   raw_response_hash: string;
   hash: string;
@@ -151,6 +188,40 @@ export interface TgWhaleEventRow {
   collected_at: string;
 }
 
+export interface CuratedWalletRow {
+  id: string;
+  chain: string;
+  address: string;
+  owner_label: string;
+  owner_category: string;
+  owner_subcategory: string;
+  approx_balance: string;
+  tier: string;
+  source_ref: string;
+  source_url: string;
+  note: string;
+  is_active: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WalletAliasRow {
+  canonical_id: string;
+  alias_id: string;
+  chain: string;
+  address: string;
+  label: string;
+  note: string;
+}
+
+export interface WatchlistOverrideRow {
+  wallet_id: string;
+  enabled: string;
+  actor: string;
+  reason: string;
+  updated_at: string;
+}
+
 export interface SubscriberRow {
   chat_id: string;
   username: string;
@@ -168,6 +239,9 @@ export interface SheetRowMap {
   system_log: SystemLogRow;
   subscribers: SubscriberRow;
   tg_whale_events: TgWhaleEventRow;
+  curated_wallets: CuratedWalletRow;
+  wallet_aliases: WalletAliasRow;
+  watchlist_overrides: WatchlistOverrideRow;
 }
 
 export type SheetTabName = keyof SheetRowMap;
@@ -179,6 +253,9 @@ export const TAB_HEADERS = {
   system_log: SYSTEM_LOG_HEADERS,
   subscribers: SUBSCRIBERS_HEADERS,
   tg_whale_events: TG_WHALE_EVENTS_HEADERS,
+  curated_wallets: CURATED_WALLETS_HEADERS,
+  wallet_aliases: WALLET_ALIASES_HEADERS,
+  watchlist_overrides: WATCHLIST_OVERRIDES_HEADERS,
 } as const satisfies Record<SheetTabName, readonly string[]>;
 
 export const DASHBOARD_TABS = [

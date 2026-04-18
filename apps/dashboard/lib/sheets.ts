@@ -11,6 +11,7 @@ import {
   DASHBOARD_TABS,
   TAB_HEADERS,
   type DashboardTabName,
+  type WatchlistOverrideRow,
   type DailyBriefRow,
   type SheetRowMap,
   type SheetTabName,
@@ -21,6 +22,10 @@ import {
 } from "./schema";
 
 const SHEETS_API_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
+const SHEETS_WRITE_SCOPES = [
+  ...SHEETS_SCOPES,
+  "https://www.googleapis.com/auth/spreadsheets",
+] as const;
 
 type SheetValuesResponse = {
   spreadsheetId?: string;
@@ -211,13 +216,118 @@ class SheetsReadClient {
   }
 }
 
+type SheetAppendResponse = {
+  updates?: {
+    updatedRange?: string;
+    updatedRows?: number;
+    updatedColumns?: number;
+    updatedCells?: number;
+  };
+};
+
+class SheetsWriteClient {
+  private readonly auth: JWT;
+  private accessTokenPromise: Promise<string> | null = null;
+
+  constructor() {
+    const env = getDashboardEnv();
+    this.auth = new JWT({
+      email: env.credentials.client_email,
+      key: env.credentials.private_key,
+      scopes: [...SHEETS_WRITE_SCOPES],
+      projectId: env.credentials.project_id,
+      subject: undefined,
+    });
+    this.sheetId = env.sheetId;
+  }
+
+  private readonly sheetId: string;
+
+  private async getAccessToken(): Promise<string> {
+    if (!this.accessTokenPromise) {
+      this.accessTokenPromise = this.auth.authorize().then((tokens) => {
+        const token = tokens.access_token;
+        if (!token) {
+          throw new Error("Failed to authorize Google Sheets client");
+        }
+        return token;
+      });
+    }
+
+    return this.accessTokenPromise;
+  }
+
+  private async requestJson<T>(url: string, init: RequestInit = {}): Promise<T> {
+    const token = await this.getAccessToken();
+    const headers = new Headers(init.headers);
+    headers.set("Authorization", `Bearer ${token}`);
+    headers.set("Accept", "application/json");
+
+    if (init.body != null && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+
+    const response = await fetch(url, {
+      ...init,
+      headers,
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(
+        `Google Sheets API request failed (${response.status} ${response.statusText}): ${body}`
+      );
+    }
+
+    return (await response.json()) as T;
+  }
+
+  private rangeFor(tab: SheetTabName): string {
+    const headers = TAB_HEADERS[tab];
+    return `${tab}!A:${columnLabel(headers.length)}`;
+  }
+
+  private rowToValues<T extends SheetTabName>(tab: T, row: SheetRowMap[T]): string[] {
+    return TAB_HEADERS[tab].map((header) => {
+      const value = row[header as keyof SheetRowMap[T]];
+      return value == null ? "" : String(value);
+    });
+  }
+
+  async appendRow<T extends SheetTabName>(tab: T, row: SheetRowMap[T]): Promise<void> {
+    const url = new URL(
+      `${SHEETS_API_BASE}/${this.sheetId}/values/${encodeURIComponent(this.rangeFor(tab))}:append`
+    );
+    url.searchParams.set("valueInputOption", "RAW");
+    url.searchParams.set("insertDataOption", "INSERT_ROWS");
+    url.searchParams.set("includeValuesInResponse", "false");
+
+    await this.requestJson<SheetAppendResponse>(url.toString(), {
+      method: "POST",
+      body: JSON.stringify({
+        majorDimension: "ROWS",
+        values: [this.rowToValues(tab, row)],
+      }),
+    });
+  }
+}
+
 let sharedClient: SheetsReadClient | null = null;
+let sharedWriteClient: SheetsWriteClient | null = null;
 
 export function getSheetsReadClient(): SheetsReadClient {
   if (!sharedClient) {
     sharedClient = new SheetsReadClient();
   }
   return sharedClient;
+}
+
+export function getSheetsWriteClient(): SheetsWriteClient {
+  if (!sharedWriteClient) {
+    sharedWriteClient = new SheetsWriteClient();
+  }
+  return sharedWriteClient;
 }
 
 export async function readSheetRows<T extends SheetTabName>(
@@ -252,4 +362,16 @@ export async function readDashboardSnapshot(): Promise<DashboardSheetSnapshot> {
     subscribers: tabs.subscribers,
     tg_whale_events: tabs.tg_whale_events,
   };
+}
+
+export async function upsertWatchlistOverride(
+  row: Omit<WatchlistOverrideRow, "enabled"> & { enabled: boolean }
+): Promise<void> {
+  await getSheetsWriteClient().appendRow("watchlist_overrides", {
+    wallet_id: row.wallet_id,
+    enabled: row.enabled ? "TRUE" : "FALSE",
+    actor: row.actor,
+    reason: row.reason,
+    updated_at: row.updated_at,
+  });
 }

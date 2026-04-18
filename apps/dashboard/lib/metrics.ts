@@ -16,7 +16,8 @@ import {
 import {
   buildCuratedWatchlistItems,
   listCuratedWalletEntries,
-  setCuratedWalletEnabled as setCuratedWalletEnabledInRegistry,
+  loadCuratedWalletEntries,
+  persistCuratedWalletEnabled,
   toLegacyWatchlistEntries,
 } from "./curated-wallets";
 import {
@@ -396,10 +397,13 @@ export async function getDashboardData(options?: {
   systemLogLimit?: number;
 }): Promise<DashboardData> {
   const generatedAt = new Date().toISOString();
-  const snapshot = await readDashboardSnapshot();
   const transactionLimit = options?.transactionLimit ?? 20;
   const signalLimit = options?.signalLimit ?? 20;
   const systemLogLimit = options?.systemLogLimit ?? 25;
+  const [snapshot, curatedWallets] = await Promise.all([
+    readDashboardSnapshot(),
+    loadCuratedWalletEntries(),
+  ]);
 
   const recentTransactions = newestFirst(snapshot.transactions, (row) => {
     return parseDateTimeSafe(row.created_at) ?? parseDateTimeSafe(row.timestamp);
@@ -423,7 +427,6 @@ export async function getDashboardData(options?: {
   const latestRunErrorCount = errorCountForRun(currentLatestRunRow);
   const latestRunStatus = currentLatestRun?.status ?? "unknown";
   const latestRunUpdatedAt = currentLatestRun?.finished_at || currentLatestRun?.started_at || undefined;
-  const curatedWallets = listCuratedWalletEntries();
 
   const dataShape = {
     generatedAt,
@@ -571,8 +574,8 @@ export function listSignalActions(): SignalActionRecord[] {
   return Array.from(signalActionStore.values());
 }
 
-export function listCuratedWalletRegistry(): CuratedWalletEntry[] {
-  return listCuratedWalletEntries();
+export async function listCuratedWalletRegistry(): Promise<CuratedWalletEntry[]> {
+  return loadCuratedWalletEntries();
 }
 
 export function buildDashboardWatchlist(
@@ -608,15 +611,15 @@ export function buildDashboardWhaleStoryCards(
   return buildWhaleStoryCards(buildDashboardWhaleStories(data, options));
 }
 
-export function listWatchlistEntries(): WatchlistEntry[] {
-  return toLegacyWatchlistEntries(listCuratedWalletEntries());
+export async function listWatchlistEntries(): Promise<WatchlistEntry[]> {
+  return toLegacyWatchlistEntries(await loadCuratedWalletEntries());
 }
 
-export function setWatchlistEntryEnabled(
+export async function setWatchlistEntryEnabled(
   address: string,
   enabled: boolean,
-): WatchlistEntry | null {
-  const updated = setCuratedWalletEnabledInRegistry(address, enabled);
+): Promise<WatchlistEntry | null> {
+  const updated = await persistCuratedWalletEnabled(address, enabled);
   if (!updated) {
     return null;
   }

@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const addresses = listWatchlistEntries();
+    const addresses = await listWatchlistEntries();
     return NextResponse.json(
       { addresses },
       { status: 200, headers: { "Cache-Control": "no-store" } }
@@ -57,7 +57,7 @@ export async function PATCH(request: Request) {
   }
 
   try {
-    const updated = setWatchlistEntryEnabled(address, enabled);
+    const updated = await setWatchlistEntryEnabled(address, enabled);
     if (!updated) {
       return NextResponse.json({ error: "address not found." }, { status: 404 });
     }

@@ -131,7 +131,7 @@ export function TelegramConnectModal({
 
             <p id={descriptionId} className={styles.description}>
               {hasBotLink
-                ? "봇을 열고 /start를 누르면 개인 알림을 시작할 수 있습니다."
+                ? "봇을 열고 /start를 누르면 개인 알림을 시작할 수 있습니다. QR은 대시보드 내부 경로로 생성됩니다."
                 : "현재 텔레그램 연결 링크를 준비 중입니다. 잠시 후 다시 확인해 주세요."}
             </p>
 

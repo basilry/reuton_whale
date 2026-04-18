@@ -1,6 +1,8 @@
 import { TopNavbar } from "@/components/top-navbar";
+import { AdminSessionPanel } from "@/components/admin-session-panel";
 import { SignalActionCard } from "@/components/signal-action-card";
 import { SystemLogPanel, type SystemLogRow } from "@/components/system-log-panel";
+import { DASHBOARD_SESSION_COOKIE_NAME, getDashboardAuthResult } from "@/lib/auth";
 import { DashboardConfigError } from "@/lib/env";
 import {
   chainIconColor,
@@ -20,6 +22,7 @@ import {
 } from "@/lib/humanize";
 import { getDashboardData } from "@/lib/metrics";
 import { normalizeDashboardData } from "@/lib/normalize";
+import { cookies } from "next/headers";
 import type { DashboardData, NormalizedDashboard } from "@/lib/types";
 import styles from "../page.module.css";
 
@@ -153,6 +156,39 @@ const SERVICE_ACTIONS: ReadonlyArray<{
 ];
 
 export default async function DashboardPage() {
+  const cookieStore = await cookies();
+  const auth = getDashboardAuthResult({
+    sessionCookie: cookieStore.get(DASHBOARD_SESSION_COOKIE_NAME)?.value ?? undefined,
+  });
+
+  if (auth.productionLocked) {
+    return (
+      <>
+        <TopNavbar />
+
+        <main className={styles.main}>
+          <section className={styles.colSpan12}>
+            <AdminSessionPanel mode="locked" />
+          </section>
+        </main>
+      </>
+    );
+  }
+
+  if (!auth.authorized && auth.passwordConfigured) {
+    return (
+      <>
+        <TopNavbar />
+
+        <main className={styles.main}>
+          <section className={styles.colSpan12}>
+            <AdminSessionPanel mode="login" />
+          </section>
+        </main>
+      </>
+    );
+  }
+
   const data = normalizeDashboardData(await loadDashboardData());
   const serviceCards = buildServiceCards(data);
   const operatorChecklist = buildOperatorChecklist(data);
@@ -172,6 +208,15 @@ export default async function DashboardPage() {
       <TopNavbar />
 
       <main className={styles.main}>
+        {auth.passwordConfigured ? (
+          <section className={styles.colSpan12}>
+            <AdminSessionPanel
+              mode="session"
+              message="브라우저 쿠키 세션으로 admin API 요청이 자동 인증됩니다."
+            />
+          </section>
+        ) : null}
+
         {/* Hero Summary Banner */}
         <section className={styles.colSpan12}>
           <div className={styles.hero}>

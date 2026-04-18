@@ -20,9 +20,7 @@ export function getTelegramPublicConfig(): TelegramPublicConfig {
     process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME,
   );
   const botUrl = username ? `https://t.me/${username}` : null;
-  const qrUrl = botUrl
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=0&data=${encodeURIComponent(botUrl)}`
-    : null;
+  const qrUrl = botUrl ? `/api/qr?data=${encodeURIComponent(botUrl)}` : null;
 
   return {
     username,

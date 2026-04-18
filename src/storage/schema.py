@@ -95,6 +95,14 @@ TAB_TG_WHALE_EVENTS = "tg_whale_events"
 TAB_SIGNALS = "signals"
 TAB_WEEKLY_TREND = "weekly_trend"
 TAB_USER_INTERESTS = "user_interests"
+TAB_CURATED_WALLETS = "curated_wallets"
+TAB_WALLET_ALIASES = "wallet_aliases"
+TAB_WATCHLIST_OVERRIDES = "watchlist_overrides"
+TAB_NEWS_FEED = "news_feed"
+TAB_MARKET_SNAPSHOTS = "market_snapshots"
+TAB_WALLET_ACTIVITY_SNAPSHOTS = "wallet_activity_snapshots"
+TAB_WHALE_STORIES = "whale_stories"
+TAB_BROADCAST_LOG = "broadcast_log"
 
 WATCHED_ADDRESSES_HEADERS = [
     "address", "chain", "category", "label", "source",
@@ -129,6 +137,44 @@ USER_INTERESTS_HEADERS = [
     "updated_at",
 ]
 
+CURATED_WALLETS_HEADERS = [
+    "id", "chain", "address", "owner_label", "owner_category",
+    "owner_subcategory", "approx_balance", "tier", "source_ref",
+    "source_url", "note", "is_active", "created_at", "updated_at",
+]
+
+WALLET_ALIASES_HEADERS = [
+    "canonical_id", "alias_id", "chain", "address", "label", "note",
+]
+
+WATCHLIST_OVERRIDES_HEADERS = [
+    "wallet_id", "enabled", "actor", "reason", "updated_at",
+]
+
+NEWS_FEED_HEADERS = [
+    "id", "source", "title", "summary", "url",
+    "published_at", "language", "tags", "fetched_at", "hash",
+]
+
+MARKET_SNAPSHOTS_HEADERS = [
+    "ts", "symbol", "binance_usd", "upbit_krw", "bitflyer_jpy",
+    "kraken_eur", "krw_premium_pct", "jpy_premium_pct", "eur_premium_pct",
+]
+
+WALLET_ACTIVITY_SNAPSHOTS_HEADERS = [
+    "ts", "wallet_id", "chain", "balance", "balance_delta_24h",
+    "inflow_24h", "outflow_24h", "tx_count_24h", "source",
+]
+
+WHALE_STORIES_HEADERS = [
+    "id", "signal_id", "wallet_id", "title", "body_ko",
+    "body_en", "impact_score", "published_at", "source_signal_ts",
+]
+
+BROADCAST_LOG_HEADERS = [
+    "ts", "kind", "dedup_key", "chat_id", "message_id", "status", "error",
+]
+
 ALL_TABS.extend([
     TAB_WATCHED_ADDRESSES,
     TAB_ADDRESS_ACTIVITY,
@@ -136,6 +182,14 @@ ALL_TABS.extend([
     TAB_SIGNALS,
     TAB_WEEKLY_TREND,
     TAB_USER_INTERESTS,
+    TAB_CURATED_WALLETS,
+    TAB_WALLET_ALIASES,
+    TAB_WATCHLIST_OVERRIDES,
+    TAB_NEWS_FEED,
+    TAB_MARKET_SNAPSHOTS,
+    TAB_WALLET_ACTIVITY_SNAPSHOTS,
+    TAB_WHALE_STORIES,
+    TAB_BROADCAST_LOG,
 ])
 
 TAB_HEADERS.update({
@@ -145,4 +199,12 @@ TAB_HEADERS.update({
     TAB_SIGNALS: SIGNALS_HEADERS,
     TAB_WEEKLY_TREND: WEEKLY_TREND_HEADERS,
     TAB_USER_INTERESTS: USER_INTERESTS_HEADERS,
+    TAB_CURATED_WALLETS: CURATED_WALLETS_HEADERS,
+    TAB_WALLET_ALIASES: WALLET_ALIASES_HEADERS,
+    TAB_WATCHLIST_OVERRIDES: WATCHLIST_OVERRIDES_HEADERS,
+    TAB_NEWS_FEED: NEWS_FEED_HEADERS,
+    TAB_MARKET_SNAPSHOTS: MARKET_SNAPSHOTS_HEADERS,
+    TAB_WALLET_ACTIVITY_SNAPSHOTS: WALLET_ACTIVITY_SNAPSHOTS_HEADERS,
+    TAB_WHALE_STORIES: WHALE_STORIES_HEADERS,
+    TAB_BROADCAST_LOG: BROADCAST_LOG_HEADERS,
 })

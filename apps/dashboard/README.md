@@ -73,8 +73,8 @@ Current required values:
 | `GOOGLE_SHEET_ID` | Yes | server-only | Spreadsheet ID, not the full URL |
 | `GOOGLE_CREDENTIALS_JSON` | Yes | server-only | Full service account JSON as a single-line string |
 | `NEXT_PUBLIC_APP_NAME` | No | public | Display-only app name |
-| `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` | No* | public | Public Telegram bot handle without the leading `@`. Current WhaleScope demo bot: `whalescope_demo_bot` (<https://t.me/whalescope_demo_bot>). Used by the user home CTA and QR modal to build `tg://resolve?domain=...` and `https://t.me/...` links. Must stay in sync with the root `.env.example` `TELEGRAM_BOT_USERNAME`. *No* = not required for the app to boot, but the Telegram CTA will be disabled (no link, no QR) when unset. |
-| `DASHBOARD_PASSWORD` | No | server-only | Enables operator API auth when set. Use `Authorization: Bearer <password>` in production; `x-dashboard-password` stays for local/manual checks. |
+| `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` | No* | public | Public Telegram bot handle without the leading `@`. Current WhaleScope demo bot: `whalescope_demo_bot` (<https://t.me/whalescope_demo_bot>). Used by the user home CTA and the internal `/api/qr` endpoint to build the Telegram link and QR image. Must stay in sync with the root `.env.example` `TELEGRAM_BOT_USERNAME`. *No* = not required for the app to boot, but the Telegram CTA will be disabled (no link, no QR) when unset. |
+| `DASHBOARD_PASSWORD` | Yes in production, no in local dev | server-only | Enables operator API auth when set. Production requests fail closed with `401 {"error":"missing-production-password"}` if it is missing. Use `Authorization: Bearer <password>` in production; `x-dashboard-password` stays for local/manual checks. The `/admin` page also exchanges this password for an httpOnly browser session cookie so protected APIs can be used without manually attaching headers. |
 
 Reserved values for planned run-trigger extensions:
 
@@ -135,8 +135,12 @@ curl -sS "http://127.0.0.1:3000/api/system-log?limit=2"
 | `/api/transactions?limit=20` | Recent transaction rows |
 | `/api/signals?limit=20` | Recent signal rows |
 | `/api/system-log?limit=25` | Recent system log rows |
+| `/api/qr?data=...` | Internal SVG QR generator for the Telegram CTA |
+| `/api/admin/session` | Browser session login/logout for `/admin` |
 
 All routes use the Node.js runtime and read Google Sheets on the server side.
+
+The curated wallet registry prefers Sheets-backed rows when the optional `curated_wallets`, `wallet_aliases`, and `watchlist_overrides` tabs exist. If those tabs are missing, the dashboard falls back to the in-repo seed and keeps the UI contract stable. Watchlist toggles are written as append-only override rows so the latest value wins without needing an in-place sheet update.
 
 ## Vercel Deployment
 
@@ -155,6 +159,9 @@ Register these environment variables in Vercel Project Settings:
 - `GOOGLE_CREDENTIALS_JSON`
 - `NEXT_PUBLIC_APP_NAME`
 - `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` (set to `whalescope_demo_bot` to activate the Telegram CTA)
+- `DASHBOARD_PASSWORD` (required in production; if missing, operator API requests return 401)
+
+The `/admin` page uses the same `DASHBOARD_PASSWORD` value to mint a short-lived httpOnly cookie session. That keeps the operator browser authenticated across page loads and protected API calls without weakening the existing header-based API path.
 
 Keep `GOOGLE_CREDENTIALS_JSON` as a server-only environment variable. The service account only needs read access for the dashboard, but the same account may have editor access because the Python pipeline writes to the same sheet.
 
@@ -169,6 +176,10 @@ For local development, these values may also live in the repository root `.env`.
 ### `GOOGLE_CREDENTIALS_JSON must contain valid service account JSON`
 
 Use a single-line JSON string. If the private key contains escaped newlines, keep them as `\\n`; the app converts them before authentication.
+
+### `missing-production-password`
+
+This means the dashboard is deployed in production without `DASHBOARD_PASSWORD`. Add it in the Vercel environment for any production deployment that exposes the operator APIs.
 
 ### Dashboard is empty
 
