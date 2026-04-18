@@ -252,14 +252,18 @@ function getNewsFeedLastPollAt(
   rows: NewsFeedRow[],
   systemLogRows: SystemLogRow[],
 ): string {
-  const sheetPoll = newestTimestamp(
-    rows.flatMap((row) => [
-      compactString(row.last_seen_at),
-      compactString(row.fetched_at),
-    ]),
+  const lastSeenPoll = newestTimestamp(
+    rows.map((row) => compactString(row.last_seen_at)),
   );
-  if (sheetPoll) {
-    return sheetPoll;
+  if (lastSeenPoll) {
+    return lastSeenPoll;
+  }
+
+  const fetchedPoll = newestTimestamp(
+    rows.map((row) => compactString(row.fetched_at)),
+  );
+  if (fetchedPoll) {
+    return fetchedPoll;
   }
 
   // Fall back to system_log if the sheet has no usable timestamps yet.

@@ -1109,19 +1109,31 @@ class SheetsClient:
 
         Only appends — never reorders or removes columns. Safe to call every run.
         """
+        expected = list(NEWS_FEED_HEADERS)
         if not all_values:
-            ws.append_row(list(NEWS_FEED_HEADERS))
+            if ws.col_count < len(expected):
+                ws.resize(cols=len(expected))
+                logger.info("Resized news_feed worksheet grid to %d cols", len(expected))
+            ws.append_row(expected)
             return
 
         header = all_values[0]
-        expected = list(NEWS_FEED_HEADERS)
         if header == expected:
+            return
+
+        if len(header) > len(expected):
+            logger.warning(
+                "news_feed header has unexpected extra columns (%d vs %d), "
+                "skipping auto-extension. Manual review required: %s",
+                len(header),
+                len(expected),
+                header,
+            )
             return
 
         # Only extend if the existing header is a PREFIX of expected. Anything
         # else (reordered / renamed columns) means manual review is needed.
-        existing_prefix = header[: len(expected)]
-        if expected[: len(existing_prefix)] != existing_prefix:
+        if expected[: len(header)] != header:
             logger.warning(
                 "news_feed header layout unexpected, skipping auto-extension: %s",
                 header,
@@ -1131,6 +1143,10 @@ class SheetsClient:
         missing = expected[len(header) :]
         if not missing:
             return
+
+        if ws.col_count < len(expected):
+            ws.resize(cols=len(expected))
+            logger.info("Resized news_feed worksheet grid to %d cols", len(expected))
 
         start_col = _column_letter(len(header) + 1)
         end_col = _column_letter(len(expected))

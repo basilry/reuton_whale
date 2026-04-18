@@ -104,9 +104,8 @@ export const koDictionary = {
   telegram: {
     triggerReady: "텔레그램 채널 열기",
     triggerUnavailable: "텔레그램 채널 준비 중",
-    triggerHelpReady: "공개 텔레그램 채널을 새 창으로 열거나 링크와 QR로 연결할 수 있습니다.",
-    triggerHelpUnavailable:
-      "현재 공개 채널 주소가 설정되지 않아 이동과 복사가 비활성화되어 있습니다.",
+    triggerHelpReady: "",
+    triggerHelpUnavailable: "채널 URL이 아직 연결되지 않았습니다.",
     eyebrow: "Telegram Connect",
     title: "텔레그램 채널에서 실시간 고래 브리핑을 받으세요",
     descriptionReady:

@@ -6,6 +6,7 @@ import type { DashboardLanguage } from "@/lib/i18n/config";
 import { useDashboardI18n } from "@/lib/i18n/client";
 import { formatDashboardMessage } from "@/lib/i18n/get-dictionary";
 import type { NewsWidgetData } from "@/lib/news";
+import { isSafeHttpUrl } from "@/lib/url";
 
 import styles from "./news-widget.module.css";
 
@@ -178,6 +179,7 @@ export function NewsWidgetClient({
         data-collapsed={hasOverflow && !isExpanded ? "true" : undefined}
       >
         {data.items.map((item) => {
+          const safeUrl = isSafeHttpUrl(item.url) ? item.url : null;
           const displaySource =
             item.id === "news-fallback-empty"
               ? dictionary.news.fallbackItemSource
@@ -212,10 +214,10 @@ export function NewsWidgetClient({
             </>
           );
 
-          return item.url ? (
+          return safeUrl ? (
             <a
               key={item.id}
-              href={item.url}
+              href={safeUrl}
               target="_blank"
               rel="noreferrer"
               className={styles.item}

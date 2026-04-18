@@ -1664,7 +1664,7 @@ export function buildDashboardWatchlist(
     wallets: options?.wallets ?? listCuratedWalletEntries().filter((entry) => entry.enabled),
     recentTransactions: (data?.recentTransactions ?? []) as TransactionRow[],
     recentSignals: (data?.recentSignals ?? []) as SignalRow[],
-    maxItems: options?.maxItems,
+    maxItems: options?.maxItems ?? 20,
   });
 }
 

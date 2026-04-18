@@ -2,12 +2,19 @@
    language-selector.module.css — Wave 4-C
    -------------------------------------------------------------------------
    Token source: design-tokens.css only. Zero hex/rgba/oklch literals.
-   Native <select> with appearance: none inside a styled <label> chip.
-   z-index: --z-raised so the chip floats above sibling cards.
+   Custom button + listbox dropdown for consistent styling and keyboard control.
    ========================================================================== */
 
-/* ── Label shell (the visible chip) ────────────────────────────────────── */
-.label {
+.selector {
+  position: relative;
+  z-index: var(--z-raised);
+}
+
+.selector[data-saving="true"] {
+  opacity: 0.72;
+}
+
+.trigger {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2xs);
@@ -20,23 +27,23 @@
   font-size: var(--text-sm);
   cursor: pointer;
   transition: var(--transition-bg), var(--transition-border);
-  position: relative;
-  z-index: var(--z-raised);
   white-space: nowrap;
 }
 
-.label:hover {
+.trigger:hover:not([aria-disabled="true"]),
+.trigger[data-open="true"] {
   background: var(--surface-container-high);
 }
 
-.label:focus-within {
+.trigger:focus-visible,
+.menu:focus-visible {
   border-color: var(--accent);
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
 }
 
-.label[data-saving="true"] {
-  opacity: 0.72;
+.trigger[aria-disabled="true"] {
+  cursor: not-allowed;
 }
 
 .icon {
@@ -50,31 +57,64 @@
   color: var(--on-surface-variant);
 }
 
-/* ── Native select ──────────────────────────────────────────────────────── */
-.select {
-  background: transparent;
-  border: none;
+.currentValue {
   color: var(--on-surface);
   font-weight: var(--weight-semibold);
   font-size: var(--text-sm);
-  cursor: pointer;
-  outline: none;
-  padding: 0 var(--space-lg) 0 0;
-  appearance: none;
-  font-family: inherit;
   min-width: 86px;
-  line-height: 40px;
-}
-
-.select:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
 }
 
 .caret {
-  position: absolute;
-  right: var(--space-sm);
   font-size: 18px;
   color: var(--on-surface-variant);
-  pointer-events: none;
+  transition: var(--transition-transform);
+}
+
+.trigger[data-open="true"] .caret {
+  transform: rotate(180deg);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + var(--space-2xs));
+  right: 0;
+  min-width: 100%;
+  margin: 0;
+  padding: var(--space-2xs);
+  list-style: none;
+  border-radius: var(--radius-lg);
+  background: var(--surface-container-high);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--elev-3);
+  z-index: var(--z-dropdown);
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-height: 40px;
+  padding: 0 var(--space-sm);
+  border-radius: var(--radius-md);
+  color: var(--on-surface);
+  cursor: pointer;
+  user-select: none;
+}
+
+.option[data-active="true"] {
+  background: var(--surface-container-highest);
+}
+
+.option[data-selected="true"] .optionLabel {
+  font-weight: var(--weight-semibold);
+}
+
+.optionLabel {
+  min-width: 0;
+}
+
+.check {
+  font-size: 18px;
+  color: var(--accent);
 }

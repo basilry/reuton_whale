@@ -57,8 +57,17 @@ type SourceHealth = {
 
 type SourceHealthState = Record<TickerSourceKey, SourceHealth>;
 
-const LIVE_WINDOW_MS = 15_000;
-const DOWN_WINDOW_MS = 45_000;
+type SourceProfile = "live" | "polling";
+
+type SourceHealthPatch =
+  | Partial<SourceHealth>
+  | ((current: SourceHealth) => Partial<SourceHealth>);
+
+const LIVE_SOURCE_LIVE_WINDOW_MS = 15_000;
+const LIVE_SOURCE_DOWN_WINDOW_MS = 45_000;
+const POLLING_SOURCE_LIVE_WINDOW_MS = 6 * 60_000;
+const POLLING_SOURCE_DOWN_WINDOW_MS = 15 * 60_000;
+const SNAPSHOT_POLL_INTERVAL_MS = 5 * 60_000;
 
 function fallbackChartForDefinition(
   definition: MarketTickerDefinition,
@@ -185,13 +194,19 @@ function decodeSocketPayload(data: string | ArrayBuffer | Blob): Promise<string>
 }
 
 function sourceStatus(
+  key: TickerSourceKey,
   state: SourceHealth,
   now: number,
   phase: Phase,
 ): MarketTickerChipStatus {
+  const profile: SourceProfile = key === "fx" || key === "snapshot" ? "polling" : "live";
   const lastFailureAt = Math.max(state.errorAt ?? 0, state.closedAt ?? 0);
 
-  if (lastFailureAt > 0 && (state.lastSeenAt == null || lastFailureAt >= state.lastSeenAt)) {
+  if (
+    profile === "live" &&
+    lastFailureAt > 0 &&
+    (state.lastSeenAt == null || lastFailureAt >= state.lastSeenAt)
+  ) {
     return "down";
   }
 
@@ -200,13 +215,59 @@ function sourceStatus(
   }
 
   const age = now - state.lastSeenAt;
-  if (age <= LIVE_WINDOW_MS) {
+  if (profile === "live") {
+    if (age <= LIVE_SOURCE_LIVE_WINDOW_MS) {
+      return "live";
+    }
+    if (age <= LIVE_SOURCE_DOWN_WINDOW_MS) {
+      return "stale";
+    }
+    return "down";
+  }
+
+  if (age <= POLLING_SOURCE_LIVE_WINDOW_MS) {
     return "live";
   }
-  if (age <= DOWN_WINDOW_MS) {
+  if (age <= POLLING_SOURCE_DOWN_WINDOW_MS) {
     return "stale";
   }
   return "down";
+}
+
+function sourceProfile(key: TickerSourceKey): SourceProfile {
+  return key === "fx" || key === "snapshot" ? "polling" : "live";
+}
+
+function formatTooltipTimestamp(value: number | null, fallback: string): string {
+  if (value == null) {
+    return fallback;
+  }
+
+  const formatter = new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(value);
+  const values = Object.fromEntries(
+    parts
+      .filter((part) =>
+        part.type === "year" ||
+        part.type === "month" ||
+        part.type === "day" ||
+        part.type === "hour" ||
+        part.type === "minute" ||
+        part.type === "second",
+      )
+      .map((part) => [part.type, part.value]),
+  ) as Record<"year" | "month" | "day" | "hour" | "minute" | "second", string>;
+
+  return `${values.year}.${values.month}.${values.day} ${values.hour}:${values.minute}:${values.second}`;
 }
 
 function LoadingCard({ index }: { index: number }) {
@@ -278,6 +339,28 @@ export function MarketTickerStrip({
             detailChart: "상세 차트",
             emptyTitle: "표시할 시세가 없습니다.",
             emptyBody: "공개 API 응답이 비어 있거나 아직 초기 USD/KRW 데이터가 준비되지 않았습니다.",
+            tooltipPending: "업데이트 대기",
+            tooltipOriginPrefix: "원천",
+            tooltipRecentPrefix: "최근 수신",
+            tooltipCriteriaPrefix: "판정 기준",
+            tooltipBinanceOrigin: "USD/USDT 기준 실시간 체결 스트림",
+            tooltipUpbitOrigin: "KRW 기준 실시간 체결 스트림",
+            tooltipFxOrigin: "USD/KRW 환율 보조 입력",
+            tooltipSnapshotOrigin: "Binance REST + Upbit REST + FX를 합친 5분 스냅샷",
+            tooltipBinanceSource: "Binance WebSocket",
+            tooltipUpbitSource: "Upbit WebSocket",
+            tooltipFxSource: "exchangerate.host → open.er-api → Upbit KRW-USDT",
+            tooltipSnapshotSource: "Binance REST + Upbit REST + FX 합성",
+            tooltipConnectingSummary: "초기 연결 또는 첫 데이터 수신을 기다리고 있습니다.",
+            tooltipLiveSummaryLive: "최근 수신이 정상 범위 안에 있어 실시간 스트림이 살아 있습니다.",
+            tooltipStaleSummaryLive: "연결은 있었지만 최근 메시지가 늦어지고 있어 지연 상태로 봅니다.",
+            tooltipDownSummaryLive: "실시간 연결이 끊겼거나 마지막 성공 이후 오류가 더 최근입니다.",
+            tooltipLiveSummaryPolling: "가장 최근 스냅샷이 polling 기대 주기 안에 있어 정상 범위입니다.",
+            tooltipStaleSummaryPolling: "이전 성공 데이터는 있지만 최근 갱신이 polling 기대치보다 늦습니다.",
+            tooltipDownSummaryPolling:
+              "최근 성공 데이터가 오래됐거나 첫 polling이 아직 성공하지 못했습니다.",
+            tooltipPollingHoldingSummary:
+              "최근 새로고침은 실패했지만, 마지막 성공 스냅샷을 기준으로 유지 중입니다.",
           }
         : {
             liveDisconnectedSnapshot: "Live streams disconnected. Holding the latest snapshot.",
@@ -314,6 +397,35 @@ export function MarketTickerStrip({
             detailChart: "Detail chart",
             emptyTitle: "No market prices are available.",
             emptyBody: "The public APIs returned no rows, or the initial USD/KRW data has not been prepared yet.",
+            tooltipPending: "Waiting for update",
+            tooltipOriginPrefix: "Origin",
+            tooltipRecentPrefix: "Last seen",
+            tooltipCriteriaPrefix: "Criteria",
+            tooltipBinanceOrigin: "Live trade stream for USD/USDT pricing",
+            tooltipUpbitOrigin: "Live trade stream for KRW pricing",
+            tooltipFxOrigin: "USD/KRW exchange-rate input",
+            tooltipSnapshotOrigin:
+              "Five-minute snapshot merged from Binance REST, Upbit REST, and FX",
+            tooltipBinanceSource: "Binance WebSocket",
+            tooltipUpbitSource: "Upbit WebSocket",
+            tooltipFxSource: "exchangerate.host → open.er-api → Upbit KRW-USDT",
+            tooltipSnapshotSource: "Binance REST + Upbit REST + FX composite",
+            tooltipConnectingSummary:
+              "Waiting for the initial connection or the first successful payload.",
+            tooltipLiveSummaryLive:
+              "Recent messages are still inside the healthy live-stream window.",
+            tooltipStaleSummaryLive:
+              "The stream was alive recently, but new messages are arriving late.",
+            tooltipDownSummaryLive:
+              "The live stream is disconnected, or a newer failure replaced the last success.",
+            tooltipLiveSummaryPolling:
+              "The latest snapshot is still inside the expected polling window.",
+            tooltipStaleSummaryPolling:
+              "A previous successful snapshot exists, but the refresh is running late.",
+            tooltipDownSummaryPolling:
+              "The latest successful snapshot is too old, or the first polling attempt has not succeeded yet.",
+            tooltipPollingHoldingSummary:
+              "The latest refresh failed, so the last successful snapshot is still being held.",
           },
     [language],
   );
@@ -348,7 +460,7 @@ export function MarketTickerStrip({
 
     const hasAnyLive = () => hasBinanceLive || hasUpbitLive;
 
-    const updateSource = (key: TickerSourceKey, patch: Partial<SourceHealth>) => {
+    const updateSource = (key: TickerSourceKey, patch: SourceHealthPatch) => {
       if (cancelled) {
         return;
       }
@@ -357,7 +469,7 @@ export function MarketTickerStrip({
         ...current,
         [key]: {
           ...current[key],
-          ...patch,
+          ...(typeof patch === "function" ? patch(current[key]) : patch),
         },
       }));
     };
@@ -436,13 +548,13 @@ export function MarketTickerStrip({
           errorAt: null,
           closedAt: null,
         });
-        updateSource("fx", {
-          available: hasFxData,
-          lastSeenAt: hasFxData ? seenAt : null,
+        updateSource("fx", (current) => ({
+          available: hasFxData ? true : current.available,
+          lastSeenAt: hasFxData ? seenAt : current.lastSeenAt,
           isConnecting: false,
           errorAt: hasFxData ? null : seenAt,
           closedAt: null,
-        });
+        }));
 
         if (hasAnyLive()) {
           setPhase("ready");
@@ -543,6 +655,7 @@ export function MarketTickerStrip({
             return;
           }
 
+          console.warn("[ticker][binance] websocket error");
           hasBinanceLive = false;
           updateSource("binance", {
             isConnecting: false,
@@ -560,7 +673,10 @@ export function MarketTickerStrip({
           syncFallbackState();
         };
 
-        socket.onclose = () => {
+        socket.onclose = (event) => {
+          console.warn(
+            `[ticker][binance] websocket closed code=${event.code} reason=${event.reason || "n/a"} clean=${event.wasClean}`,
+          );
           hasBinanceLive = false;
           updateSource("binance", {
             isConnecting: false,
@@ -648,6 +764,7 @@ export function MarketTickerStrip({
             return;
           }
 
+          console.warn("[ticker][upbit] websocket error");
           hasUpbitLive = false;
           updateSource("upbit", {
             isConnecting: false,
@@ -665,7 +782,10 @@ export function MarketTickerStrip({
           syncFallbackState();
         };
 
-        socket.onclose = () => {
+        socket.onclose = (event) => {
+          console.warn(
+            `[ticker][upbit] websocket closed code=${event.code} reason=${event.reason || "n/a"} clean=${event.wasClean}`,
+          );
           hasUpbitLive = false;
           updateSource("upbit", {
             isConnecting: false,
@@ -734,7 +854,7 @@ export function MarketTickerStrip({
 
     const refreshTimer = window.setInterval(() => {
       void refreshSnapshot("background");
-    }, 300_000);
+    }, SNAPSHOT_POLL_INTERVAL_MS);
 
     return () => {
       cancelled = true;
@@ -764,31 +884,81 @@ export function MarketTickerStrip({
   }, null);
   const visibleUpdatedAt =
     lastUpdatedAt == null ? null : Math.trunc(lastUpdatedAt / 1000) * 1000;
-  const sourceChips = useMemo<MarketTickerSourceChip[]>(
-    () => [
-      {
-        id: "binance",
-        label: "Binance",
-        status: sourceStatus(sourceHealth.binance, clock, phase),
-      },
-      {
-        id: "upbit",
-        label: "Upbit",
-        status: sourceStatus(sourceHealth.upbit, clock, phase),
-      },
-      {
-        id: "fx",
-        label: "FX",
-        status: sourceStatus(sourceHealth.fx, clock, phase),
-      },
-      {
-        id: "snapshot",
-        label: "Snapshot",
-        status: sourceStatus(sourceHealth.snapshot, clock, phase),
-      },
-    ],
-    [clock, phase, sourceHealth],
-  );
+  const buildSourceChip = (
+    key: TickerSourceKey,
+    label: string,
+    state: SourceHealth,
+  ): MarketTickerSourceChip => {
+    const profile = sourceProfile(key);
+    const status = sourceStatus(key, state, clock, phase);
+    const lastFailureAt = Math.max(state.errorAt ?? 0, state.closedAt ?? 0);
+    const isPollingHold =
+      profile === "polling" && state.lastSeenAt != null && lastFailureAt > state.lastSeenAt;
+    const lastSeenText = formatTooltipTimestamp(state.lastSeenAt, copy.tooltipPending);
+    const criteriaText =
+      profile === "live"
+        ? language === "ko"
+          ? "15초 live / 45초 stale"
+          : "15s live / 45s stale"
+        : language === "ko"
+          ? "6분 live / 15분 stale"
+          : "6m live / 15m stale";
+
+    let originSummary = copy.tooltipSnapshotOrigin;
+    let sourceLine = copy.tooltipSnapshotSource;
+    if (key === "binance") {
+      originSummary = copy.tooltipBinanceOrigin;
+      sourceLine = copy.tooltipBinanceSource;
+    } else if (key === "upbit") {
+      originSummary = copy.tooltipUpbitOrigin;
+      sourceLine = copy.tooltipUpbitSource;
+    } else if (key === "fx") {
+      originSummary = copy.tooltipFxOrigin;
+      sourceLine = copy.tooltipFxSource;
+    }
+
+    let statusSummary = copy.tooltipConnectingSummary;
+    if (status === "live") {
+      statusSummary =
+        profile === "live"
+          ? copy.tooltipLiveSummaryLive
+          : isPollingHold
+            ? copy.tooltipPollingHoldingSummary
+            : copy.tooltipLiveSummaryPolling;
+    } else if (status === "stale") {
+      statusSummary =
+        profile === "live"
+          ? copy.tooltipStaleSummaryLive
+          : isPollingHold
+            ? copy.tooltipPollingHoldingSummary
+            : copy.tooltipStaleSummaryPolling;
+    } else if (status === "down") {
+      statusSummary =
+        profile === "live" ? copy.tooltipDownSummaryLive : copy.tooltipDownSummaryPolling;
+    }
+
+    return {
+      id: key,
+      label,
+      status,
+      lastSeenAt: state.lastSeenAt,
+      expectedIntervalMs:
+        profile === "live" ? LIVE_SOURCE_LIVE_WINDOW_MS : SNAPSHOT_POLL_INTERVAL_MS,
+      originSummary,
+      statusSummary,
+      metaLines: [
+        `${copy.tooltipOriginPrefix}: ${sourceLine}`,
+        `${copy.tooltipRecentPrefix}: ${lastSeenText}`,
+        `${copy.tooltipCriteriaPrefix}: ${criteriaText}`,
+      ],
+    };
+  };
+  const sourceChips: MarketTickerSourceChip[] = [
+    buildSourceChip("binance", "Binance", sourceHealth.binance),
+    buildSourceChip("upbit", "Upbit", sourceHealth.upbit),
+    buildSourceChip("fx", "FX", sourceHealth.fx),
+    buildSourceChip("snapshot", "Snapshot", sourceHealth.snapshot),
+  ];
   const sourceStatusLabels = {
     connecting: copy.statusConnecting,
     live: copy.statusLive,

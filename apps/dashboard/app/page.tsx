@@ -39,6 +39,8 @@ type BriefAnalysisItem = {
 
 type DashboardDictionary = Awaited<ReturnType<typeof getCurrentDashboardDictionary>>;
 type HomeSignal = ComponentProps<typeof SignalSection>["signals"][number];
+const BRIEF_SCHEDULE_HOURS_KST = [0, 8, 16] as const;
+const WATCHLIST_COLLAPSED_COUNT = 6;
 
 function safeText(value: unknown, fallback = ""): string {
   if (typeof value === "string") {
@@ -403,6 +405,37 @@ function formatKstTime(value: string | undefined, fallback: string): string {
   return full.slice(-8, -3);
 }
 
+function formatKstDateTimeWithoutSeconds(value?: string): string {
+  const full = formatKstDateTime(value);
+  if (!full) {
+    return "";
+  }
+  return full.slice(0, 16);
+}
+
+function getNextBriefAt(now = new Date()): Date {
+  const offsetMs = 9 * 60 * 60 * 1000;
+  const kstNow = new Date(now.getTime() + offsetMs);
+  const year = kstNow.getUTCFullYear();
+  const month = kstNow.getUTCMonth();
+  const day = kstNow.getUTCDate();
+  const hour = kstNow.getUTCHours();
+
+  const nextHour = BRIEF_SCHEDULE_HOURS_KST.find((candidate) => candidate > hour);
+  if (typeof nextHour === "number") {
+    return new Date(Date.UTC(year, month, day, nextHour, 0, 0) - offsetMs);
+  }
+
+  return new Date(Date.UTC(year, month, day + 1, BRIEF_SCHEDULE_HOURS_KST[0], 0, 0) - offsetMs);
+}
+
+function buildNextBriefLabel(language: "ko" | "en", now = new Date()): string {
+  const nextBriefAt = formatKstDateTimeWithoutSeconds(getNextBriefAt(now).toISOString());
+  return language === "ko"
+    ? `다음 브리핑 ${nextBriefAt} KST`
+    : `Next brief ${nextBriefAt} KST`;
+}
+
 function humanizePipelineStatus(status: string | undefined, dictionary: DashboardDictionary): string {
   const normalized = safeText(status, "").toLowerCase();
   if (!normalized) {
@@ -486,6 +519,40 @@ function buildWatchlistNote(
     return dictionary.curated.noteRecent;
   }
   return dictionary.curated.noteIdle;
+}
+
+function renderWatchlistItems(
+  items: NonNullable<DashboardData["watchlist"]>,
+  dictionary: DashboardDictionary,
+) {
+  return items.map((item) => {
+    const isHighlight = item.tone === "critical" || item.relatedSignalCount > 0;
+    return (
+      <div key={item.id} className={styles.watchItem} data-highlight={isHighlight ? "true" : undefined}>
+        <div className={styles.watchItemLeft}>
+          <div className={styles.watchAvatar}>{item.symbol.slice(0, 1)}</div>
+          <div>
+            <p className={styles.watchSymbol}>{item.title}</p>
+            <p
+              className={styles.watchNote}
+              data-tone={item.tone === "critical" ? "critical" : item.tone === "positive" ? "positive" : undefined}
+            >
+              {buildWatchlistNote(item, dictionary)}
+            </p>
+            <div className={styles.watchMeta}>
+              <span>{humanizeChain(item.chain, dictionary)}</span>
+              <span>{buildWatchlistBadge(item, dictionary)}</span>
+            </div>
+          </div>
+        </div>
+        <div className={styles.watchItemRight}>
+          <span className={styles.watchBadge} data-tone={item.tone}>
+            {buildWatchlistBadge(item, dictionary)}
+          </span>
+        </div>
+      </div>
+    );
+  });
 }
 
 function buildStoryCopy(
@@ -603,6 +670,13 @@ export default async function InsightsPage() {
         time: formatKstTime(data.latestBrief.generatedAt, dictionary.home.timePending),
       })
     : data?.latestBrief?.date ?? dictionary.home.briefDateFallback;
+  const nextBriefLabel = buildNextBriefLabel(language);
+  const primaryWatchlist = watchlist.slice(0, WATCHLIST_COLLAPSED_COUNT);
+  const overflowWatchlist = watchlist.slice(WATCHLIST_COLLAPSED_COUNT);
+  const watchlistExpandLabel =
+    language === "ko"
+      ? `나머지 ${overflowWatchlist.length}개 더 보기`
+      : `Show ${overflowWatchlist.length} more`;
 
   const briefAnalysisIcons = ["analytics", "diversity_3", "warning"];
 
@@ -661,6 +735,7 @@ export default async function InsightsPage() {
                     <span className={styles.labelPill}>{dictionary.home.briefFallbackBadge}</span>
                   ) : null}
                   <span className={styles.dateMuted}>{briefRefreshLabel}</span>
+                  <span className={styles.dateMuted}>{nextBriefLabel}</span>
                 </div>
                 <h2 className={styles.heroTitle}>{dictionary.home.briefTitle}</h2>
                 <p className={styles.heroSummary}>&ldquo;{brief.summary}&rdquo;</p>
@@ -728,36 +803,24 @@ export default async function InsightsPage() {
                   {dictionary.home.watchlistLead}
                 </p>
                 {watchlist.length > 0 ? (
-                  <div className={styles.watchlistItems}>
-                    {watchlist.map((item) => {
-                      const isHighlight = item.tone === "critical" || item.relatedSignalCount > 0;
-                      return (
-                        <div key={item.id} className={styles.watchItem} data-highlight={isHighlight ? "true" : undefined}>
-                          <div className={styles.watchItemLeft}>
-                            <div className={styles.watchAvatar}>{item.symbol.slice(0, 1)}</div>
-                            <div>
-                              <p className={styles.watchSymbol}>{item.title}</p>
-                              <p
-                                className={styles.watchNote}
-                                data-tone={item.tone === "critical" ? "critical" : item.tone === "positive" ? "positive" : undefined}
-                              >
-                                {buildWatchlistNote(item, dictionary)}
-                              </p>
-                              <div className={styles.watchMeta}>
-                                <span>{humanizeChain(item.chain, dictionary)}</span>
-                                <span>{buildWatchlistBadge(item, dictionary)}</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className={styles.watchItemRight}>
-                            <span className={styles.watchBadge} data-tone={item.tone}>
-                              {buildWatchlistBadge(item, dictionary)}
-                            </span>
-                          </div>
+                  <>
+                    <div className={styles.watchlistItems}>
+                      {renderWatchlistItems(primaryWatchlist, dictionary)}
+                    </div>
+                    {overflowWatchlist.length > 0 ? (
+                      <details className={styles.watchlistDisclosure}>
+                        <summary className={styles.watchlistSummary}>
+                          <span>{watchlistExpandLabel}</span>
+                          <span className={`${styles.watchlistSummaryIcon} material-symbols-outlined`} aria-hidden="true">
+                            expand_more
+                          </span>
+                        </summary>
+                        <div className={styles.watchlistItems} data-overflow="true">
+                          {renderWatchlistItems(overflowWatchlist, dictionary)}
                         </div>
-                      );
-                    })}
-                  </div>
+                      </details>
+                    ) : null}
+                  </>
                 ) : (
                   <article className={styles.emptyCard}>
                     <h4>{dictionary.curated.emptyTitle}</h4>

@@ -960,7 +960,7 @@ export function buildCuratedWatchlistItems(options?: {
   const wallets = options?.wallets ?? listEnabledCuratedWalletEntries();
   const transactions = options?.recentTransactions ?? [];
   const signals = options?.recentSignals ?? [];
-  const maxItems = options?.maxItems ?? 4;
+  const maxItems = options?.maxItems ?? 20;
 
   return wallets
     .map((wallet) => walletActivity(wallet, transactions, signals))

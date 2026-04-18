@@ -104,10 +104,8 @@ export const enDictionary = {
   telegram: {
     triggerReady: "Open Telegram channel",
     triggerUnavailable: "Telegram channel unavailable",
-    triggerHelpReady:
-      "Open the public Telegram channel in a new tab, copy the link, or scan the QR code.",
-    triggerHelpUnavailable:
-      "The public channel URL is not configured yet, so link and QR actions are disabled.",
+    triggerHelpReady: "",
+    triggerHelpUnavailable: "The public channel URL is not configured yet.",
     eyebrow: "Telegram Connect",
     title: "Get real-time whale briefings in Telegram",
     descriptionReady:

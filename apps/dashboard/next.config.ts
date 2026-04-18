@@ -82,6 +82,23 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async headers() {
+    if (process.env.NODE_ENV !== "production") {
+      return [];
+    }
+
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: "connect-src 'self' https: wss:;",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

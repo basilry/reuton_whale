@@ -137,6 +137,7 @@
 .heroTopline {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-xs);
   margin-bottom: var(--space-lg);
 }
@@ -769,6 +770,40 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
+}
+
+.watchlistItems[data-overflow="true"] {
+  margin-top: var(--space-md);
+}
+
+.watchlistDisclosure {
+  margin-top: var(--space-md);
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-md);
+}
+
+.watchlistSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  cursor: pointer;
+  list-style: none;
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.watchlistSummary::-webkit-details-marker {
+  display: none;
+}
+
+.watchlistSummaryIcon {
+  transition: transform 180ms ease;
+}
+
+.watchlistDisclosure[open] .watchlistSummaryIcon {
+  transform: rotate(180deg);
 }
 
 .watchItem {

@@ -37,6 +37,11 @@ export function TelegramConnectModal({
   const descriptionId = useId();
   const triggerDescriptionId = useId();
   const hasChannelLink = Boolean(channelUrl);
+  const triggerHelpText = (
+    hasChannelLink
+      ? dictionary.telegram.triggerHelpReady
+      : dictionary.telegram.triggerHelpUnavailable
+  ).trim();
   const triggerClassName = [styles.trigger, className].filter(Boolean).join(" ");
   const channelHandle = channelUsername ? `@${channelUsername}` : "Telegram";
   const formattedSubscriberCount = subscriberCount.toLocaleString(
@@ -260,18 +265,18 @@ export function TelegramConnectModal({
         type="button"
         className={triggerClassName}
         onClick={() => setIsOpen(true)}
-        aria-describedby={triggerDescriptionId}
+        aria-describedby={triggerHelpText ? triggerDescriptionId : undefined}
         data-disabled={hasChannelLink ? undefined : "true"}
       >
         {hasChannelLink
           ? dictionary.telegram.triggerReady
           : dictionary.telegram.triggerUnavailable}
       </button>
-      <span id={triggerDescriptionId} className="sr-only">
-        {hasChannelLink
-          ? dictionary.telegram.triggerHelpReady
-          : dictionary.telegram.triggerHelpUnavailable}
-      </span>
+      {triggerHelpText ? (
+        <span id={triggerDescriptionId} className="sr-only">
+          {triggerHelpText}
+        </span>
+      ) : null}
 
       {modal}
     </>

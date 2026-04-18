@@ -6,7 +6,13 @@
   gap: var(--space-2xs);
 }
 
+.item {
+  position: relative;
+  display: inline-flex;
+}
+
 .chip {
+  appearance: none;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2xs);
@@ -20,6 +26,19 @@
   font-weight: var(--weight-bold);
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.chip:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--panel),
+    0 0 0 4px color-mix(in srgb, var(--accent) 36%, transparent);
 }
 
 .dot {
@@ -57,6 +76,105 @@
   color: var(--bad);
 }
 
+.tooltip {
+  position: absolute;
+  top: calc(100% + var(--space-xs));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  width: min(320px, calc(100vw - 32px));
+  max-width: 320px;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 94%, white 6%);
+  box-shadow: var(--elev-2);
+  color: var(--on-surface);
+  pointer-events: none;
+  animation: tooltip-fade 140ms ease;
+}
+
+.tooltip::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  width: 12px;
+  height: 12px;
+  transform: translateX(-50%) rotate(45deg);
+  border-left: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 94%, white 6%);
+}
+
+.tooltipHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-xs);
+}
+
+.tooltipTitle {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+}
+
+.tooltipStatus {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+.tooltipSummary,
+.tooltipBody {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading-relaxed);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.tooltipSummary {
+  color: var(--on-surface);
+}
+
+.tooltipBody {
+  margin-top: var(--space-2xs);
+  color: var(--on-surface-variant);
+}
+
+.tooltipMeta {
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.tooltipMeta li {
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: normal;
+  line-height: var(--leading-relaxed);
+}
+
+@keyframes tooltip-fade {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
 @media (max-width: 1280px) {
   .list {
     justify-content: flex-start;
@@ -71,5 +189,16 @@
   .chip {
     min-height: 26px;
     padding: 0 var(--space-xs);
+  }
+
+  .tooltip {
+    left: 0;
+    transform: none;
+    width: min(300px, calc(100vw - 32px));
+  }
+
+  .tooltip::before {
+    left: 24px;
+    transform: rotate(45deg);
   }
 }
