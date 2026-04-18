@@ -28,6 +28,13 @@ from src.ingestion.tg_normalizer import (
 from src.llm.anthropic_provider import AnthropicProvider
 from src.llm.router import LLMRouter
 from src.notify.telegram_broadcast import TelegramBroadcastAdapter
+from src.pipeline.common import (
+    collect_recent_events,
+    detect_signals,
+    log_unknown_price_symbols,
+    persist_chain_activity,
+    persist_signals,
+)
 from src.signals.baseline import build_chain_baselines
 from src.signals.engine import SignalEngine
 from src.signals.formatters import (
@@ -345,45 +352,16 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
             errors.append(f"load_fixtures: {e}")
             logger.error("[%s] Failed to load fixtures: %s", run_id, e)
     else:
-        try:
-            watched_index = sheets.list_watched_addresses()
-            since_dt = datetime.now(timezone.utc) - timedelta(hours=24)
-            since_ts = int(since_dt.timestamp())
-            for chain in _EVM_CHAINS:
-                addrs = [
-                    addr for addr, row in watched_index.items()
-                    if row.get("chain", "").upper() in (chain, "EVM", "")
-                ]
-                if addrs:
-                    raw_events.extend(
-                        eth_collector.fetch(
-                            addrs, chain, since_ts,
-                            watched_index=watched_index, price_service=price_svc,
-                        )
-                    )
-            sol_addrs = [
-                addr for addr, row in watched_index.items()
-                if row.get("chain", "").upper() == "SOL"
-            ]
-            if sol_addrs:
-                raw_events.extend(
-                    sol_collector.fetch(
-                        sol_addrs, since_ts,
-                        watched_index=watched_index, price_service=price_svc,
-                    )
-                )
-            try:
-                tg_rows = sheets.list_tg_whale_events(since=since_dt)
-                if isinstance(tg_rows, list) and tg_rows:
-                    tg_events = [tg_row_to_event(row) for row in tg_rows if isinstance(row, dict)]
-                    raw_events.extend(tg_events)
-                    logger.info("[%s] Loaded %d tg events from Sheets", run_id, len(tg_events))
-            except Exception as e:
-                errors.append(f"list_tg_whale_events: {e}")
-                logger.error("[%s] Failed to load TG events: %s", run_id, e)
-        except Exception as e:
-            errors.append(f"fetch_transactions: {e}")
-            logger.error("[%s] Failed to fetch transactions: %s", run_id, e)
+        collected = collect_recent_events(
+            sheets=sheets,
+            price_service=price_svc,
+            eth_collector=eth_collector,
+            sol_collector=sol_collector,
+            event_to_dict=_event_to_dict,
+            since=datetime.now(timezone.utc) - timedelta(hours=24),
+        )
+        raw_events = collected.raw_events
+        errors.extend(collected.errors)
 
     chain_events = [e for e in raw_events if e.source == "chain"]
     transactions = [_event_to_dict(e) for e in chain_events]
@@ -395,39 +373,17 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
     )
 
     if not dry_run and transactions:
-        try:
-            address_activity_rows = [_event_to_address_activity(e) for e in chain_events]
-            if address_activity_rows:
-                stored_activity = sheets.append_address_activity(address_activity_rows)
-                logger.info("[%s] Stored %d address activity rows", run_id, stored_activity)
-        except Exception as e:
-            errors.append(f"append_address_activity: {e}")
-            logger.error("[%s] Failed to store address activity: %s", run_id, e)
+        persisted = persist_chain_activity(
+            sheets=sheets,
+            chain_events=chain_events,
+            event_to_address_activity=_event_to_address_activity,
+            transactions=transactions,
+        )
+        errors.extend(persisted["errors"])
+        result["transactions_count"] = int(persisted["stored_transactions"])
 
-        try:
-            stored_count = sheets.append_transactions(transactions)
-            result["transactions_count"] = stored_count
-            logger.info("[%s] Stored %d transactions", run_id, stored_count)
-        except Exception as e:
-            errors.append(f"append_transactions: {e}")
-            logger.error("[%s] Failed to store transactions: %s", run_id, e)
-
-    unknown_price_symbols = price_svc.drain_unknown_report()
-    if not dry_run and isinstance(unknown_price_symbols, list) and unknown_price_symbols:
-        try:
-            sheets.append_system_log(
-                "warning",
-                "price_unknown_symbols",
-                {
-                    "symbols": [
-                        {"symbol": symbol, "count": count}
-                        for symbol, count in unknown_price_symbols
-                    ],
-                },
-            )
-        except Exception as e:
-            errors.append(f"price_unknown_symbols: {e}")
-            logger.warning("[%s] Failed to log unknown price symbols: %s", run_id, e)
+    if not dry_run:
+        errors.extend(log_unknown_price_symbols(sheets=sheets, price_service=price_svc))
 
     if not raw_events:
         result.update(
@@ -453,18 +409,17 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
 
     # Stage 5: Signal detection (new path)
     logger.info("[%s] Stage 5/10: Running SignalEngine", run_id)
-    signals = []
-    try:
-        now = datetime.now(timezone.utc)
-        baselines = {}
-        if not dry_run:
-            baselines = build_chain_baselines(sheets, now)
-            logger.info("[%s] Loaded %d baseline bucket(s)", run_id, len(baselines))
-        signals = engine.run(raw_events, now, baselines=baselines)
-        logger.info("[%s] SignalEngine produced %d signals", run_id, len(signals))
-    except Exception as e:
-        errors.append(f"signal_engine: {e}")
-        logger.error("[%s] SignalEngine failed (continuing with legacy path): %s", run_id, e)
+    now = datetime.now(timezone.utc)
+    signals, signal_errors = detect_signals(
+        engine=engine,
+        sheets=sheets,
+        raw_events=raw_events,
+        now=now,
+        dry_run=dry_run,
+        baselines_builder=build_chain_baselines,
+    )
+    errors.extend(signal_errors)
+    logger.info("[%s] SignalEngine produced %d signals", run_id, len(signals))
 
     if signals:
         logger.info(
@@ -531,15 +486,13 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
         logger.info("[%s] Selected top %d transactions", run_id, len(top5))
 
     if not dry_run and signals:
-        try:
-            stored_signals = 0
-            for signal in signals:
-                sheets.append_signal(signal_to_sheet_dict(signal, raw_events))
-                stored_signals += 1
-            logger.info("[%s] Stored %d signals", run_id, stored_signals)
-        except Exception as e:
-            errors.append(f"append_signal: {e}")
-            logger.error("[%s] Failed to store signals: %s", run_id, e)
+        stored_signals, persist_errors = persist_signals(
+            sheets=sheets,
+            signals=signals,
+            raw_events=raw_events,
+        )
+        errors.extend(persist_errors)
+        logger.info("[%s] Stored %d signals", run_id, stored_signals)
 
     # Stage 8: Generate daily brief
     logger.info("[%s] Stage 8/10: Generating daily brief", run_id)

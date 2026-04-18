@@ -1158,11 +1158,24 @@ export function formatMarketTickerUpdatedAt(value: number | null): string {
     return "업데이트 대기";
   }
 
-  return new Intl.DateTimeFormat("ko-KR", {
-    hour: "numeric",
+  const parts = new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-  }).format(date);
+    hour12: false,
+  }).formatToParts(date);
+
+  const lookup = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+
+  return `${lookup.year}.${lookup.month}.${lookup.day} ${lookup.hour}:${lookup.minute}:${lookup.second}`;
 }
 
 export function marketTickerTone(

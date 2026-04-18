@@ -1,12 +1,13 @@
 .widget {
   width: 100%;
   display: grid;
-  gap: var(--space-sm);
-  padding: var(--space-sm);
+  gap: var(--space-md);
+  padding: var(--space-md);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: var(--surface-container-low);
-  box-shadow: var(--elev-1);
+  background: var(--panel-glass);
+  backdrop-filter: blur(20px);
+  box-shadow: var(--elev-2);
 }
 
 .header {
@@ -71,6 +72,23 @@
   color: var(--muted);
 }
 
+.metaBlock {
+  display: grid;
+  gap: 4px;
+}
+
+.updatedAt {
+  margin: 0;
+  font-size: var(--text-2xs);
+  line-height: var(--leading-relaxed);
+  color: var(--muted-strong);
+}
+
+.updatedAt time {
+  font-family: var(--font-mono);
+  color: var(--on-surface);
+}
+
 .list {
   display: grid;
   gap: var(--space-xs);
@@ -79,7 +97,7 @@
 .item {
   display: grid;
   gap: 6px;
-  padding: var(--space-xs);
+  padding: var(--space-sm);
   border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--surface);
@@ -160,5 +178,9 @@
 @media (max-width: 768px) {
   .widget {
     padding: var(--space-md);
+  }
+
+  .header {
+    gap: var(--space-sm);
   }
 }

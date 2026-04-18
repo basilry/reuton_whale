@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   appendMarketTickerChartPoint,
   DEFAULT_MARKET_TICKER_SYMBOLS,
@@ -23,10 +23,15 @@ import {
   type MarketTickerChartPoint,
   type MarketTickerDefinition,
   type MarketTickerItem,
-  type MarketTickerSource,
 } from "@/lib/market-ticker";
-import { MarketDetailChart } from "./market-detail-chart";
+
+import { MarketDetailChartModal } from "./market-detail-chart-modal";
 import { MarketMiniChart } from "./market-mini-chart";
+import {
+  MarketTickerSourceChips,
+  type MarketTickerChipStatus,
+  type MarketTickerSourceChip,
+} from "./market-ticker-source-chips";
 import styles from "./market-ticker-strip.module.css";
 
 type MarketTickerStripProps = {
@@ -36,9 +41,25 @@ type MarketTickerStripProps = {
   className?: string;
 };
 
-type Phase = "loading" | "ready" | "fallback" | "error";
+type Phase = "loading" | "ready" | "fallback";
+type TickerSourceKey = "binance" | "upbit" | "fx" | "snapshot";
 
-function fallbackChartForDefinition(definition: MarketTickerDefinition): MarketTickerChartPoint[] {
+type SourceHealth = {
+  available: boolean;
+  lastSeenAt: number | null;
+  isConnecting: boolean;
+  errorAt: number | null;
+  closedAt: number | null;
+};
+
+type SourceHealthState = Record<TickerSourceKey, SourceHealth>;
+
+const LIVE_WINDOW_MS = 15_000;
+const DOWN_WINDOW_MS = 45_000;
+
+function fallbackChartForDefinition(
+  definition: MarketTickerDefinition,
+): MarketTickerChartPoint[] {
   return createLocalMarketTickerChartPoints({
     id: `${definition.id}-mini`,
     value: definition.fallbackPriceUsd,
@@ -80,17 +101,70 @@ function mergeMiniChartsFromItems(
   return nextCharts;
 }
 
-function sourceLabel(source: MarketTickerSource | "idle"): string {
-  if (source === "live") {
-    return "Live";
-  }
-  if (source === "rest") {
-    return "REST";
-  }
-  if (source === "local") {
-    return "Local";
-  }
-  return "Idle";
+function createInitialSourceHealth(): SourceHealthState {
+  return {
+    binance: {
+      available: false,
+      lastSeenAt: null,
+      isConnecting: true,
+      errorAt: null,
+      closedAt: null,
+    },
+    upbit: {
+      available: false,
+      lastSeenAt: null,
+      isConnecting: true,
+      errorAt: null,
+      closedAt: null,
+    },
+    fx: {
+      available: false,
+      lastSeenAt: null,
+      isConnecting: true,
+      errorAt: null,
+      closedAt: null,
+    },
+    snapshot: {
+      available: false,
+      lastSeenAt: null,
+      isConnecting: true,
+      errorAt: null,
+      closedAt: null,
+    },
+  };
+}
+
+function createUnavailableSourceHealth(at: number): SourceHealthState {
+  return {
+    binance: {
+      available: false,
+      lastSeenAt: null,
+      isConnecting: false,
+      errorAt: at,
+      closedAt: null,
+    },
+    upbit: {
+      available: false,
+      lastSeenAt: null,
+      isConnecting: false,
+      errorAt: at,
+      closedAt: null,
+    },
+    fx: {
+      available: false,
+      lastSeenAt: null,
+      isConnecting: false,
+      errorAt: at,
+      closedAt: null,
+    },
+    snapshot: {
+      available: false,
+      lastSeenAt: null,
+      isConnecting: false,
+      errorAt: at,
+      closedAt: null,
+    },
+  };
 }
 
 function combineClassName(...values: Array<string | undefined>): string {
@@ -105,6 +179,31 @@ function decodeSocketPayload(data: string | ArrayBuffer | Blob): Promise<string>
     return Promise.resolve(new TextDecoder().decode(data));
   }
   return data.text();
+}
+
+function sourceStatus(
+  state: SourceHealth,
+  now: number,
+  phase: Phase,
+): MarketTickerChipStatus {
+  const lastFailureAt = Math.max(state.errorAt ?? 0, state.closedAt ?? 0);
+
+  if (lastFailureAt > 0 && (state.lastSeenAt == null || lastFailureAt >= state.lastSeenAt)) {
+    return "down";
+  }
+
+  if (state.lastSeenAt == null) {
+    return phase === "loading" || state.isConnecting ? "connecting" : "down";
+  }
+
+  const age = now - state.lastSeenAt;
+  if (age <= LIVE_WINDOW_MS) {
+    return "live";
+  }
+  if (age <= DOWN_WINDOW_MS) {
+    return "stale";
+  }
+  return "down";
 }
 
 function LoadingCard({ index }: { index: number }) {
@@ -126,39 +225,65 @@ export function MarketTickerStrip({
 }: MarketTickerStripProps) {
   const [items, setItems] = useState<MarketTickerItem[]>([]);
   const [miniCharts, setMiniCharts] = useState<Record<string, MarketTickerChartPoint[]>>({});
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>(symbols.length === 0 ? "ready" : "loading");
-  const [source, setSource] = useState<MarketTickerSource | "idle">("idle");
-  const [notice, setNotice] = useState("Binance USD / Upbit KRW 시세 연결을 준비 중입니다.");
+  const [notice, setNotice] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [sourceHealth, setSourceHealth] = useState<SourceHealthState>(() =>
+    createInitialSourceHealth(),
+  );
+  const [clock, setClock] = useState(() => Date.now());
 
-  const binanceSocketRef = useRef<WebSocket | null>(null);
-  const upbitSocketRef = useRef<WebSocket | null>(null);
-  const hasSnapshotRef = useRef(false);
-  const hasBinanceLiveRef = useRef(false);
-  const hasUpbitLiveRef = useRef(false);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setClock(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (symbols.length === 0) {
       setItems([]);
       setPhase("ready");
-      setSource("idle");
-      setNotice("표시할 심볼이 아직 없습니다.");
+      setNotice(null);
       setErrorMessage(null);
       setMiniCharts({});
-      setExpandedId(null);
+      setSelectedItemId(null);
+      setSourceHealth(createInitialSourceHealth());
       return;
     }
 
     let cancelled = false;
+    let hasSnapshot = false;
+    let hasBinanceLive = false;
+    let hasUpbitLive = false;
+    let hasEverReceivedLive = false;
+    let binanceSocket: WebSocket | null = null;
+    let upbitSocket: WebSocket | null = null;
 
-    const hasAnyLive = () => hasBinanceLiveRef.current || hasUpbitLiveRef.current;
+    const hasAnyLive = () => hasBinanceLive || hasUpbitLive;
+
+    const updateSource = (key: TickerSourceKey, patch: Partial<SourceHealth>) => {
+      if (cancelled) {
+        return;
+      }
+
+      setSourceHealth((current) => ({
+        ...current,
+        [key]: {
+          ...current[key],
+          ...patch,
+        },
+      }));
+    };
 
     const applyLocalFallback = (message: string, detail?: string) => {
       if (cancelled) {
         return;
       }
 
+      const occurredAt = Date.now();
       setItems(createLocalMarketTickerItems(symbols));
       setMiniCharts(
         Object.fromEntries(
@@ -166,9 +291,33 @@ export function MarketTickerStrip({
         ),
       );
       setPhase("fallback");
-      setSource("local");
       setNotice(message);
       setErrorMessage(detail ?? null);
+      setSourceHealth(createUnavailableSourceHealth(occurredAt));
+    };
+
+    const syncFallbackState = () => {
+      if (cancelled) {
+        return;
+      }
+
+      if (hasAnyLive()) {
+        setPhase("ready");
+        setNotice(null);
+        setErrorMessage(null);
+        return;
+      }
+
+      if (hasSnapshot) {
+        setPhase(hasEverReceivedLive ? "fallback" : "ready");
+        setNotice(
+          hasEverReceivedLive ? "실시간 연결이 끊겨 최신 스냅샷 기준으로 유지합니다." : null,
+        );
+        setErrorMessage(hasEverReceivedLive ? "stream_closed" : null);
+        return;
+      }
+
+      applyLocalFallback("실시간/스냅샷 연결이 모두 없어 예시 USD/KRW 시세를 표시합니다.", "stream_closed");
     };
 
     const refreshSnapshot = async (mode: "initial" | "background") => {
@@ -178,35 +327,65 @@ export function MarketTickerStrip({
           return;
         }
 
-        hasSnapshotRef.current = true;
-        setItems((current) =>
-          {
-            const nextItems =
-              current.length > 0 && hasAnyLive()
-                ? mergeMarketTickerSnapshot(current, snapshot, {
-                    preserveLiveUsd: hasBinanceLiveRef.current,
-                    preserveLiveKrw: hasUpbitLiveRef.current,
-                    source: "live",
-                  })
-                : snapshot;
-            setMiniCharts((currentCharts) => mergeMiniChartsFromItems(currentCharts, nextItems));
-            return nextItems;
-          }
-        );
-        setPhase("ready");
-        setSource(hasAnyLive() ? "live" : "rest");
+        const seenAt = Date.now();
+        const hasFxData = snapshot.some((item) => item.usdKrwFx != null);
+        hasSnapshot = true;
+
+        setItems((current) => {
+          const nextItems =
+            current.length > 0 && hasAnyLive()
+              ? mergeMarketTickerSnapshot(current, snapshot, {
+                  preserveLiveUsd: hasBinanceLive,
+                  preserveLiveKrw: hasUpbitLive,
+                  source: "live",
+                })
+              : snapshot;
+
+          setMiniCharts((currentCharts) => mergeMiniChartsFromItems(currentCharts, nextItems));
+          return nextItems;
+        });
+
+        updateSource("snapshot", {
+          available: true,
+          lastSeenAt: seenAt,
+          isConnecting: false,
+          errorAt: null,
+          closedAt: null,
+        });
+        updateSource("fx", {
+          available: hasFxData,
+          lastSeenAt: hasFxData ? seenAt : null,
+          isConnecting: false,
+          errorAt: hasFxData ? null : seenAt,
+          closedAt: null,
+        });
+
+        if (hasAnyLive()) {
+          setPhase("ready");
+          setNotice(null);
+          setErrorMessage(null);
+          return;
+        }
+
+        setPhase(mode === "initial" && !hasEverReceivedLive ? "ready" : "fallback");
+        setNotice(mode === "initial" && !hasEverReceivedLive ? null : "최신 스냅샷 기준으로 시세를 유지합니다.");
         setErrorMessage(null);
-        setNotice(
-          mode === "initial"
-            ? "Binance USD, Upbit KRW, 환율 스냅샷을 불러왔습니다."
-            : "백그라운드에서 KRW 가격과 김프 기준 환율을 새로고침했습니다."
-        );
       } catch (error) {
         if (cancelled) {
           return;
         }
 
-        if (!hasSnapshotRef.current && !hasAnyLive()) {
+        const failureAt = Date.now();
+        updateSource("snapshot", {
+          isConnecting: false,
+          errorAt: failureAt,
+        });
+        updateSource("fx", {
+          isConnecting: false,
+          errorAt: failureAt,
+        });
+
+        if (!hasSnapshot && !hasAnyLive()) {
           applyLocalFallback(
             "네트워크 접근이 제한되어 예시 USD/KRW 시세를 표시합니다.",
             error instanceof Error ? error.message : "snapshot_unavailable",
@@ -214,43 +393,37 @@ export function MarketTickerStrip({
           return;
         }
 
+        if (!hasAnyLive()) {
+          setPhase("fallback");
+          setNotice("스냅샷 새로고침에 실패해 이전 데이터 기준으로 유지합니다.");
+        }
         setErrorMessage(error instanceof Error ? error.message : "snapshot_refresh_failed");
       }
     };
 
-    const syncSourceAfterSocketClose = () => {
-      if (cancelled) {
-        return;
-      }
-
-      if (hasAnyLive()) {
-        setSource("live");
-        return;
-      }
-
-      if (hasSnapshotRef.current) {
-        setSource("rest");
-        setNotice("라이브 연결 없이 REST 스냅샷 기준으로 유지합니다.");
-        return;
-      }
-
-      applyLocalFallback("네트워크 연결이 없어 예시 USD/KRW 시세를 표시합니다.", "stream_closed");
-    };
-
     const connectBinanceStream = () => {
       if (typeof window === "undefined" || typeof window.WebSocket === "undefined") {
+        updateSource("binance", {
+          isConnecting: false,
+          errorAt: Date.now(),
+        });
         return;
       }
 
       try {
         const socket = new window.WebSocket(buildMarketTickerStreamUrl(symbols));
-        binanceSocketRef.current = socket;
+        binanceSocket = socket;
 
         socket.onopen = () => {
           if (cancelled) {
             return;
           }
-          setNotice("Binance USD 실시간 스트림을 연결했습니다.");
+
+          updateSource("binance", {
+            isConnecting: true,
+            errorAt: null,
+            closedAt: null,
+          });
         };
 
         socket.onmessage = (event) => {
@@ -258,7 +431,8 @@ export function MarketTickerStrip({
             return;
           }
 
-          hasBinanceLiveRef.current = true;
+          hasBinanceLive = true;
+          hasEverReceivedLive = true;
           setItems((current) => {
             const nextItems = mergeMarketTickerMessage(
               current.length > 0 ? current : createPendingMarketTickerItems(symbols),
@@ -268,10 +442,16 @@ export function MarketTickerStrip({
             setMiniCharts((currentCharts) => mergeMiniChartsFromItems(currentCharts, nextItems));
             return nextItems;
           });
+          updateSource("binance", {
+            available: true,
+            lastSeenAt: Date.now(),
+            isConnecting: false,
+            errorAt: null,
+            closedAt: null,
+          });
           setPhase("ready");
-          setSource("live");
+          setNotice(null);
           setErrorMessage(null);
-          setNotice("Binance USD와 Upbit KRW를 조합해 김프를 계산 중입니다.");
         };
 
         socket.onerror = () => {
@@ -279,17 +459,30 @@ export function MarketTickerStrip({
             return;
           }
 
-          if (!hasSnapshotRef.current && !hasAnyLive()) {
-            applyLocalFallback("Binance 실시간 연결이 열리지 않아 예시 시세로 대체했습니다.", "binance_live_stream_unavailable");
+          hasBinanceLive = false;
+          updateSource("binance", {
+            isConnecting: false,
+            errorAt: Date.now(),
+          });
+
+          if (!hasSnapshot && !hasAnyLive()) {
+            applyLocalFallback(
+              "Binance 실시간 연결이 열리지 않아 예시 시세로 대체했습니다.",
+              "binance_live_stream_unavailable",
+            );
             return;
           }
 
-          setErrorMessage("binance_live_stream_unavailable");
+          syncFallbackState();
         };
 
         socket.onclose = () => {
-          hasBinanceLiveRef.current = false;
-          syncSourceAfterSocketClose();
+          hasBinanceLive = false;
+          updateSource("binance", {
+            isConnecting: false,
+            closedAt: Date.now(),
+          });
+          syncFallbackState();
         };
       } catch (error) {
         applyLocalFallback(
@@ -301,47 +494,69 @@ export function MarketTickerStrip({
 
     const connectUpbitStream = () => {
       if (typeof window === "undefined" || typeof window.WebSocket === "undefined") {
+        updateSource("upbit", {
+          isConnecting: false,
+          errorAt: Date.now(),
+        });
         return;
       }
 
       try {
         const socket = new window.WebSocket("wss://api.upbit.com/websocket/v1");
         socket.binaryType = "arraybuffer";
-        upbitSocketRef.current = socket;
+        upbitSocket = socket;
 
         socket.onopen = () => {
           if (cancelled) {
             return;
           }
+
           socket.send(buildUpbitTickerSubscriptionPayload(symbols));
-          setNotice("Upbit KRW 실시간 스트림을 연결했습니다.");
+          updateSource("upbit", {
+            isConnecting: true,
+            errorAt: null,
+            closedAt: null,
+          });
         };
 
         socket.onmessage = (event) => {
-          void decodeSocketPayload(event.data).then((payload) => {
-            if (cancelled) {
-              return;
-            }
+          void decodeSocketPayload(event.data)
+            .then((payload) => {
+              if (cancelled) {
+                return;
+              }
 
-            hasUpbitLiveRef.current = true;
-            setItems((current) => {
-              const nextItems = mergeUpbitMarketTickerMessage(
-                current.length > 0 ? current : createPendingMarketTickerItems(symbols),
-                symbols,
-                payload,
-              );
-              setMiniCharts((currentCharts) => mergeMiniChartsFromItems(currentCharts, nextItems));
-              return nextItems;
+              hasUpbitLive = true;
+              hasEverReceivedLive = true;
+              setItems((current) => {
+                const nextItems = mergeUpbitMarketTickerMessage(
+                  current.length > 0 ? current : createPendingMarketTickerItems(symbols),
+                  symbols,
+                  payload,
+                );
+                setMiniCharts((currentCharts) => mergeMiniChartsFromItems(currentCharts, nextItems));
+                return nextItems;
+              });
+              updateSource("upbit", {
+                available: true,
+                lastSeenAt: Date.now(),
+                isConnecting: false,
+                errorAt: null,
+                closedAt: null,
+              });
+              setPhase("ready");
+              setNotice(null);
+              setErrorMessage(null);
+            })
+            .catch(() => {
+              if (!cancelled) {
+                updateSource("upbit", {
+                  isConnecting: false,
+                  errorAt: Date.now(),
+                });
+                syncFallbackState();
+              }
             });
-            setPhase("ready");
-            setSource("live");
-            setErrorMessage(null);
-            setNotice("Upbit KRW와 USD 환산가를 조합해 김프를 계산 중입니다.");
-          }).catch(() => {
-            if (!cancelled) {
-              setErrorMessage("upbit_live_payload_decode_failed");
-            }
-          });
         };
 
         socket.onerror = () => {
@@ -349,17 +564,30 @@ export function MarketTickerStrip({
             return;
           }
 
-          if (!hasSnapshotRef.current && !hasAnyLive()) {
-            applyLocalFallback("Upbit 실시간 연결이 열리지 않아 예시 시세로 대체했습니다.", "upbit_live_stream_unavailable");
+          hasUpbitLive = false;
+          updateSource("upbit", {
+            isConnecting: false,
+            errorAt: Date.now(),
+          });
+
+          if (!hasSnapshot && !hasAnyLive()) {
+            applyLocalFallback(
+              "Upbit 실시간 연결이 열리지 않아 예시 시세로 대체했습니다.",
+              "upbit_live_stream_unavailable",
+            );
             return;
           }
 
-          setErrorMessage("upbit_live_stream_unavailable");
+          syncFallbackState();
         };
 
         socket.onclose = () => {
-          hasUpbitLiveRef.current = false;
-          syncSourceAfterSocketClose();
+          hasUpbitLive = false;
+          updateSource("upbit", {
+            isConnecting: false,
+            closedAt: Date.now(),
+          });
+          syncFallbackState();
         };
       } catch (error) {
         applyLocalFallback(
@@ -370,15 +598,16 @@ export function MarketTickerStrip({
     };
 
     setPhase("loading");
-    setSource("idle");
     setItems([]);
     setMiniCharts({});
-    setExpandedId(null);
-    setNotice("Binance USD / Upbit KRW 시세 연결을 준비 중입니다.");
+    setSelectedItemId(null);
+    setNotice(null);
     setErrorMessage(null);
-    hasSnapshotRef.current = false;
-    hasBinanceLiveRef.current = false;
-    hasUpbitLiveRef.current = false;
+    setSourceHealth(createInitialSourceHealth());
+    hasSnapshot = false;
+    hasBinanceLive = false;
+    hasUpbitLive = false;
+    hasEverReceivedLive = false;
 
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       applyLocalFallback("오프라인 상태라 예시 USD/KRW 시세를 먼저 표시합니다.", "offline");
@@ -394,10 +623,7 @@ export function MarketTickerStrip({
 
         setMiniCharts((currentCharts) => {
           const fallbackEntries = Object.fromEntries(
-            symbols.map((definition) => [
-              definition.id,
-              fallbackChartForDefinition(definition),
-            ]),
+            symbols.map((definition) => [definition.id, fallbackChartForDefinition(definition)]),
           );
 
           return {
@@ -411,12 +637,14 @@ export function MarketTickerStrip({
         if (cancelled) {
           return;
         }
+
         setMiniCharts(
           Object.fromEntries(
             symbols.map((definition) => [definition.id, fallbackChartForDefinition(definition)]),
           ),
         );
       });
+
     connectBinanceStream();
     connectUpbitStream();
 
@@ -428,14 +656,14 @@ export function MarketTickerStrip({
       cancelled = true;
       window.clearInterval(refreshTimer);
 
-      if (binanceSocketRef.current) {
-        binanceSocketRef.current.close();
-        binanceSocketRef.current = null;
+      if (binanceSocket) {
+        binanceSocket.close();
+        binanceSocket = null;
       }
 
-      if (upbitSocketRef.current) {
-        upbitSocketRef.current.close();
-        upbitSocketRef.current = null;
+      if (upbitSocket) {
+        upbitSocket.close();
+        upbitSocket = null;
       }
     };
   }, [symbols]);
@@ -450,6 +678,41 @@ export function MarketTickerStrip({
     }
     return latest;
   }, null);
+  const visibleUpdatedAt =
+    lastUpdatedAt == null ? null : Math.trunc(lastUpdatedAt / 1000) * 1000;
+  const sourceChips = useMemo<MarketTickerSourceChip[]>(
+    () => [
+      {
+        id: "binance",
+        label: "Binance",
+        status: sourceStatus(sourceHealth.binance, clock, phase),
+      },
+      {
+        id: "upbit",
+        label: "Upbit",
+        status: sourceStatus(sourceHealth.upbit, clock, phase),
+      },
+      {
+        id: "fx",
+        label: "FX",
+        status: sourceStatus(sourceHealth.fx, clock, phase),
+      },
+      {
+        id: "snapshot",
+        label: "Snapshot",
+        status: sourceStatus(sourceHealth.snapshot, clock, phase),
+      },
+    ],
+    [clock, phase, sourceHealth],
+  );
+  const selectedItem = selectedItemId
+    ? items.find((item) => item.id === selectedItemId) ?? null
+    : null;
+  const selectedDefinition = selectedItem
+    ? symbols.find((entry) => entry.id === selectedItem.id) ??
+      DEFAULT_MARKET_TICKER_SYMBOLS.find((entry) => entry.id === selectedItem.id) ??
+      null
+    : null;
 
   if (symbols.length === 0) {
     return (
@@ -479,30 +742,18 @@ export function MarketTickerStrip({
         </div>
 
         <div className={styles.headerMeta}>
-          <span className={styles.sourcePill} data-source={source}>
-            <span className={styles.sourceDot} />
-            {sourceLabel(source)}
-          </span>
+          <MarketTickerSourceChips sources={sourceChips} />
           <span className={styles.updatedAt}>
-            {formatMarketTickerUpdatedAt(lastUpdatedAt)}
+            마지막 갱신 {formatMarketTickerUpdatedAt(visibleUpdatedAt)} KST
           </span>
         </div>
       </div>
 
-      <p
-        className={styles.notice}
-        data-tone={
-          phase === "fallback" || errorMessage
-            ? "warn"
-            : phase === "error"
-              ? "bad"
-              : "neutral"
-        }
-      >
-        {phase === "loading"
-          ? "Binance USD / Upbit KRW 시세 연결을 준비 중입니다."
-          : notice}
-      </p>
+      {notice ? (
+        <p className={styles.notice} data-tone={errorMessage ? "warn" : "neutral"}>
+          {notice}
+        </p>
+      ) : null}
 
       {phase === "loading" ? (
         <div className={styles.strip}>
@@ -515,7 +766,6 @@ export function MarketTickerStrip({
           {items.map((item) => {
             const changeValue = item.usdChange24hPct ?? item.krwChange24hPct;
             const premiumTone = marketTickerTone(item.kimchiPremiumPct);
-            const isExpanded = expandedId === item.id;
             const definition =
               symbols.find((entry) => entry.id === item.id) ??
               DEFAULT_MARKET_TICKER_SYMBOLS.find((entry) => entry.id === item.id);
@@ -534,9 +784,7 @@ export function MarketTickerStrip({
                 </div>
 
                 <div className={styles.priceBlock}>
-                  <strong className={styles.price}>
-                    {formatMarketTickerPrice(item.priceUsd)}
-                  </strong>
+                  <strong className={styles.price}>{formatMarketTickerPrice(item.priceUsd)}</strong>
                   <span className={styles.secondaryPrice}>
                     {formatMarketTickerKrwPrice(item.priceKrw)}
                   </span>
@@ -584,19 +832,14 @@ export function MarketTickerStrip({
                       <button
                         type="button"
                         className={styles.detailButton}
-                        onClick={() =>
-                          setExpandedId((current) => (current === item.id ? null : item.id))
-                        }
+                        aria-haspopup="dialog"
+                        onClick={() => setSelectedItemId(item.id)}
                       >
-                        {isExpanded ? "차트 접기" : "차트 보기"}
+                        상세 차트
                       </button>
                     ) : null}
                   </div>
                 </div>
-
-                {isExpanded && definition ? (
-                  <MarketDetailChart definition={definition} item={item} />
-                ) : null}
               </article>
             );
           })}
@@ -609,6 +852,13 @@ export function MarketTickerStrip({
           </p>
         </div>
       )}
+
+      <MarketDetailChartModal
+        definition={selectedDefinition}
+        item={selectedItem}
+        isOpen={selectedItem != null && selectedDefinition != null}
+        onClose={() => setSelectedItemId(null)}
+      />
     </section>
   );
 }

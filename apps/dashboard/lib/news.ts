@@ -22,6 +22,7 @@ export interface NewsItem {
 
 export interface NewsWidgetData {
   generatedAt: string;
+  lastUpdatedAt: string;
   source: NewsDataSource;
   items: NewsItem[];
 }
@@ -60,6 +61,22 @@ function parseTags(raw: string): string[] {
     .map((tag) => tag.trim())
     .filter(Boolean)
     .slice(0, 3);
+}
+
+function newestTimestamp(values: string[]): string {
+  let latestTime: number | null = null;
+
+  for (const value of values) {
+    const time = parseDateTimeSafe(compactString(value));
+    if (time == null) {
+      continue;
+    }
+    if (latestTime == null || time > latestTime) {
+      latestTime = time;
+    }
+  }
+
+  return latestTime == null ? "" : new Date(latestTime).toISOString();
 }
 
 function toNewsItem(row: NewsFeedRow): NewsItem | null {
@@ -103,6 +120,12 @@ function pickNewsFeedItems(rows: NewsFeedRow[], limit: number): NewsItem[] {
     .slice(0, limit);
 }
 
+function getNewsFeedLastUpdated(rows: NewsFeedRow[]): string {
+  return newestTimestamp(
+    rows.flatMap((row) => [compactString(row.fetched_at), compactString(row.published_at)])
+  );
+}
+
 function latestDailyBrief(rows: DailyBriefRow[]): DailyBriefRow | null {
   return (
     newestFirst(rows, (row) => {
@@ -113,6 +136,16 @@ function latestDailyBrief(rows: DailyBriefRow[]): DailyBriefRow | null {
 
 function newestSignals(rows: SignalRow[], limit: number): SignalRow[] {
   return newestFirst(rows, (row) => parseDateTimeSafe(row.created_at)).slice(0, limit);
+}
+
+function getDerivedLastUpdated(
+  briefs: DailyBriefRow[],
+  signals: SignalRow[]
+): string {
+  return newestTimestamp([
+    ...briefs.flatMap((row) => [compactString(row.created_at), compactString(row.date)]),
+    ...signals.map((row) => compactString(row.created_at)),
+  ]);
 }
 
 function buildDerivedItems(
@@ -213,6 +246,7 @@ export async function loadNewsWidgetData(
   if (newsFeedItems.length > 0) {
     return {
       generatedAt,
+      lastUpdatedAt: getNewsFeedLastUpdated(newsFeedRows),
       source: "news_feed",
       items: newsFeedItems,
     };
@@ -223,6 +257,7 @@ export async function loadNewsWidgetData(
   if (derivedItems.length > 0) {
     return {
       generatedAt,
+      lastUpdatedAt: getDerivedLastUpdated(briefs, signals),
       source: "derived",
       items: derivedItems,
     };
@@ -230,6 +265,7 @@ export async function loadNewsWidgetData(
 
   return {
     generatedAt,
+    lastUpdatedAt: "",
     source: "fallback",
     items: buildFallbackItems(),
   };

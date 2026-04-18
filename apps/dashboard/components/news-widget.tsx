@@ -7,6 +7,36 @@ type NewsWidgetProps = {
   data?: NewsWidgetData;
 };
 
+function formatUpdatedAt(value: string): string {
+  if (!value) {
+    return "업데이트 대기";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  );
+
+  return `${values.year}.${values.month}.${values.day} ${values.hour}:${values.minute}:${values.second}`;
+}
+
 function formatPublishedAt(value: string): string {
   if (!value) {
     return "업데이트 대기";
@@ -62,7 +92,15 @@ export async function NewsWidget({ limit = 4, data }: NewsWidgetProps) {
         </span>
       </div>
 
-      <p className={styles.caption}>{sourceCaption(resolved.source)}</p>
+      <div className={styles.metaBlock}>
+        <p className={styles.caption}>{sourceCaption(resolved.source)}</p>
+        <p className={styles.updatedAt}>
+          마지막 갱신{" "}
+          <time dateTime={resolved.lastUpdatedAt || undefined}>
+            {formatUpdatedAt(resolved.lastUpdatedAt)}
+          </time>
+        </p>
+      </div>
 
       <div className={styles.list}>
         {resolved.items.map((item) => {

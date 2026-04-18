@@ -2,8 +2,8 @@
    / — user-persona market intelligence
    -------------------------------------------------------------------------
    Layer 4 (Components) — token-consumer only, zero hex/rgba/oklch literals.
-   Structural shell: TopNavbar (fixed) + InsightsSidebar (left) + content (right).
-   Mobile (≤768px): sidebar collapses to horizontal tab row (see sidebar module).
+   Structural shell: TopNavbar (fixed) + InsightsSidebar + content + news rail.
+   Tablet/mobile (≤1023px): sidebar becomes horizontal top nav and news rail moves below.
    ========================================================================== */
 
 /* ── Page shell ──────────────────────────────────────────────────────────── */
@@ -14,19 +14,20 @@
   background: var(--paper);
 }
 
-/* ── Layout shell: InsightsSidebar + content ─────────────────────────────── */
+/* ── Layout shell: InsightsSidebar + content + news rail ─────────────────── */
 .layoutShell {
   display: flex;
-  gap: var(--space-xl);
-  max-width: 1280px;
+  flex-direction: column;
+  gap: var(--space-lg);
+  max-width: 1520px;
   margin: 0 auto;
-  padding: calc(var(--inset-navbar) + var(--space-md)) var(--space-md) var(--space-4xl);
-  align-items: flex-start;
+  padding: calc(var(--inset-navbar) + var(--space-md)) var(--space-sm) var(--space-4xl);
+  align-items: stretch;
 }
 
 /* ── Content column ──────────────────────────────────────────────────────── */
 .content {
-  flex: 1;
+  width: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -35,6 +36,11 @@
 
 .tickerSlot {
   width: 100%;
+}
+
+.newsRail {
+  width: 100%;
+  min-width: 0;
 }
 
 /* ── Page header ─────────────────────────────────────────────────────────── */
@@ -1074,10 +1080,82 @@
   }
 }
 
-/* ── Mobile: sidebar collapses to horizontal tab row on top ──────────────── */
+/* ── Desktop shell: 3-column layout ──────────────────────────────────────── */
+@media (min-width: 1024px) {
+  .layoutShell {
+    display: grid;
+    grid-template-columns: minmax(220px, 220px) minmax(0, 1fr) minmax(300px, 336px);
+    gap: var(--space-xl);
+    align-items: flex-start;
+  }
+
+  .content {
+    grid-column: 2;
+  }
+
+  .newsRail {
+    grid-column: 3;
+    position: sticky;
+    top: calc(var(--inset-navbar) + var(--space-sm));
+    align-self: flex-start;
+    max-height: calc(100vh - var(--inset-navbar) - var(--space-md));
+    overflow-y: auto;
+    padding-bottom: var(--space-xs);
+  }
+}
+
+/* ── Top-nav layout: sidebar collapses above content and news follows below ─ */
+@media (max-width: 1023px) {
+  .layoutShell :global(aside[aria-label="인사이트 내비게이션"]) {
+    width: 100%;
+    min-width: 0;
+    flex-direction: row;
+    align-items: center;
+    position: static;
+    padding: var(--space-xs) var(--space-md);
+    border-radius: var(--radius-none);
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    gap: var(--space-2xs);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: var(--space-md);
+    scrollbar-width: none;
+  }
+
+  .layoutShell :global(aside[aria-label="인사이트 내비게이션"]::-webkit-scrollbar) {
+    display: none;
+  }
+
+  .layoutShell :global(aside[aria-label="인사이트 내비게이션"] > div:first-child) {
+    display: none;
+  }
+
+  .layoutShell :global(aside[aria-label="인사이트 내비게이션"] > nav) {
+    display: flex;
+    flex-direction: row;
+    gap: var(--space-3xs);
+    flex: 1;
+  }
+
+  .layoutShell :global(aside[aria-label="인사이트 내비게이션"] > nav a) {
+    scroll-snap-align: start;
+    flex-shrink: 0;
+    padding: var(--space-2xs) var(--space-sm);
+    font-size: var(--text-xs);
+    gap: var(--space-2xs);
+    white-space: nowrap;
+  }
+
+  .layoutShell :global(aside[aria-label="인사이트 내비게이션"] > nav a .material-symbols-outlined) {
+    display: none;
+  }
+}
+
+/* ── Mobile adjustments ──────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .layoutShell {
-    flex-direction: column;
     gap: var(--space-md);
     padding: var(--inset-navbar) var(--space-sm) var(--space-2xl);
   }

@@ -103,6 +103,9 @@ TAB_MARKET_SNAPSHOTS = "market_snapshots"
 TAB_WALLET_ACTIVITY_SNAPSHOTS = "wallet_activity_snapshots"
 TAB_WHALE_STORIES = "whale_stories"
 TAB_BROADCAST_LOG = "broadcast_log"
+TAB_LLM_BUDGET_LOG = "llm_budget_log"
+TAB_CURATED_WALLET_BALANCES = "curated_wallet_balances"
+TAB_CHANNEL_HEALTH = "channel_health"
 
 WATCHED_ADDRESSES_HEADERS = [
     "address", "chain", "category", "label", "source",
@@ -175,6 +178,42 @@ BROADCAST_LOG_HEADERS = [
     "ts", "kind", "dedup_key", "chat_id", "message_id", "status", "error",
 ]
 
+LLM_BUDGET_LOG_HEADERS = [
+    "ts",
+    "month_key",
+    "pipeline",
+    "model_id",
+    "tokens_in",
+    "tokens_out",
+    "cost_usd",
+    "cumulative_cost_usd",
+    "decision",
+]
+
+CURATED_WALLET_BALANCES_HEADERS = [
+    "wallet_id",
+    "chain",
+    "address",
+    "owner_label",
+    "owner_category",
+    "approx_balance",
+    "source_ref",
+    "source_url",
+    "note",
+    "is_active",
+    "updated_at",
+]
+
+CHANNEL_HEALTH_HEADERS = [
+    "ts",
+    "chat_id",
+    "title",
+    "username",
+    "member_count",
+    "status",
+    "error",
+]
+
 ALL_TABS.extend([
     TAB_WATCHED_ADDRESSES,
     TAB_ADDRESS_ACTIVITY,
@@ -190,6 +229,9 @@ ALL_TABS.extend([
     TAB_WALLET_ACTIVITY_SNAPSHOTS,
     TAB_WHALE_STORIES,
     TAB_BROADCAST_LOG,
+    TAB_LLM_BUDGET_LOG,
+    TAB_CURATED_WALLET_BALANCES,
+    TAB_CHANNEL_HEALTH,
 ])
 
 TAB_HEADERS.update({
@@ -207,4 +249,7 @@ TAB_HEADERS.update({
     TAB_WALLET_ACTIVITY_SNAPSHOTS: WALLET_ACTIVITY_SNAPSHOTS_HEADERS,
     TAB_WHALE_STORIES: WHALE_STORIES_HEADERS,
     TAB_BROADCAST_LOG: BROADCAST_LOG_HEADERS,
+    TAB_LLM_BUDGET_LOG: LLM_BUDGET_LOG_HEADERS,
+    TAB_CURATED_WALLET_BALANCES: CURATED_WALLET_BALANCES_HEADERS,
+    TAB_CHANNEL_HEALTH: CHANNEL_HEALTH_HEADERS,
 })

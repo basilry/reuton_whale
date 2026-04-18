@@ -340,11 +340,9 @@ export default async function InsightsPage() {
     <main className={styles.page}>
       <TopNavbar />
 
-      {/* ── Layout Shell: InsightsSidebar + content ── */}
+      {/* ── Layout Shell: InsightsSidebar + content + news rail ── */}
       <div className={styles.layoutShell}>
-        <InsightsSidebar>
-          <NewsWidget limit={4} />
-        </InsightsSidebar>
+        <InsightsSidebar />
 
         {/* ── Content ── */}
         <div className={styles.content}>
@@ -596,7 +594,12 @@ export default async function InsightsPage() {
             {!state.sourceConnected ? <p className={styles.riskMeta}>데이터 연결을 확인 중입니다. 잠시 후 다시 시도하세요.</p> : null}
           </article>
         </div>
-      </div>{/* layoutShell */}
+
+        <aside className={styles.newsRail} aria-label="뉴스 및 큐레이션">
+          <NewsWidget limit={4} />
+        </aside>
+      </div>
+      {/* layoutShell */}
 
       {/* ── Footer ── */}
       <footer className={styles.footer}>

@@ -1,7 +1,7 @@
 import hashlib
 import json
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -10,7 +10,10 @@ from src.storage.queries import dict_to_row, now_iso, row_to_dict
 from src.storage.schema import (
     ADDRESS_ACTIVITY_HEADERS,
     BROADCAST_LOG_HEADERS,
+    CHANNEL_HEALTH_HEADERS,
+    CURATED_WALLET_BALANCES_HEADERS,
     CURATED_WALLETS_HEADERS,
+    LLM_BUDGET_LOG_HEADERS,
     NEWS_FEED_HEADERS,
     ALL_TABS,
     ANALYSIS_LOG_HEADERS,
@@ -21,9 +24,12 @@ from src.storage.schema import (
     TAB_ADDRESS_ACTIVITY,
     TAB_ANALYSIS_LOG,
     TAB_BROADCAST_LOG,
+    TAB_CHANNEL_HEALTH,
+    TAB_CURATED_WALLET_BALANCES,
     TAB_CURATED_WALLETS,
     TAB_DAILY_BRIEF,
     TAB_HEADERS,
+    TAB_LLM_BUDGET_LOG,
     TAB_NEWS_FEED,
     TAB_SIGNALS,
     TAB_SUBSCRIBERS,
@@ -33,11 +39,13 @@ from src.storage.schema import (
     TAB_USER_INTERESTS,
     TAB_WATCHED_ADDRESSES,
     TAB_WEEKLY_TREND,
+    TAB_WHALE_STORIES,
     TG_WHALE_EVENTS_HEADERS,
     TRANSACTIONS_HEADERS,
     USER_INTERESTS_HEADERS,
     WATCHED_ADDRESSES_HEADERS,
     WEEKLY_TREND_HEADERS,
+    WHALE_STORIES_HEADERS,
 )
 from src.utils.errors import StorageError
 from src.utils.logger import get_logger
@@ -95,6 +103,31 @@ def _normalize_event_time(row: dict) -> datetime | None:
     return _parse_dt(row.get("tg_date") or row.get("collected_at"))
 
 
+def _parse_row_time(value: str) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        if raw.isdigit():
+            return datetime.fromtimestamp(int(raw), tz=timezone.utc)
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    except (TypeError, ValueError):
+        return None
+
+
+def _json_loads_safe(value: str) -> dict | list | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
 class SheetsClient:
     def __init__(self, sheet_id: str, credentials_json: str):
         try:
@@ -150,6 +183,37 @@ class SheetsClient:
             except gspread.exceptions.APIError as e:
                 raise StorageError(f"Failed to append transactions: {e}") from e
 
+    @retry(max_retries=3, base_delay=2.0)
+    def list_transactions(
+        self,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
+        try:
+            ws = self._worksheet(TAB_TRANSACTIONS)
+            all_values = ws.get_all_values()
+            if len(all_values) <= 1:
+                return []
+
+            rows = [row_to_dict(row, TRANSACTIONS_HEADERS) for row in all_values[1:]]
+            if since is not None:
+                filtered: list[dict] = []
+                for row in rows:
+                    row_time = _parse_row_time(row.get("created_at") or row.get("timestamp", ""))
+                    if row_time is None:
+                        continue
+                    if row_time.tzinfo is None and since.tzinfo is not None:
+                        row_time = row_time.replace(tzinfo=since.tzinfo)
+                    if row_time >= since:
+                        filtered.append(row)
+                rows = filtered
+
+            if limit is not None and limit >= 0:
+                rows = rows[-limit:] if limit else []
+            return rows
+        except gspread.exceptions.APIError as e:
+            raise StorageError(f"Failed to list transactions: {e}") from e
+
     # --- daily_brief ---
 
     @retry(max_retries=3, base_delay=2.0)
@@ -185,6 +249,17 @@ class SheetsClient:
             ]
         except gspread.exceptions.APIError as e:
             raise StorageError(f"Failed to get daily brief: {e}") from e
+
+    @retry(max_retries=3, base_delay=2.0)
+    def get_latest_daily_brief(self) -> dict | None:
+        try:
+            ws = self._worksheet(TAB_DAILY_BRIEF)
+            all_values = ws.get_all_values()
+            if len(all_values) <= 1:
+                return None
+            return row_to_dict(all_values[-1], DAILY_BRIEF_HEADERS)
+        except gspread.exceptions.APIError as e:
+            raise StorageError(f"Failed to get latest daily brief: {e}") from e
 
     # --- subscribers ---
 
@@ -621,6 +696,98 @@ class SheetsClient:
                 raise StorageError(f"Failed to upsert curated wallets: {e}") from e
 
     @retry(max_retries=3, base_delay=2.0)
+    def list_curated_wallets(self, active_only: bool = True) -> list[dict]:
+        try:
+            ws = self._worksheet(TAB_CURATED_WALLETS)
+            all_values = ws.get_all_values()
+            if len(all_values) <= 1:
+                return []
+            rows = [row_to_dict(row, CURATED_WALLETS_HEADERS) for row in all_values[1:]]
+            if not active_only:
+                return rows
+            return [
+                row for row in rows
+                if str(row.get("is_active", "true")).strip().lower() not in {"false", "0", "no"}
+            ]
+        except gspread.exceptions.APIError as e:
+            raise StorageError(f"Failed to list curated wallets: {e}") from e
+
+    @retry(max_retries=3, base_delay=2.0)
+    def upsert_curated_wallet_balances(self, balances: list[dict]) -> dict[str, int]:
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_CURATED_WALLET_BALANCES)
+                all_values = ws.get_all_values()
+                id_col = CURATED_WALLET_BALANCES_HEADERS.index("wallet_id")
+                chain_col = CURATED_WALLET_BALANCES_HEADERS.index("chain")
+                address_col = CURATED_WALLET_BALANCES_HEADERS.index("address")
+
+                existing_by_id: dict[str, tuple[int, dict]] = {}
+                existing_by_address: dict[tuple[str, str], tuple[int, dict]] = {}
+                for row_idx, row in enumerate(all_values[1:], start=2):
+                    entry = row_to_dict(row, CURATED_WALLET_BALANCES_HEADERS)
+                    wallet_id = str(entry.get("wallet_id", "")).strip().lower()
+                    chain = str(entry.get("chain", "")).strip().lower()
+                    address = self._normalize_curated_wallet_address(
+                        entry.get("address", ""), chain
+                    )
+                    if wallet_id:
+                        existing_by_id[wallet_id] = (row_idx, entry)
+                    if chain and address:
+                        existing_by_address[(chain, address)] = (row_idx, entry)
+
+                now = now_iso()
+                inserted = 0
+                updated = 0
+                invalid = 0
+                for balance in balances:
+                    entry = dict(balance)
+                    wallet_id = str(entry.get("wallet_id", "")).strip()
+                    chain = str(entry.get("chain", "")).strip()
+                    address = str(entry.get("address", "")).strip()
+                    if not wallet_id or not chain or not address:
+                        invalid += 1
+                        continue
+
+                    key_by_id = wallet_id.lower()
+                    key_by_address = (
+                        chain.lower(),
+                        self._normalize_curated_wallet_address(address, chain),
+                    )
+                    existing = existing_by_id.get(key_by_id) or existing_by_address.get(key_by_address)
+
+                    entry["wallet_id"] = wallet_id
+                    entry["chain"] = chain
+                    entry["address"] = address
+                    entry["updated_at"] = entry.get("updated_at") or now
+                    entry.setdefault("is_active", "true")
+
+                    if existing is not None:
+                        row_idx, current = existing
+                        merged = {**current, **entry}
+                        self._write_row(ws, row_idx, merged, CURATED_WALLET_BALANCES_HEADERS)
+                        updated += 1
+                        continue
+
+                    ws.append_row(
+                        dict_to_row(entry, CURATED_WALLET_BALANCES_HEADERS),
+                        value_input_option="RAW",
+                    )
+                    inserted += 1
+                    existing_by_id[key_by_id] = (-1, entry)
+                    existing_by_address[key_by_address] = (-1, entry)
+
+                logger.info(
+                    "Upserted curated wallet balances: %d inserted, %d updated, %d invalid",
+                    inserted,
+                    updated,
+                    invalid,
+                )
+                return {"inserted": inserted, "updated": updated, "invalid": invalid}
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to upsert curated wallet balances: {e}") from e
+
+    @retry(max_retries=3, base_delay=2.0)
     def append_missing_watched_addresses(self, addresses: list[dict]) -> dict[str, int]:
         """Append missing watched addresses with one read and one batch write."""
         with self._write_lock:
@@ -895,6 +1062,37 @@ class SheetsClient:
             except gspread.exceptions.APIError as e:
                 raise StorageError(f"Failed to append signal: {e}") from e
 
+    @retry(max_retries=3, base_delay=2.0)
+    def list_signals(
+        self,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
+        try:
+            ws = self._worksheet(TAB_SIGNALS)
+            all_values = ws.get_all_values()
+            if len(all_values) <= 1:
+                return []
+
+            rows = [row_to_dict(row, SIGNALS_HEADERS) for row in all_values[1:]]
+            if since is not None:
+                filtered: list[dict] = []
+                for row in rows:
+                    row_time = _parse_row_time(row.get("created_at") or row.get("window_end", ""))
+                    if row_time is None:
+                        continue
+                    if row_time.tzinfo is None and since.tzinfo is not None:
+                        row_time = row_time.replace(tzinfo=since.tzinfo)
+                    if row_time >= since:
+                        filtered.append(row)
+                rows = filtered
+
+            if limit is not None and limit >= 0:
+                rows = rows[-limit:] if limit else []
+            return rows
+        except gspread.exceptions.APIError as e:
+            raise StorageError(f"Failed to list signals: {e}") from e
+
     # --- weekly_trend ---
 
     @retry(max_retries=3, base_delay=2.0)
@@ -985,6 +1183,112 @@ class SheetsClient:
             return [r for r in rows if r.get("chat_id", "") == target]
         except gspread.exceptions.APIError as e:
             raise StorageError(f"Failed to list user interests: {e}") from e
+
+    # --- whale_stories ---
+
+    @retry(max_retries=3, base_delay=2.0)
+    def append_whale_story(self, story: dict) -> None:
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_WHALE_STORIES)
+                all_values = ws.get_all_values()
+                id_col = WHALE_STORIES_HEADERS.index("id")
+                signal_col = WHALE_STORIES_HEADERS.index("signal_id")
+                target_id = str(story.get("id", ""))
+                target_signal = str(story.get("signal_id", ""))
+                if len(all_values) > 1:
+                    for row in all_values[1:]:
+                        if (
+                            id_col < len(row) and row[id_col] == target_id
+                        ) or (
+                            signal_col < len(row) and target_signal and row[signal_col] == target_signal
+                        ):
+                            logger.debug("Duplicate whale_story skipped: %s", target_id or target_signal)
+                            return
+                story.setdefault("published_at", now_iso())
+                ws.append_row(dict_to_row(story, WHALE_STORIES_HEADERS), value_input_option="RAW")
+                logger.info("Appended whale story: %s", target_id or target_signal)
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to append whale story: {e}") from e
+
+    # --- llm_budget_log ---
+
+    @retry(max_retries=3, base_delay=2.0)
+    def append_llm_budget_log(self, entry: dict) -> None:
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_LLM_BUDGET_LOG)
+                normalized = {
+                    "ts": entry.get("ts", now_iso()),
+                    "month_key": str(entry.get("month_key", "")),
+                    "pipeline": str(entry.get("pipeline", "")),
+                    "model_id": str(entry.get("model_id", "")),
+                    "tokens_in": entry.get("tokens_in", 0),
+                    "tokens_out": entry.get("tokens_out", 0),
+                    "cost_usd": entry.get("cost_usd", 0.0),
+                    "cumulative_cost_usd": entry.get("cumulative_cost_usd", 0.0),
+                    "decision": str(entry.get("decision", "")),
+                }
+                ws.append_row(
+                    dict_to_row(normalized, LLM_BUDGET_LOG_HEADERS),
+                    value_input_option="RAW",
+                )
+                logger.info(
+                    "Appended llm_budget_log pipeline=%s decision=%s cumulative=%s",
+                    normalized["pipeline"],
+                    normalized["decision"],
+                    normalized["cumulative_cost_usd"],
+                )
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to append llm budget log: {e}") from e
+
+    @retry(max_retries=3, base_delay=2.0)
+    def list_llm_budget_log(
+        self,
+        month_key: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
+        try:
+            ws = self._worksheet(TAB_LLM_BUDGET_LOG)
+            all_values = ws.get_all_values()
+            if len(all_values) <= 1:
+                return []
+            rows = [row_to_dict(row, LLM_BUDGET_LOG_HEADERS) for row in all_values[1:]]
+            if month_key:
+                rows = [row for row in rows if row.get("month_key", "") == month_key]
+            if limit is not None and limit >= 0:
+                rows = rows[-limit:] if limit else []
+            return rows
+        except gspread.exceptions.APIError as e:
+            raise StorageError(f"Failed to list llm budget log: {e}") from e
+
+    # --- channel_health ---
+
+    @retry(max_retries=3, base_delay=2.0)
+    def append_channel_health(self, entry: dict) -> None:
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_CHANNEL_HEALTH)
+                normalized = {
+                    "ts": entry.get("ts", now_iso()),
+                    "chat_id": str(entry.get("chat_id", "")),
+                    "title": str(entry.get("title", "")),
+                    "username": str(entry.get("username", "")),
+                    "member_count": str(entry.get("member_count", "")),
+                    "status": str(entry.get("status", "")),
+                    "error": str(entry.get("error", ""))[:1000],
+                }
+                ws.append_row(
+                    dict_to_row(normalized, CHANNEL_HEALTH_HEADERS),
+                    value_input_option="RAW",
+                )
+                logger.info(
+                    "Appended channel health status=%s chat=%s",
+                    normalized["status"],
+                    normalized["chat_id"],
+                )
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to append channel health: {e}") from e
 
     # --- internal helpers ---
 
