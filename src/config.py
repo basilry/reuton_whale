@@ -11,6 +11,10 @@ class Config:
     google_credentials: str
     telegram_token: str
     solscan_api_key: str = ""
+    telegram_broadcast_enabled: bool = False
+    telegram_broadcast_dry_run: bool = True
+    telegram_broadcast_chat: str = "@whalescope_alertz"
+    telegram_broadcast_token: str = ""
     telethon_api_id: int = 0
     telethon_api_hash: str = ""
     telethon_session: str = "whalescope"
@@ -41,8 +45,27 @@ def _set_llm_values(values: dict, require_one: bool) -> None:
         )
 
 
+def _get_bool(env_var: str, default: bool) -> bool:
+    raw = os.getenv(env_var)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _set_optional_values(values: dict) -> None:
     values["solscan_api_key"] = os.getenv("SOLSCAN_API_KEY", "")
+    values["telegram_broadcast_enabled"] = _get_bool(
+        "TELEGRAM_BROADCAST_ENABLED", default=False
+    )
+    values["telegram_broadcast_dry_run"] = _get_bool(
+        "TELEGRAM_BROADCAST_DRY_RUN", default=True
+    )
+    values["telegram_broadcast_chat"] = os.getenv(
+        "TELEGRAM_BROADCAST_CHAT", "@whalescope_alertz"
+    )
+    values["telegram_broadcast_token"] = os.getenv(
+        "TELEGRAM_BROADCAST_BOT_TOKEN", ""
+    )
     raw_api_id = os.getenv("TELETHON_API_ID", "0")
     values["telethon_api_id"] = int(raw_api_id) if raw_api_id.isdigit() else 0
     values["telethon_api_hash"] = os.getenv("TELETHON_API_HASH", "")

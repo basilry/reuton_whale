@@ -18,6 +18,7 @@ The dashboards are read-only. They do not collect blockchain data by themselves.
 - latest Korean daily brief
 - recent whale transactions
 - rule-based signal outputs
+- compact news/context cards from `news_feed`, with a safe fallback to latest briefs/signals when the tab is empty
 - latest pipeline/system log events
 - Telegram listener health from `system_log` heartbeat rows, with latest `tg_whale_events` as a fallback, not from generic Sheets connectivity
 
@@ -135,12 +136,15 @@ curl -sS "http://127.0.0.1:3000/api/system-log?limit=2"
 | `/api/transactions?limit=20` | Recent transaction rows |
 | `/api/signals?limit=20` | Recent signal rows |
 | `/api/system-log?limit=25` | Recent system log rows |
+| `/api/news?limit=4` | Compact user-home news/context payload, preferring `news_feed` rows |
 | `/api/qr?data=...` | Internal SVG QR generator for the Telegram CTA |
 | `/api/admin/session` | Browser session login/logout for `/admin` |
 
 All routes use the Node.js runtime and read Google Sheets on the server side.
 
 The curated wallet registry prefers Sheets-backed rows when the optional `curated_wallets`, `wallet_aliases`, and `watchlist_overrides` tabs exist. If those tabs are missing, the dashboard falls back to the in-repo seed and keeps the UI contract stable. Watchlist toggles are written as append-only override rows so the latest value wins without needing an in-place sheet update.
+
+The user-home news foundation follows the same pattern. `src/ingestion/news_rss.py` can append public RSS headlines into the optional `news_feed` tab, the public `/api/news` route reads those rows for the homepage, and `NewsWidget` is a compact server component sized to sit beneath the left sidebar. If `news_feed` is empty or unavailable, the widget degrades to brief/signal-derived context instead of throwing a hard empty state.
 
 ## Vercel Deployment
 

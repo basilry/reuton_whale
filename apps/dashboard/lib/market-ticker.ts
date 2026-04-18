@@ -38,6 +38,21 @@ export type MarketTickerItem = {
   source: MarketTickerSource;
 };
 
+export type MarketTickerChartRange = "1m" | "5m" | "1h" | "1d";
+
+export type MarketTickerChartMetric = "usd" | "krw";
+
+export type MarketTickerChartPoint = {
+  timestamp: number;
+  value: number;
+};
+
+export type MarketTickerDetailSeries = {
+  range: MarketTickerChartRange;
+  usdPoints: MarketTickerChartPoint[];
+  krwPoints: MarketTickerChartPoint[];
+};
+
 type Binance24HourTicker = {
   symbol?: string;
   lastPrice?: string;
@@ -84,6 +99,27 @@ type UpbitTickerQuote = {
   updatedAt: number | null;
 };
 
+type BinanceKlineRow = [
+  number,
+  string,
+  string,
+  string,
+  string,
+  string,
+  number,
+  string,
+  number,
+  string,
+  string,
+  string,
+];
+
+type UpbitCandle = {
+  timestamp?: number;
+  candle_date_time_utc?: string;
+  trade_price?: number;
+};
+
 type MergeSnapshotOptions = {
   definitions?: MarketTickerDefinition[];
   binanceQuotes?: Map<string, BinanceTickerQuote>;
@@ -91,6 +127,42 @@ type MergeSnapshotOptions = {
   fxQuote?: UsdKrwFxQuote | null;
   source: MarketTickerSource;
   useFallbackValues: boolean;
+};
+
+type MarketTickerChartRangeConfig = {
+  binanceInterval: string;
+  upbitEndpoint: "minutes" | "days";
+  upbitUnit?: number;
+  pointCount: number;
+};
+
+const MARKET_TICKER_CHART_RANGE_CONFIG: Record<
+  MarketTickerChartRange,
+  MarketTickerChartRangeConfig
+> = {
+  "1m": {
+    binanceInterval: "1m",
+    upbitEndpoint: "minutes",
+    upbitUnit: 1,
+    pointCount: 60,
+  },
+  "5m": {
+    binanceInterval: "5m",
+    upbitEndpoint: "minutes",
+    upbitUnit: 5,
+    pointCount: 72,
+  },
+  "1h": {
+    binanceInterval: "1h",
+    upbitEndpoint: "minutes",
+    upbitUnit: 60,
+    pointCount: 72,
+  },
+  "1d": {
+    binanceInterval: "1d",
+    upbitEndpoint: "days",
+    pointCount: 30,
+  },
 };
 
 const USD_CURRENCY = new Intl.NumberFormat("en-US", {
@@ -236,6 +308,52 @@ function maxTimestamp(...values: Array<number | null | undefined>): number | nul
   }
 
   return next;
+}
+
+function normalizeTimestamp(value: number): number | null {
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+
+  if (value > 10_000_000_000) {
+    return Math.trunc(value);
+  }
+
+  return Math.trunc(value * 1000);
+}
+
+function parseUtcDateString(value: string | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Date.parse(`${value}Z`);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function clampChartPoints(
+  points: MarketTickerChartPoint[],
+  pointCount: number,
+): MarketTickerChartPoint[] {
+  if (points.length <= pointCount) {
+    return points;
+  }
+
+  return points.slice(points.length - pointCount);
+}
+
+function createChartAbortController(timeoutMs: number): {
+  controller: AbortController;
+  timeoutId: ReturnType<typeof setTimeout>;
+} {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  return { controller, timeoutId };
+}
+
+function marketTickerRangeConfig(range: MarketTickerChartRange): MarketTickerChartRangeConfig {
+  return MARKET_TICKER_CHART_RANGE_CONFIG[range];
 }
 
 function createEmptyMarketTickerItem(
@@ -498,6 +616,255 @@ export async function fetchMarketTickerSnapshot(
   );
 
   return hasAnyData ? items : [];
+}
+
+async function fetchBinanceChartPoints(
+  definition: MarketTickerDefinition,
+  range: MarketTickerChartRange,
+  timeoutMs: number,
+): Promise<MarketTickerChartPoint[]> {
+  const config = marketTickerRangeConfig(range);
+  const { controller, timeoutId } = createChartAbortController(timeoutMs);
+
+  try {
+    const params = new URLSearchParams({
+      symbol: definition.binanceSymbol,
+      interval: config.binanceInterval,
+      limit: String(config.pointCount),
+    });
+    const response = await fetch(
+      `https://api.binance.com/api/v3/uiKlines?${params.toString()}`,
+      {
+        method: "GET",
+        cache: "no-store",
+        signal: controller.signal,
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`HTTP_${response.status}`);
+    }
+
+    const payload = (await response.json()) as BinanceKlineRow[];
+    const points = payload.flatMap((row) => {
+      const timestamp = normalizeTimestamp(row[6] ?? row[0]);
+      const value = parseNumber(row[4]);
+
+      if (timestamp == null || value == null) {
+        return [];
+      }
+
+      return [{ timestamp, value }];
+    });
+
+    return clampChartPoints(points, config.pointCount);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function fetchUpbitChartPoints(
+  definition: MarketTickerDefinition,
+  range: MarketTickerChartRange,
+  timeoutMs: number,
+): Promise<MarketTickerChartPoint[]> {
+  const config = marketTickerRangeConfig(range);
+  const { controller, timeoutId } = createChartAbortController(timeoutMs);
+
+  try {
+    const params = new URLSearchParams({
+      market: definition.upbitMarket,
+      count: String(config.pointCount),
+    });
+    const baseUrl =
+      config.upbitEndpoint === "days"
+        ? "https://api.upbit.com/v1/candles/days"
+        : `https://api.upbit.com/v1/candles/minutes/${config.upbitUnit}`;
+    const response = await fetch(`${baseUrl}?${params.toString()}`, {
+      method: "GET",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP_${response.status}`);
+    }
+
+    const payload = (await response.json()) as UpbitCandle[];
+    const points = payload
+      .flatMap((row) => {
+        const timestamp =
+          normalizeTimestamp(row.timestamp ?? Number.NaN) ??
+          parseUtcDateString(row.candle_date_time_utc);
+        const value = parseNumber(row.trade_price);
+
+        if (timestamp == null || value == null) {
+          return [];
+        }
+
+        return [{ timestamp, value }];
+      })
+      .reverse();
+
+    return clampChartPoints(points, config.pointCount);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export function createLocalMarketTickerChartPoints(params: {
+  id: string;
+  value: number;
+  changePct: number | null;
+  pointCount?: number;
+  endTimestamp?: number;
+  stepMs?: number;
+}): MarketTickerChartPoint[] {
+  const pointCount = params.pointCount ?? 36;
+  const stepMs = params.stepMs ?? 60_000;
+  const endTimestamp = params.endTimestamp ?? Date.now();
+  const referenceValue = Math.max(params.value, Number.EPSILON);
+  const totalMove =
+    params.changePct == null
+      ? referenceValue * 0.02
+      : referenceValue * (params.changePct / 100) * 0.32;
+  const startValue = Math.max(referenceValue - totalMove, referenceValue * 0.4);
+  const phaseSeed =
+    params.id.split("").reduce((total, char) => total + char.charCodeAt(0), 0) % 11;
+  const waveAmplitude = Math.max(referenceValue * 0.006, Math.abs(totalMove) * 0.28);
+
+  return Array.from({ length: pointCount }, (_, index) => {
+    const progress =
+      pointCount === 1 ? 1 : index / Math.max(pointCount - 1, 1);
+    const baseline = startValue + (referenceValue - startValue) * progress;
+    const wave =
+      Math.sin(progress * Math.PI * 2 + phaseSeed) * waveAmplitude * 0.62 +
+      Math.cos(progress * Math.PI * 4 + phaseSeed * 0.5) * waveAmplitude * 0.18;
+    const value =
+      index === pointCount - 1
+        ? referenceValue
+        : Math.max(referenceValue * 0.3, baseline + wave);
+
+    return {
+      timestamp: endTimestamp - stepMs * (pointCount - index - 1),
+      value,
+    };
+  });
+}
+
+export function appendMarketTickerChartPoint(
+  points: MarketTickerChartPoint[],
+  value: number | null,
+  timestamp: number | null,
+  pointCount = points.length > 0 ? points.length : 60,
+): MarketTickerChartPoint[] {
+  if (value == null) {
+    return points;
+  }
+
+  const nextTimestamp = normalizeTimestamp(timestamp ?? Date.now());
+  if (nextTimestamp == null) {
+    return points;
+  }
+
+  const nextPoint = { timestamp: nextTimestamp, value };
+  const previousPoint = points.at(-1);
+  if (!previousPoint) {
+    return [nextPoint];
+  }
+
+  const nextPoints = [...points];
+  if (previousPoint.timestamp >= nextTimestamp) {
+    nextPoints[nextPoints.length - 1] = nextPoint;
+    return clampChartPoints(nextPoints, pointCount);
+  }
+
+  nextPoints.push(nextPoint);
+  return clampChartPoints(nextPoints, pointCount);
+}
+
+export async function fetchMarketTickerMiniCharts(
+  definitions: MarketTickerDefinition[] = DEFAULT_MARKET_TICKER_SYMBOLS,
+  timeoutMs = 4500,
+): Promise<Record<string, MarketTickerChartPoint[]>> {
+  const results = await Promise.allSettled(
+    definitions.map(async (definition) => [
+      definition.id,
+      await fetchBinanceChartPoints(definition, "1m", timeoutMs),
+    ] as const),
+  );
+
+  const entries = results.flatMap((result) => {
+    if (result.status !== "fulfilled" || result.value[1].length === 0) {
+      return [];
+    }
+
+    return [result.value];
+  });
+
+  return Object.fromEntries(entries);
+}
+
+export function createLocalMarketTickerDetailSeries(
+  definition: MarketTickerDefinition,
+  range: MarketTickerChartRange,
+): MarketTickerDetailSeries {
+  const config = marketTickerRangeConfig(range);
+  const pointCount = config.pointCount;
+  const stepMs =
+    range === "1d"
+      ? 86_400_000
+      : range === "1h"
+        ? 3_600_000
+        : range === "5m"
+          ? 300_000
+          : 60_000;
+
+  return {
+    range,
+    usdPoints: createLocalMarketTickerChartPoints({
+      id: `${definition.id}-usd-${range}`,
+      value: definition.fallbackPriceUsd,
+      changePct: definition.fallbackUsdChange24hPct,
+      pointCount,
+      stepMs,
+    }),
+    krwPoints: createLocalMarketTickerChartPoints({
+      id: `${definition.id}-krw-${range}`,
+      value: definition.fallbackPriceKrw,
+      changePct: definition.fallbackKrwChange24hPct,
+      pointCount,
+      stepMs,
+    }),
+  };
+}
+
+export async function fetchMarketTickerDetailSeries(
+  definition: MarketTickerDefinition,
+  range: MarketTickerChartRange,
+  timeoutMs = 4500,
+): Promise<MarketTickerDetailSeries> {
+  const [usdResult, krwResult] = await Promise.allSettled([
+    fetchBinanceChartPoints(definition, range, timeoutMs),
+    fetchUpbitChartPoints(definition, range, timeoutMs),
+  ]);
+
+  const usdPoints =
+    usdResult.status === "fulfilled" ? usdResult.value : [];
+  const krwPoints =
+    krwResult.status === "fulfilled" ? krwResult.value : [];
+
+  if (usdPoints.length === 0 && krwPoints.length === 0) {
+    throw new Error("chart_history_unavailable");
+  }
+
+  const fallback = createLocalMarketTickerDetailSeries(definition, range);
+
+  return {
+    range,
+    usdPoints: usdPoints.length > 0 ? usdPoints : fallback.usdPoints,
+    krwPoints: krwPoints.length > 0 ? krwPoints : fallback.krwPoints,
+  };
 }
 
 export function buildMarketTickerStreamUrl(

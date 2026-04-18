@@ -144,6 +144,10 @@
   box-shadow: var(--elev-1);
 }
 
+.chartBlock {
+  display: grid;
+}
+
 .card[data-source="live"] {
   border-color: var(--good-soft);
 }
@@ -246,6 +250,25 @@
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: var(--tracking-wide);
+}
+
+.cardFooterActions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.detailButton {
+  min-height: 24px;
+  padding: 0 var(--space-sm);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--accent);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
 }
 
 .premiumPill {

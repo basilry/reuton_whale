@@ -7,6 +7,7 @@ export const TAB_TG_WHALE_EVENTS = "tg_whale_events" as const;
 export const TAB_CURATED_WALLETS = "curated_wallets" as const;
 export const TAB_WALLET_ALIASES = "wallet_aliases" as const;
 export const TAB_WATCHLIST_OVERRIDES = "watchlist_overrides" as const;
+export const TAB_NEWS_FEED = "news_feed" as const;
 
 export const TRANSACTIONS_HEADERS = [
   "raw_response_hash",
@@ -120,6 +121,19 @@ export const WATCHLIST_OVERRIDES_HEADERS = [
   "updated_at",
 ] as const;
 
+export const NEWS_FEED_HEADERS = [
+  "id",
+  "source",
+  "title",
+  "summary",
+  "url",
+  "published_at",
+  "language",
+  "tags",
+  "fetched_at",
+  "hash",
+] as const;
+
 export interface TransactionRow {
   raw_response_hash: string;
   hash: string;
@@ -222,6 +236,19 @@ export interface WatchlistOverrideRow {
   updated_at: string;
 }
 
+export interface NewsFeedRow {
+  id: string;
+  source: string;
+  title: string;
+  summary: string;
+  url: string;
+  published_at: string;
+  language: string;
+  tags: string;
+  fetched_at: string;
+  hash: string;
+}
+
 export interface SubscriberRow {
   chat_id: string;
   username: string;
@@ -242,6 +269,7 @@ export interface SheetRowMap {
   curated_wallets: CuratedWalletRow;
   wallet_aliases: WalletAliasRow;
   watchlist_overrides: WatchlistOverrideRow;
+  news_feed: NewsFeedRow;
 }
 
 export type SheetTabName = keyof SheetRowMap;
@@ -256,6 +284,7 @@ export const TAB_HEADERS = {
   curated_wallets: CURATED_WALLETS_HEADERS,
   wallet_aliases: WALLET_ALIASES_HEADERS,
   watchlist_overrides: WATCHLIST_OVERRIDES_HEADERS,
+  news_feed: NEWS_FEED_HEADERS,
 } as const satisfies Record<SheetTabName, readonly string[]>;
 
 export const DASHBOARD_TABS = [

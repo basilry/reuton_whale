@@ -52,6 +52,12 @@
   gap: var(--space-3xs);
 }
 
+.footerSlot {
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--line);
+}
+
 /* ── Link ── */
 .link {
   display: flex;
@@ -119,6 +125,10 @@
     flex-direction: row;
     gap: var(--space-3xs);
     flex: 1;
+  }
+
+  .footerSlot {
+    display: none;
   }
 
   .link {

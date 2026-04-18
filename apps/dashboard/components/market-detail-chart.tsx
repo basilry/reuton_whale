@@ -1,0 +1,234 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  AreaSeries,
+  ColorType,
+  createChart,
+  type IChartApi,
+  type ISeriesApi,
+  type UTCTimestamp,
+} from "lightweight-charts";
+
+import {
+  createLocalMarketTickerDetailSeries,
+  fetchMarketTickerDetailSeries,
+  formatKimchiPremium,
+  formatMarketTickerKrwPrice,
+  formatMarketTickerPrice,
+  type MarketTickerChartMetric,
+  type MarketTickerChartRange,
+  type MarketTickerDefinition,
+  type MarketTickerDetailSeries,
+  type MarketTickerItem,
+} from "@/lib/market-ticker";
+
+import styles from "./market-detail-chart.module.css";
+
+type DetailPhase = "loading" | "ready" | "fallback";
+
+type MarketDetailChartProps = {
+  definition: MarketTickerDefinition;
+  item: MarketTickerItem;
+};
+
+const RANGES: MarketTickerChartRange[] = ["1m", "5m", "1h", "1d"];
+
+function cssVar(node: HTMLElement, name: string, fallback: string): string {
+  const value = getComputedStyle(node).getPropertyValue(name).trim();
+  return value || fallback;
+}
+
+function toLineData(
+  points: MarketTickerDetailSeries["usdPoints"],
+  metric: MarketTickerChartMetric,
+) {
+  return points.map((point) => ({
+    time: Math.floor(point.timestamp / 1000) as UTCTimestamp,
+    value: point.value,
+    customValues: { metric },
+  }));
+}
+
+function rangeLabel(range: MarketTickerChartRange): string {
+  return range.toUpperCase();
+}
+
+function metricLabel(metric: MarketTickerChartMetric): string {
+  return metric === "krw" ? "KRW 기준" : "USD 기준";
+}
+
+export function MarketDetailChart({
+  definition,
+  item,
+}: MarketDetailChartProps) {
+  const [range, setRange] = useState<MarketTickerChartRange>("1h");
+  const [metric, setMetric] = useState<MarketTickerChartMetric>(
+    item.priceKrw != null ? "krw" : "usd",
+  );
+  const [phase, setPhase] = useState<DetailPhase>("loading");
+  const [series, setSeries] = useState<MarketTickerDetailSeries>(() =>
+    createLocalMarketTickerDetailSeries(definition, "1h"),
+  );
+  const chartRootRef = useRef<HTMLDivElement | null>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
+
+  const activePoints = useMemo(
+    () => (metric === "krw" ? series.krwPoints : series.usdPoints),
+    [metric, series],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    setPhase("loading");
+
+    void fetchMarketTickerDetailSeries(definition, range)
+      .then((nextSeries) => {
+        if (cancelled) {
+          return;
+        }
+        setSeries(nextSeries);
+        setPhase("ready");
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        setSeries(createLocalMarketTickerDetailSeries(definition, range));
+        setPhase("fallback");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [definition, range]);
+
+  useEffect(() => {
+    const root = chartRootRef.current;
+    if (!root) {
+      return undefined;
+    }
+
+    const accent = cssVar(root, "--accent", "#2676ff");
+    const textColor = cssVar(root, "--muted", "#6b778c");
+
+    const chart = createChart(root, {
+      autoSize: true,
+      height: 220,
+      layout: {
+        background: { color: "transparent", type: ColorType.Solid },
+        textColor,
+        attributionLogo: false,
+      },
+      grid: {
+        vertLines: { color: `${accent}11` },
+        horzLines: { color: `${accent}11` },
+      },
+      rightPriceScale: {
+        borderVisible: false,
+      },
+      leftPriceScale: {
+        visible: false,
+      },
+      timeScale: {
+        borderVisible: false,
+        timeVisible: range !== "1d",
+      },
+    });
+
+    const chartSeries = chart.addSeries(AreaSeries, {
+      lineColor: accent,
+      topColor: `${accent}33`,
+      bottomColor: `${accent}04`,
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: true,
+    });
+
+    chartRef.current = chart;
+    seriesRef.current = chartSeries;
+
+    return () => {
+      seriesRef.current = null;
+      chartRef.current?.remove();
+      chartRef.current = null;
+    };
+  }, [metric, range]);
+
+  useEffect(() => {
+    if (!seriesRef.current) {
+      return;
+    }
+    seriesRef.current.setData(toLineData(activePoints, metric));
+    chartRef.current?.timeScale().fitContent();
+  }, [activePoints, metric]);
+
+  return (
+    <div className={styles.panel}>
+      <div className={styles.toolbar}>
+        <div className={styles.group}>
+          {RANGES.map((entry) => (
+            <button
+              key={entry}
+              type="button"
+              className={styles.chip}
+              data-active={range === entry ? "true" : undefined}
+              onClick={() => setRange(entry)}
+            >
+              {rangeLabel(entry)}
+            </button>
+          ))}
+        </div>
+
+        <div className={styles.group}>
+          {(["usd", "krw"] as const).map((entry) => (
+            <button
+              key={entry}
+              type="button"
+              className={styles.chip}
+              data-active={metric === entry ? "true" : undefined}
+              onClick={() => setMetric(entry)}
+            >
+              {metricLabel(entry)}
+            </button>
+          ))}
+        </div>
+
+        <span className={styles.status}>
+          {phase === "loading"
+            ? "차트 로딩 중"
+            : phase === "fallback"
+              ? "예시 차트"
+              : "실데이터 차트"}
+        </span>
+      </div>
+
+      <div className={styles.chartShell}>
+        <div ref={chartRootRef} className={styles.chart} />
+      </div>
+
+      <div className={styles.summaryGrid}>
+        <div className={styles.summaryItem}>
+          <span className={styles.summaryLabel}>현재 USD</span>
+          <span className={styles.summaryValue}>
+            {formatMarketTickerPrice(item.priceUsd)}
+          </span>
+        </div>
+        <div className={styles.summaryItem}>
+          <span className={styles.summaryLabel}>현재 KRW</span>
+          <span className={styles.summaryValue}>
+            {formatMarketTickerKrwPrice(item.priceKrw)}
+          </span>
+        </div>
+        <div className={styles.summaryItem}>
+          <span className={styles.summaryLabel}>김치 프리미엄</span>
+          <span className={styles.summaryValue}>
+            {formatKimchiPremium(item.kimchiPremiumPct)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -99,6 +99,51 @@
   margin-top: var(--space-lg);
 }
 
+.connectGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-lg);
+  margin-top: var(--space-xl);
+}
+
+.connectOption {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.optionTop {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+
+.optionEyebrow {
+  margin: 0;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  color: var(--accent);
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+}
+
+.optionTitle {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+}
+
+.optionDesc {
+  margin: 0;
+  color: var(--on-surface-variant);
+  line-height: var(--leading-relaxed);
+}
+
 .primaryAction,
 .secondaryAction {
   display: inline-flex;
@@ -136,10 +181,9 @@
 
 .qrPanel {
   display: grid;
-  grid-template-columns: minmax(0, 240px) minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: var(--space-lg);
   align-items: center;
-  margin-top: var(--space-xl);
 }
 
 .qrFrame {
@@ -198,6 +242,10 @@
 @media (max-width: 768px) {
   .modal {
     padding: var(--space-lg);
+  }
+
+  .connectGrid {
+    grid-template-columns: 1fr;
   }
 
   .qrPanel {

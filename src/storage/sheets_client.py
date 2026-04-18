@@ -1,3 +1,4 @@
+import hashlib
 import json
 import threading
 from datetime import datetime
@@ -8,7 +9,9 @@ from google.oauth2.service_account import Credentials
 from src.storage.queries import dict_to_row, now_iso, row_to_dict
 from src.storage.schema import (
     ADDRESS_ACTIVITY_HEADERS,
+    BROADCAST_LOG_HEADERS,
     CURATED_WALLETS_HEADERS,
+    NEWS_FEED_HEADERS,
     ALL_TABS,
     ANALYSIS_LOG_HEADERS,
     DAILY_BRIEF_HEADERS,
@@ -17,9 +20,11 @@ from src.storage.schema import (
     SYSTEM_LOG_HEADERS,
     TAB_ADDRESS_ACTIVITY,
     TAB_ANALYSIS_LOG,
+    TAB_BROADCAST_LOG,
     TAB_CURATED_WALLETS,
     TAB_DAILY_BRIEF,
     TAB_HEADERS,
+    TAB_NEWS_FEED,
     TAB_SIGNALS,
     TAB_SUBSCRIBERS,
     TAB_SYSTEM_LOG,
@@ -470,6 +475,33 @@ class SheetsClient:
             except gspread.exceptions.APIError as e:
                 raise StorageError(f"Failed to append system log: {e}") from e
 
+    @retry(max_retries=3, base_delay=2.0)
+    def append_broadcast_log(self, entry: dict) -> None:
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_BROADCAST_LOG)
+                normalized = {
+                    "ts": entry.get("ts", now_iso()),
+                    "kind": str(entry.get("kind", "")),
+                    "dedup_key": str(entry.get("dedup_key", "")),
+                    "chat_id": str(entry.get("chat_id", "")),
+                    "message_id": str(entry.get("message_id", "")),
+                    "status": str(entry.get("status", "")),
+                    "error": str(entry.get("error", ""))[:1000],
+                }
+                ws.append_row(
+                    dict_to_row(normalized, BROADCAST_LOG_HEADERS),
+                    value_input_option="RAW",
+                )
+                logger.info(
+                    "Appended broadcast log kind=%s status=%s dedup_key=%s",
+                    normalized["kind"],
+                    normalized["status"],
+                    normalized["dedup_key"],
+                )
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to append broadcast log: {e}") from e
+
     # --- watched_addresses ---
 
     @retry(max_retries=3, base_delay=2.0)
@@ -737,6 +769,60 @@ class SheetsClient:
                 logger.info("Appended tg_whale_event: %s", target)
             except gspread.exceptions.APIError as e:
                 raise StorageError(f"Failed to append tg_whale_event: {e}") from e
+
+    # --- news_feed ---
+
+    @retry(max_retries=3, base_delay=2.0)
+    def append_news_feed(self, items: list[dict]) -> int:
+        with self._write_lock:
+            try:
+                if not items:
+                    return 0
+
+                ws = self._worksheet(TAB_NEWS_FEED)
+                all_values = ws.get_all_values()
+                hash_col = NEWS_FEED_HEADERS.index("hash")
+                existing_hashes = {
+                    row[hash_col]
+                    for row in all_values[1:]
+                    if hash_col < len(row) and row[hash_col]
+                }
+
+                now = now_iso()
+                new_rows = []
+                for item in items:
+                    entry = dict(item)
+                    title = str(entry.get("title", "")).strip()
+                    if not title:
+                        continue
+
+                    url = str(entry.get("url", "")).strip()
+                    source = str(entry.get("source", "")).strip()
+                    published_at = str(entry.get("published_at", "")).strip()
+                    digest = str(entry.get("hash", "")).strip()
+                    if not digest:
+                        digest = hashlib.sha256(
+                            f"{source}|{url}|{title}|{published_at}".encode("utf-8")
+                        ).hexdigest()
+
+                    if digest in existing_hashes:
+                        continue
+
+                    entry.setdefault("id", digest[:16])
+                    entry["hash"] = digest
+                    entry.setdefault("summary", "")
+                    entry.setdefault("language", "en")
+                    entry.setdefault("tags", "")
+                    entry.setdefault("fetched_at", now)
+                    new_rows.append(dict_to_row(entry, NEWS_FEED_HEADERS))
+                    existing_hashes.add(digest)
+
+                if new_rows:
+                    ws.append_rows(new_rows, value_input_option="RAW")
+                logger.info("Appended %d news_feed rows", len(new_rows))
+                return len(new_rows)
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to append news_feed: {e}") from e
 
     @retry(max_retries=3, base_delay=2.0)
     def list_tg_whale_events(

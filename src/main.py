@@ -27,6 +27,7 @@ from src.ingestion.tg_normalizer import (
 )
 from src.llm.anthropic_provider import AnthropicProvider
 from src.llm.router import LLMRouter
+from src.notify.telegram_broadcast import TelegramBroadcastAdapter
 from src.signals.baseline import build_chain_baselines
 from src.signals.engine import SignalEngine
 from src.signals.formatters import (
@@ -311,6 +312,24 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
     sol_collector = SolscanCollector(config.solscan_api_key or None)
     bot = WhaleScopeBot(config.telegram_token, sheets, personalize_fn=engine.personalize)
     bot.build()
+    broadcaster = TelegramBroadcastAdapter(
+        token=config.telegram_broadcast_token or config.telegram_token,
+        chat_id=config.telegram_broadcast_chat,
+        storage=sheets,
+        enabled=config.telegram_broadcast_enabled,
+        dry_run=(dry_run or config.telegram_broadcast_dry_run),
+        dry_run_reason=(
+            "pipeline dry_run=True"
+            if dry_run
+            else "TELEGRAM_BROADCAST_DRY_RUN is true"
+        ),
+    )
+    logger.info(
+        "[%s] Telegram public broadcast state=%s chat=%s",
+        run_id,
+        broadcaster.state_label(),
+        config.telegram_broadcast_chat or "(unset)",
+    )
 
     # Stage 3: Collect events
     logger.info("[%s] Stage 3/10: Collecting whale events", run_id)
@@ -526,6 +545,11 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
     logger.info("[%s] Stage 8/10: Generating daily brief", run_id)
     brief_text = ""
     model_id = "dry_run" if dry_run else ""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    total_volume = sum((tx.get("amount_usd") or 0) for tx in top5)
+    highlights = _build_brief_highlights(top5)
+    signal_themes = _build_signal_themes(signals, top5)
+    note = _build_brief_note(raw_events, signals, top5)
     if dry_run:
         brief_text = f"[DRY RUN] {len(signals)} 시그널 감지. 이벤트 {len(raw_events)}건 처리 완료. 실제 LLM 호출 없이 파이프라인 테스트 완료."
         # Write a fake analysis_log entry so acceptance criterion #4 is met
@@ -555,14 +579,9 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
     # Stage 9: Store results
     logger.info("[%s] Stage 9/10: Storing to Google Sheets", run_id)
     if not dry_run:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         if brief_text:
             try:
-                total_volume = sum((tx.get("amount_usd") or 0) for tx in top5)
                 serialized_top = _serialize_top_transactions(top5)
-                highlights = _build_brief_highlights(top5)
-                signal_themes = _build_signal_themes(signals, top5)
-                note = _build_brief_note(raw_events, signals, top5)
                 sheets.save_daily_brief(today, [{
                     "summary": brief_text,
                     "top_transactions": json.dumps(serialized_top, ensure_ascii=False),
@@ -579,22 +598,43 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
 
     # Stage 10: Distribute via Telegram
     logger.info("[%s] Stage 10/10: Distributing via Telegram", run_id)
-    details = ""
+    details_parts: list[str] = []
+    if brief_text:
+        try:
+            broadcast_attempt = await asyncio.to_thread(
+                broadcaster.broadcast_daily_brief,
+                date=today,
+                brief_text=brief_text,
+                highlights=highlights,
+                signal_count=len(signals),
+                total_volume_usd=total_volume,
+            )
+            details_parts.append(f"broadcast={broadcast_attempt.status}")
+        except Exception as e:
+            errors.append(f"telegram_broadcast: {e}")
+            logger.error("[%s] Telegram public broadcast failed: %s", run_id, e)
+            details_parts.append("broadcast=failed")
+    else:
+        details_parts.append("broadcast=no_brief_generated")
+
     if brief_text and not dry_run:
         try:
             dist_result = await bot.send_daily_brief(brief_text, signals=signals)
-            details = (
+            subscriber_details = (
                 f"sent={dist_result['sent']}, "
                 f"failed={dist_result['failed']}, "
                 f"blocked={dist_result['blocked']}"
             )
-            logger.info("[%s] Telegram: %s", run_id, details)
+            details_parts.append(f"subscribers={subscriber_details}")
+            logger.info("[%s] Telegram subscriber delivery: %s", run_id, subscriber_details)
         except Exception as e:
             errors.append(f"telegram_distribute: {e}")
             logger.error("[%s] Telegram distribution failed: %s", run_id, e)
-            details = "distribution_failed"
+            details_parts.append("subscribers=distribution_failed")
     else:
-        details = "dry_run_skip" if dry_run else "no_brief_generated"
+        details_parts.append("subscribers=dry_run_skip" if dry_run else "subscribers=no_brief_generated")
+
+    details = "; ".join(details_parts)
 
     result.update(
         status="completed" if not errors else "completed_with_errors",

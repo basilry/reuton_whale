@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { MouseEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -14,7 +15,11 @@ const SIDEBAR_LINKS = [
 
 type SidebarHref = (typeof SIDEBAR_LINKS)[number]["href"];
 
-export function InsightsSidebar() {
+type InsightsSidebarProps = {
+  children?: ReactNode;
+};
+
+export function InsightsSidebar({ children }: InsightsSidebarProps) {
   const [activeHref, setActiveHref] = useState<SidebarHref>(SIDEBAR_LINKS[0].href);
   const sectionTargets = useMemo(
     () => SIDEBAR_LINKS.map((item) => ({ href: item.href, id: item.href.slice(1) })),
@@ -143,6 +148,8 @@ export function InsightsSidebar() {
           </a>
         ))}
       </nav>
+
+      {children ? <div className={styles.footerSlot}>{children}</div> : null}
     </aside>
   );
 }

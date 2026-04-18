@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { TopNavbar } from "@/components/top-navbar";
 import { InsightsSidebar } from "@/components/insights-sidebar";
 import { MarketTickerStrip } from "@/components/market-ticker-strip";
+import { NewsWidget } from "@/components/news-widget";
 import { TelegramConnectModal } from "@/components/telegram-connect-modal";
 import { cleanGeneratedBrief } from "@/lib/format";
 import { getDashboardData, type DashboardData } from "@/lib/metrics";
@@ -341,7 +342,9 @@ export default async function InsightsPage() {
 
       {/* ── Layout Shell: InsightsSidebar + content ── */}
       <div className={styles.layoutShell}>
-        <InsightsSidebar />
+        <InsightsSidebar>
+          <NewsWidget limit={4} />
+        </InsightsSidebar>
 
         {/* ── Content ── */}
         <div className={styles.content}>
@@ -532,6 +535,9 @@ export default async function InsightsPage() {
               </div>
               <TelegramConnectModal
                 botUrl={telegramConfig.botUrl}
+                channelQrUrl={telegramConfig.channelQrUrl}
+                channelUrl={telegramConfig.channelUrl}
+                channelUsername={telegramConfig.channelUsername}
                 className={styles.telegramCtaBtn}
                 qrUrl={telegramConfig.qrUrl}
                 subscriberCount={telegramSubscribers}

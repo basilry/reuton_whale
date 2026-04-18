@@ -24,7 +24,7 @@ WhaleScope는 하나의 서버만 켜는 앱이 아니라, 데이터 적재 work
 |---|---|---|---|---|
 | 초기 Sheets 세팅 | `python -m scripts.init_sheets` | 로컬 1회 실행 | Google Sheets 탭/헤더 생성 | 최초 1회 |
 | 감시 주소 등록 | `python scripts/import_watched_addresses.py` | 로컬 1회 실행 | `watched_addresses` 시트에 기본 감시 주소 upsert | 최초 1회, CSV 변경 시 |
-| 정보수집 파이프라인 worker | `python -m src.main` | Render Cron Job 또는 Worker | 온체인/TG 데이터 수집, 시그널 생성, LLM 브리핑 생성, Sheets 저장, Telegram 브리핑 발송 | 주기 실행 |
+| 정보수집 파이프라인 worker | `python -m src.main` | Render Cron Job 또는 Worker | 온체인/TG 데이터 수집, 시그널 생성, LLM 브리핑 생성, Sheets 저장, Telegram 구독자 브리핑 발송, 선택적 공개 채널 브로드캐스트 | 주기 실행 |
 | Telegram bot worker | `python scripts/run_bot.py` | Render Background Worker | `/start`, `/watchlist`, `/pause`, `/status` 같은 사용자 명령 처리 | 상시 실행 |
 | Telegram listener worker | `TG_CHANNEL=@whale_alert_io python scripts/run_listener.py` | Render Background Worker | 공개 고래 알림 채널을 수신해 `tg_whale_events`에 저장하고 `system_log`에 listener heartbeat 기록 | 상시 실행 |
 | Next.js 사용자 홈(`/`) | `npm run dashboard:dev` | Vercel | 사용자용 브리핑/인사이트 화면 제공 | 화면 확인 시 또는 Vercel 상시 배포 |
@@ -61,6 +61,7 @@ TG_CHANNEL=@whale_alert_io python scripts/run_listener.py
 주의할 점:
 
 - worker마다 필요한 env가 다릅니다. `src.main`은 `ETHERSCAN_API_KEY`, `TELEGRAM_BOT_TOKEN`, LLM provider key 중 1개가 필요하지만, `run_listener.py`는 `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELETHON_*`, `TG_CHANNEL`만으로도 실행할 수 있습니다. LLM key는 listener에서 선택 사항입니다.
+- 공개 채널 브로드캐스트는 `src.main` 안의 선택 기능입니다. 기본값은 `TELEGRAM_BROADCAST_ENABLED=false`, `TELEGRAM_BROADCAST_DRY_RUN=true`라서 환경변수를 따로 열지 않으면 실제 채널 발송은 일어나지 않고 `broadcast_log`에 상태만 남깁니다.
 - `GOOGLE_CREDENTIALS_JSON`은 JSON 문자열이므로 `source .env`로 주입하지 마세요. Python은 `.env`를 직접 읽고, Next.js dashboard는 `apps/dashboard/.env.local` 또는 루트 `.env`를 server-side에서 직접 읽습니다.
 - 운영자용 dashboard/API 인증은 `Authorization: Bearer <password>`를 권장합니다. `x-dashboard-password`는 로컬에서 curl로 빠르게 확인하거나 수동 검증할 때 쓰는 보조 헤더로 남겨두었습니다.
 - 대시보드가 비어 있으면 대시보드 문제가 아니라 먼저 `python -m src.main`이 Sheets에 `transactions`, `signals`, `daily_brief`, `system_log`를 쌓았는지 확인합니다.
@@ -283,6 +284,7 @@ python -m src.main
 
 - `daily_brief` 시트에 일일 브리핑이 저장됩니다.
 - Telegram bot이 연결되어 있으면 브리핑이 발송됩니다.
+- `TELEGRAM_BROADCAST_ENABLED=true`이고 bot이 채널 관리자 권한을 가진 경우에만 `TELEGRAM_BROADCAST_CHAT`으로 공개 채널 브로드캐스트를 보냅니다. 그렇지 않으면 파이프라인은 계속 진행하고 `broadcast_log`에 `skipped_*` 또는 `dry_run` 상태를 남깁니다.
 - `analysis_log`에 LLM 호출 정보가 기록됩니다.
 
 LLM 키가 없거나 외부 의존성을 배제한 확인이 필요하면 아래 smoke fallback을 사용합니다.
@@ -339,6 +341,10 @@ LLM provider key는 아래 중 최소 1개가 필요합니다.
 | `TG_CHANNEL` | 수신할 공개 채널입니다. 예: `@whale_alert_io`. |
 | `TELEGRAM_BOT_USERNAME` | WhaleScope 데모 봇의 공개 핸들입니다. `@` 없이 입력합니다. 현재 값: `whalescope_demo_bot` (https://t.me/whalescope_demo_bot). 사용자 홈의 Telegram 연결 CTA/QR 링크 생성에 사용됩니다. |
 | `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` | 위 값과 동일해야 합니다. Next.js 대시보드(`apps/dashboard`)가 클라이언트 번들에서 참조하기 위해 `NEXT_PUBLIC_` 접두어가 필요합니다. 값 변경 시 루트 `TELEGRAM_BOT_USERNAME`과 반드시 함께 갱신합니다. |
+| `TELEGRAM_BROADCAST_ENABLED` | 공개 채널 브로드캐스트 스위치입니다. 기본값 `false`를 유지하면 파이프라인은 브로드캐스트를 시도하지 않고 명시적으로 skip 로그만 남깁니다. |
+| `TELEGRAM_BROADCAST_DRY_RUN` | 공개 채널 브로드캐스트 dry-run 스위치입니다. 기본값 `true`입니다. `ENABLED=true`여도 이 값이 `true`면 실제 발송 없이 `broadcast_log`에 `dry_run` 상태만 기록합니다. |
+| `TELEGRAM_BROADCAST_CHAT` | 공개 발송 대상 채널/채팅입니다. 예: `@whalescope_alertz`. |
+| `TELEGRAM_BROADCAST_BOT_TOKEN` | 공개 채널 발송에 별도 bot을 쓸 때만 설정합니다. 비워두면 `TELEGRAM_BOT_TOKEN`을 재사용합니다. |
 | `STREAMLIT_PASSWORD` | Streamlit 대시보드 비밀번호입니다. 비우면 인증이 비활성화됩니다. (Streamlit UI는 은퇴되었고, 레거시 스크립트 호환을 위해서만 유지됩니다.) |
 | `DASHBOARD_PASSWORD` | Next.js 운영자 API 비밀번호입니다. 운영 환경에서는 `Authorization: Bearer <password>`를 권장하고, `x-dashboard-password`는 로컬/수동 확인 편의용입니다. |
 
@@ -617,7 +623,7 @@ streamlit run streamlit_app.py
 | `whalescope-bot` | Background Worker | `python scripts/run_bot.py` | Telegram 사용자 명령 처리 |
 | `whalescope-listener` | Background Worker | `TG_CHANNEL=@whale_alert_io python scripts/run_listener.py` | 공개 Telegram 채널 이벤트 수신 |
 
-Render에는 worker 역할별로 env를 나눠 등록하는 편이 안전합니다. `whalescope-pipeline`은 `ETHERSCAN_API_KEY`, `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELEGRAM_BOT_TOKEN`, LLM provider key 중 1개가 필요합니다. `whalescope-listener`는 `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELETHON_API_ID`, `TELETHON_API_HASH`, `TELETHON_SESSION`, `TELETHON_SESSION_STRING`, `TG_CHANNEL`이 최소값이며, LLM provider key는 선택 사항입니다.
+Render에는 worker 역할별로 env를 나눠 등록하는 편이 안전합니다. `whalescope-pipeline`은 `ETHERSCAN_API_KEY`, `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELEGRAM_BOT_TOKEN`, LLM provider key 중 1개가 필요합니다. 공개 채널 브로드캐스트를 켤 때만 여기에 `TELEGRAM_BROADCAST_ENABLED=true`, `TELEGRAM_BROADCAST_DRY_RUN=false`, `TELEGRAM_BROADCAST_CHAT=@whalescope_alertz`를 추가하고, 해당 bot을 채널 관리자에 올립니다. `whalescope-listener`는 `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELETHON_API_ID`, `TELETHON_API_HASH`, `TELETHON_SESSION`, `TELETHON_SESSION_STRING`, `TG_CHANNEL`이 최소값이며, LLM provider key는 선택 사항입니다.
 
 ### Vercel dashboard
 
