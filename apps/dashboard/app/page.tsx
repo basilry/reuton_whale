@@ -594,7 +594,35 @@ export default async function InsightsPage() {
 
           {/* ── Bento Grid ── */}
           <div className={styles.bentoGrid}>
-            {/* ── 1. Today's Whale Brief ── */}
+            {/* ── 1. Market Mood ── */}
+            <div className={styles.moodCard}>
+              <div className={styles.moodGaugeCol}>
+                <FearGreedGauge
+                  copy={fearGreedCopy}
+                  data={fearGreed}
+                  fallback={legacyMoodFallback}
+                  language={language}
+                />
+              </div>
+              {hasFearGreedReading ? (
+                <div className={styles.moodSummary}>
+                  <p className={styles.moodSummaryEyebrow}>{mood.label}</p>
+                  <h4 className={styles.moodTitle}>{mood.copy}</h4>
+                  <p className={styles.moodDesc}>{mood.detail}</p>
+                  {mood.drivers.length > 0 ? (
+                    <div className={styles.moodDrivers}>
+                      {mood.drivers.map((driver) => (
+                        <span key={driver} className={styles.moodDriverChip}>
+                          {driver}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            {/* ── 2. Today's Whale Brief ── */}
             <article className={styles.heroCard} id="brief">
               <div className={styles.heroCardGlow} aria-hidden="true" />
               <div className={styles.heroCardInner}>
@@ -630,32 +658,6 @@ export default async function InsightsPage() {
                 </div>
               </div>
             </article>
-
-            {/* ── 2. Market Mood ── */}
-            <div className={styles.moodCard}>
-              <FearGreedGauge
-                copy={fearGreedCopy}
-                data={fearGreed}
-                fallback={legacyMoodFallback}
-                language={language}
-              />
-              {hasFearGreedReading ? (
-                <div className={styles.moodSummary}>
-                  <p className={styles.moodSummaryEyebrow}>{mood.label}</p>
-                  <h4 className={styles.moodTitle}>{mood.copy}</h4>
-                  <p className={styles.moodDesc}>{mood.detail}</p>
-                  {mood.drivers.length > 0 ? (
-                    <div className={styles.moodDrivers}>
-                      {mood.drivers.map((driver) => (
-                        <span key={driver} className={styles.moodDriverChip}>
-                          {driver}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
 
             {/* ── 3. Key Signals ── */}
             <SignalSection

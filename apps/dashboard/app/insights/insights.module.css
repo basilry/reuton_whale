@@ -261,10 +261,17 @@
   scroll-margin-top: var(--inset-navbar);
 }
 
+.moodGaugeCol {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .moodSummary {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
+  min-width: 0;
 }
 
 .moodSummaryEyebrow,
@@ -1385,11 +1392,27 @@
   }
 
   .heroCard {
-    grid-column: span 8;
+    grid-column: span 12;
   }
 
   .moodCard {
-    grid-column: span 4;
+    grid-column: span 12;
+    flex-direction: row;
+    align-items: stretch;
+    gap: var(--space-xl);
+  }
+
+  .moodCard > .moodGaugeCol {
+    flex: 0 0 clamp(280px, 32%, 420px);
+  }
+
+  .moodCard > .moodSummary {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .moodCard .moodDesc {
+    max-width: 64ch;
   }
 
   .signalSection {
