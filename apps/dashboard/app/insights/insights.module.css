@@ -1294,13 +1294,19 @@
   border: 1px solid var(--line);
   font-size: var(--text-xs);
   color: var(--on-surface-variant);
-  margin-top: var(--space-xs);
 }
 
 .connectionBlock {
   display: grid;
   gap: 6px;
   margin-top: var(--space-xs);
+}
+
+.connectionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  align-items: center;
 }
 
 .connectionChip[data-tone="good"] {

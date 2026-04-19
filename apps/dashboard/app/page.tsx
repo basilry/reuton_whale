@@ -2,6 +2,7 @@ import type { ComponentProps } from "react";
 import type { Metadata } from "next";
 import { FearGreedGauge } from "@/components/fear-greed-gauge";
 import { CuratedWatchlistPanel } from "@/components/curated-watchlist-panel";
+import { LiveUpdatesController } from "@/components/live-updates-controller";
 import { TopNavbar } from "@/components/top-navbar";
 import { InsightsSidebar } from "@/components/insights-sidebar";
 import { MarketTickerStrip } from "@/components/market-ticker-strip";
@@ -593,9 +594,16 @@ export default async function InsightsPage() {
               <h1 className={styles.pageTitle}>{dictionary.home.title}</h1>
               <p className={styles.pageSubtitle}>{dictionary.home.subtitle}</p>
               <div className={styles.connectionBlock}>
-                <div className={styles.connectionChip} data-tone={connectionTone}>
-                  <span className={styles.connectionDot} data-tone={connectionTone} />
-                  {connectedLabel}
+                <div className={styles.connectionRow}>
+                  <div className={styles.connectionChip} data-tone={connectionTone}>
+                    <span className={styles.connectionDot} data-tone={connectionTone} />
+                    {connectedLabel}
+                  </div>
+                  <LiveUpdatesController
+                    chipClassName={styles.connectionChip}
+                    dotClassName={styles.connectionDot}
+                    language={language}
+                  />
                 </div>
                 {connectionMeta ? <p className={styles.connectionMeta}>{connectionMeta}</p> : null}
               </div>

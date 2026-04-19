@@ -13,6 +13,7 @@ from src.main import (
     _serialize_top_transactions,
 )
 from src.observability.service_health import append_service_heartbeat, pipeline_status_to_health
+from src.notify.pipeline_events import publish_success_event
 from src.pipeline.common import (
     build_router_from_env,
     build_sheets_client,
@@ -594,6 +595,7 @@ def run_brief_pipeline() -> dict[str, object]:
         )
         sheets.log_run(result)
         _record_brief_heartbeat(sheets, result)
+        publish_success_event(section="brief", pipeline="brief", result=result)
         return result
 
     router = build_router_from_env(env)
@@ -705,6 +707,7 @@ def run_brief_pipeline() -> dict[str, object]:
     )
     sheets.log_run(result)
     _record_brief_heartbeat(sheets, result)
+    publish_success_event(section="brief", pipeline="brief", result=result)
     logger.info("brief pipeline finished details=%s", details)
     return result
 

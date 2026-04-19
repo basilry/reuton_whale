@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from src.observability.service_health import append_service_heartbeat, pipeline_status_to_health
+from src.notify.pipeline_events import publish_success_event
 from src.pipeline.common import (
     build_router_from_env,
     build_sheets_client,
@@ -220,6 +221,7 @@ def run_stories_pipeline(limit: int = 5) -> dict[str, object]:
     )
     sheets.log_run(result)
     _record_stories_heartbeat(sheets, result)
+    publish_success_event(section="stories", pipeline="stories", result=result)
     logger.info("stories pipeline finished generated=%d errors=%d", generated, len(errors))
     return result
 

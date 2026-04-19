@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from src.ingestion.curated_balance_refresh import run_curated_balance_refresh
 from src.ingestion.news_rss import run_news_rss_refresh
+from src.notify.pipeline_events import publish_success_event
 from src.observability.service_health import (
     append_service_heartbeat,
     build_heartbeat_key,
@@ -31,6 +32,10 @@ _TERMINAL_RUN_STATUSES = {
     "skipped_budget",
 }
 _RUNNER_HEARTBEAT_JOBS = {"curated_balance", "news_rss", "weekly_trend"}
+_PUBLISHABLE_RUN_ALL_SECTIONS = {
+    "news_rss": "news",
+    "curated_balance": "watchlist",
+}
 
 
 @dataclass(frozen=True)
@@ -165,6 +170,21 @@ def _record_job_heartbeat(sheets, job_name: str, slot: DispatchSlot, outcome: ob
     )
 
 
+def _publish_run_all_success(job_name: str, outcome: object, slot: DispatchSlot) -> None:
+    section = _PUBLISHABLE_RUN_ALL_SECTIONS.get(job_name)
+    if section is None or not isinstance(outcome, dict):
+        return
+    if str(outcome.get("status") or "").strip() != "completed":
+        return
+
+    publish_success_event(
+        section=section,
+        pipeline=job_name,
+        result=outcome,
+        slot_key=slot.heartbeat_key,
+    )
+
+
 def run_all(*, now: datetime | None = None, sheets=None) -> dict[str, object]:
     current = _normalize_now(now)
     slot = _resolve_dispatch_slot(current)
@@ -200,6 +220,7 @@ def run_all(*, now: datetime | None = None, sheets=None) -> dict[str, object]:
         try:
             outcome = runner()
             executed.append(job_name)
+            _publish_run_all_success(job_name, outcome, slot)
             _record_job_heartbeat(sheets_client, job_name, slot, outcome)
         except Exception as exc:
             failed[job_name] = str(exc)

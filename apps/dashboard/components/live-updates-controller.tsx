@@ -1,0 +1,416 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+
+import { LiveUpdatesStatus } from "./live-updates-status";
+
+type LiveUpdatesControllerProps = {
+  chipClassName: string;
+  dotClassName: string;
+  language: "ko" | "en";
+};
+
+type LiveUpdateStatus = "connected" | "reconnecting" | "offline";
+type LiveUpdateKind = "brief" | "news" | "watchlist" | "stories";
+
+type StreamPayload = {
+  event?: string;
+  kind?: string;
+  type?: string;
+};
+
+type StreamStatusPayload = {
+  state?: "enabled" | "disabled";
+  reason?: "feature_disabled" | "not_configured";
+};
+
+const STREAM_PATH = "/api/stream";
+const REFRESHABLE_KINDS = new Set<LiveUpdateKind>(["brief", "news", "watchlist", "stories"]);
+const KIND_ALIASES: Record<string, LiveUpdateKind | null> = {
+  brief: "brief",
+  briefing: "brief",
+  news: "news",
+  watchlist: "watchlist",
+  curated_watchlist: "watchlist",
+  story: "stories",
+  stories: "stories",
+  whale_story: "stories",
+};
+const MIN_REFRESH_INTERVAL_MS = 8_000;
+const REFRESH_DEBOUNCE_MS = 1_500;
+const RECONNECT_BACKOFF_MS = [1_000, 2_000, 5_000, 10_000, 30_000] as const;
+
+function normalizeKind(eventType: string, rawData: string): LiveUpdateKind | null {
+  const eventKey = eventType.trim().toLowerCase();
+  if (eventKey && eventKey !== "message") {
+    return KIND_ALIASES[eventKey] ?? null;
+  }
+
+  try {
+    const parsed = JSON.parse(rawData) as StreamPayload;
+    const payloadKey = String(parsed.kind ?? parsed.type ?? parsed.event ?? "")
+      .trim()
+      .toLowerCase();
+    return KIND_ALIASES[payloadKey] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function formatTime(language: "ko" | "en", value: number): string {
+  return new Intl.DateTimeFormat(language === "ko" ? "ko-KR" : "en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Seoul",
+  }).format(new Date(value));
+}
+
+function getCopy(language: "ko" | "en") {
+  if (language === "ko") {
+    return {
+      ariaLabel: "실시간 업데이트 연결 상태",
+      labels: {
+        connected: "실시간 연결됨",
+        reconnecting: "재연결 중",
+        offline: "오프라인",
+      },
+      details: {
+        connectedIdle: "브리핑, 뉴스, 감시 지갑, 고래 스토리 변경을 자동 반영합니다.",
+        connectedEvent: (kind: LiveUpdateKind, receivedAt: number) =>
+          `${humanizeKind(kind, language)} 이벤트 수신 · ${formatTime(language, receivedAt)}에 새로고침 예약`,
+        reconnecting: (seconds: number) => `${seconds}초 후 스트림 재연결을 시도합니다.`,
+        hidden: "백그라운드 탭에서는 실시간 연결을 잠시 멈춥니다.",
+        offline: "네트워크 또는 스트림 연결이 오프라인 상태입니다.",
+        unsupported: "이 브라우저는 EventSource를 지원하지 않습니다.",
+        featureDisabled: "실시간 자동 새로고침 기능이 현재 비활성화되어 있습니다.",
+        notConfigured: "실시간 자동 새로고침 구성이 아직 연결되지 않았습니다.",
+      },
+    };
+  }
+
+  return {
+    ariaLabel: "Live update connection status",
+    labels: {
+      connected: "Live connected",
+      reconnecting: "Reconnecting",
+      offline: "Offline",
+    },
+    details: {
+      connectedIdle: "Auto-refreshes brief, news, watchlist, and whale stories when new events arrive.",
+      connectedEvent: (kind: LiveUpdateKind, receivedAt: number) =>
+        `${humanizeKind(kind, language)} event received · refresh scheduled at ${formatTime(language, receivedAt)}`,
+      reconnecting: (seconds: number) => `Retrying the stream in ${seconds}s.`,
+      hidden: "The tab is in the background, so the live stream is paused.",
+      offline: "The network or stream connection is offline.",
+      unsupported: "This browser does not support EventSource.",
+      featureDisabled: "Live auto-refresh is currently disabled.",
+      notConfigured: "Live auto-refresh is not configured yet.",
+    },
+  };
+}
+
+function humanizeKind(kind: LiveUpdateKind, language: "ko" | "en"): string {
+  if (language === "ko") {
+    if (kind === "brief") {
+      return "브리핑";
+    }
+    if (kind === "news") {
+      return "뉴스";
+    }
+    if (kind === "watchlist") {
+      return "감시 지갑";
+    }
+    return "고래 스토리";
+  }
+
+  if (kind === "brief") {
+    return "Brief";
+  }
+  if (kind === "news") {
+    return "News";
+  }
+  if (kind === "watchlist") {
+    return "Watchlist";
+  }
+  return "Stories";
+}
+
+function parseStatusPayload(rawData: string): StreamStatusPayload | null {
+  try {
+    const parsed = JSON.parse(rawData) as StreamStatusPayload;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function detailForStatusReason(
+  copy: ReturnType<typeof getCopy>,
+  reason?: StreamStatusPayload["reason"],
+): string {
+  if (reason === "feature_disabled") {
+    return copy.details.featureDisabled;
+  }
+
+  if (reason === "not_configured") {
+    return copy.details.notConfigured;
+  }
+
+  return copy.details.offline;
+}
+
+export function LiveUpdatesController({
+  chipClassName,
+  dotClassName,
+  language,
+}: LiveUpdatesControllerProps) {
+  const router = useRouter();
+  const copy = getCopy(language);
+  const [status, setStatus] = useState<LiveUpdateStatus>("reconnecting");
+  const [detail, setDetail] = useState(copy.details.reconnecting(1));
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const refreshTimerRef = useRef<number | null>(null);
+  const reconnectAttemptRef = useRef(0);
+  const pendingRefreshRef = useRef(false);
+  const lastRefreshAtRef = useRef(0);
+  const visibleRef = useRef(true);
+  const onlineRef = useRef(true);
+
+  useEffect(() => {
+    const effectCopy = getCopy(language);
+
+    const clearReconnectTimer = () => {
+      if (reconnectTimerRef.current !== null) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+    };
+
+    const clearRefreshTimer = () => {
+      if (refreshTimerRef.current !== null) {
+        window.clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
+
+    const closeStream = () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.onopen = null;
+        eventSourceRef.current.onerror = null;
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+
+    const requestRefresh = (kind: LiveUpdateKind, receivedAt: number) => {
+      pendingRefreshRef.current = true;
+      setDetail(effectCopy.details.connectedEvent(kind, receivedAt));
+
+      if (!visibleRef.current || !onlineRef.current) {
+        return;
+      }
+
+      if (refreshTimerRef.current !== null) {
+        return;
+      }
+
+      const elapsed = Date.now() - lastRefreshAtRef.current;
+      const waitMs =
+        elapsed >= MIN_REFRESH_INTERVAL_MS
+          ? REFRESH_DEBOUNCE_MS
+          : Math.max(REFRESH_DEBOUNCE_MS, MIN_REFRESH_INTERVAL_MS - elapsed);
+
+      refreshTimerRef.current = window.setTimeout(() => {
+        refreshTimerRef.current = null;
+
+        if (!visibleRef.current || !onlineRef.current) {
+          pendingRefreshRef.current = true;
+          return;
+        }
+
+        pendingRefreshRef.current = false;
+        lastRefreshAtRef.current = Date.now();
+        router.refresh();
+      }, waitMs);
+    };
+
+    const connect = () => {
+      clearReconnectTimer();
+      closeStream();
+
+      if (!("EventSource" in window)) {
+        setStatus("offline");
+        setDetail(effectCopy.details.unsupported);
+        return;
+      }
+
+      if (!visibleRef.current) {
+        setStatus("offline");
+        setDetail(effectCopy.details.hidden);
+        return;
+      }
+
+      if (!onlineRef.current) {
+        setStatus("offline");
+        setDetail(effectCopy.details.offline);
+        return;
+      }
+
+      const source = new EventSource(STREAM_PATH);
+      eventSourceRef.current = source;
+      setStatus("reconnecting");
+      setDetail(effectCopy.details.reconnecting(1));
+
+      const handleIncoming = (eventType: string, rawData: string) => {
+        const kind = normalizeKind(eventType, rawData);
+        if (!kind || !REFRESHABLE_KINDS.has(kind)) {
+          return;
+        }
+        setStatus("connected");
+        requestRefresh(kind, Date.now());
+      };
+
+      source.onopen = () => {
+        reconnectAttemptRef.current = 0;
+        setStatus("connected");
+        setDetail(effectCopy.details.connectedIdle);
+        if (pendingRefreshRef.current) {
+          requestRefresh("brief", Date.now());
+        }
+      };
+
+      source.onerror = () => {
+        closeStream();
+
+        const attempt = reconnectAttemptRef.current + 1;
+        reconnectAttemptRef.current = attempt;
+        const delay =
+          RECONNECT_BACKOFF_MS[Math.min(attempt - 1, RECONNECT_BACKOFF_MS.length - 1)];
+        const nextStatus = attempt >= 3 ? "offline" : "reconnecting";
+
+        setStatus(nextStatus);
+        setDetail(
+          visibleRef.current && onlineRef.current
+            ? effectCopy.details.reconnecting(Math.round(delay / 1000))
+            : effectCopy.details.offline,
+        );
+
+        if (!visibleRef.current || !onlineRef.current) {
+          return;
+        }
+
+        reconnectTimerRef.current = window.setTimeout(() => {
+          reconnectTimerRef.current = null;
+          connect();
+        }, delay);
+      };
+
+      source.onmessage = (event) => {
+        handleIncoming("message", event.data);
+      };
+
+      source.addEventListener("brief", (event) => {
+        handleIncoming("brief", event.data);
+      });
+      source.addEventListener("news", (event) => {
+        handleIncoming("news", event.data);
+      });
+      source.addEventListener("watchlist", (event) => {
+        handleIncoming("watchlist", event.data);
+      });
+      source.addEventListener("stories", (event) => {
+        handleIncoming("stories", event.data);
+      });
+      source.addEventListener("whale_story", (event) => {
+        handleIncoming("whale_story", event.data);
+      });
+      source.addEventListener("status", (event) => {
+        const payload = parseStatusPayload(event.data);
+
+        if (payload?.state === "disabled") {
+          setStatus("offline");
+          setDetail(detailForStatusReason(effectCopy, payload.reason));
+          return;
+        }
+
+        if (payload?.state === "enabled") {
+          setStatus("connected");
+          setDetail(effectCopy.details.connectedIdle);
+        }
+      });
+    };
+
+    const handleVisibilityChange = () => {
+      visibleRef.current = !document.hidden;
+
+      if (visibleRef.current) {
+        connect();
+        if (pendingRefreshRef.current) {
+          requestRefresh("brief", Date.now());
+        }
+        return;
+      }
+
+      clearReconnectTimer();
+      clearRefreshTimer();
+      closeStream();
+      setStatus("offline");
+      setDetail(effectCopy.details.hidden);
+    };
+
+    const handleOnline = () => {
+      onlineRef.current = true;
+      connect();
+    };
+
+    const handleOffline = () => {
+      onlineRef.current = false;
+      clearReconnectTimer();
+      clearRefreshTimer();
+      closeStream();
+      setStatus("offline");
+      setDetail(effectCopy.details.offline);
+    };
+
+    visibleRef.current = !document.hidden;
+    onlineRef.current = navigator.onLine;
+
+    if (onlineRef.current && visibleRef.current) {
+      connect();
+    } else {
+      setStatus("offline");
+      setDetail(visibleRef.current ? effectCopy.details.offline : effectCopy.details.hidden);
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+      clearReconnectTimer();
+      clearRefreshTimer();
+      closeStream();
+    };
+  }, [language, router]);
+
+  const tone = status === "connected" ? "good" : status === "reconnecting" ? "warn" : "bad";
+  const label = copy.labels[status];
+
+  return (
+    <LiveUpdatesStatus
+      ariaLabel={copy.ariaLabel}
+      chipClassName={chipClassName}
+      dotClassName={dotClassName}
+      label={label}
+      title={detail}
+      tone={tone}
+    />
+  );
+}

@@ -284,3 +284,23 @@ def test_run_brief_pipeline_logs_llm_attempt_and_success():
     assert any(message.startswith("brief signals_json preview=") for message in messages)
     assert any("brief llm call attempted task=daily_brief" in message for message in messages)
     assert any("brief llm call succeeded model=gemini/gemini-2.5-flash" in message for message in messages)
+
+
+def test_run_brief_pipeline_publishes_completed_update():
+    from src.pipeline.brief import run_brief_pipeline
+
+    sheets = _FakeSheets(
+        transaction_rows=[_recent_tx_row(symbol="USDT", amount="1000000", amount_usd="1000000")]
+    )
+
+    with patch("src.pipeline.brief.load_pipeline_env", return_value=_fake_env()), patch(
+        "src.pipeline.brief.build_sheets_client", return_value=sheets
+    ), patch("src.pipeline.brief.publish_success_event") as publish_success_event:
+        result = run_brief_pipeline()
+
+    assert result["status"] == "completed"
+    publish_success_event.assert_called_once_with(
+        section="brief",
+        pipeline="brief",
+        result=result,
+    )

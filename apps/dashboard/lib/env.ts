@@ -23,6 +23,13 @@ export interface DashboardEnv {
   credentials: GoogleServiceAccountCredentials;
 }
 
+export interface LiveUpdatesEnv {
+  enabled: boolean;
+  configured: boolean;
+  restUrl?: string;
+  restToken?: string;
+}
+
 type EnvMap = Record<string, string>;
 
 function missingEnvError(keys: string[]): DashboardConfigError {
@@ -44,6 +51,24 @@ function stripEnvQuotes(value: string): string {
   }
 
   return trimmed;
+}
+
+function parseBooleanEnvValue(value: string | undefined, fallback: boolean): boolean {
+  const normalized = value?.trim().toLowerCase();
+
+  if (!normalized) {
+    return fallback;
+  }
+
+  if (["1", "true", "yes", "y", "on", "enabled"].includes(normalized)) {
+    return true;
+  }
+
+  if (["0", "false", "no", "n", "off", "disabled"].includes(normalized)) {
+    return false;
+  }
+
+  return fallback;
 }
 
 function parseEnvFile(path: string): EnvMap {
@@ -184,6 +209,20 @@ export function getDashboardEnv(): DashboardEnv {
   return {
     sheetId: sheetId!,
     credentials: parseCredentialsJson(credentialsJson!),
+  };
+}
+
+export function getLiveUpdatesEnv(): LiveUpdatesEnv {
+  const enabled = parseBooleanEnvValue(readEnvValue("WHALESCOPE_SSE_ENABLED"), false);
+  const restUrl = readEnvValue("WHALESCOPE_REDIS_REST_URL");
+  const restToken = readEnvValue("WHALESCOPE_REDIS_REST_TOKEN");
+  const configured = Boolean(restUrl && restToken);
+
+  return {
+    enabled,
+    configured,
+    restUrl: configured ? restUrl : undefined,
+    restToken: configured ? restToken : undefined,
   };
 }
 

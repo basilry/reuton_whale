@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from unittest.mock import patch
+from unittest.mock import call
 
 import src.pipeline.run_all as run_all_module
 
@@ -154,3 +155,97 @@ def test_run_all_skips_duplicate_jobs_for_same_slot():
     brief.assert_not_called()
     weekly.assert_not_called()
     assert sheets.service_health_entries[-1]["status"] == "degraded"
+
+
+def test_run_all_publishes_success_for_news_and_watchlist_only():
+    calls: list[str] = []
+    sheets = FakeSheets()
+
+    def _record(name: str, *, status: str = "completed"):
+        def _runner():
+            calls.append(name)
+            return {
+                "status": status,
+                "details": f"runner={name}",
+                "run_id": f"{name}_20260420_000000",
+                "finished_at": "2026-04-20T00:00:05+00:00",
+            }
+
+        return _runner
+
+    with patch.object(run_all_module, "run_signals_pipeline", side_effect=_record("signals")), patch.object(
+        run_all_module, "run_curated_balance_refresh", side_effect=_record("curated_balance")
+    ), patch.object(
+        run_all_module, "run_news_rss_refresh", side_effect=_record("news_rss")
+    ), patch.object(
+        run_all_module, "run_broadcast_daily", side_effect=_record("broadcast_daily")
+    ), patch.object(run_all_module, "publish_success_event") as publish_success_event:
+        summary = run_all_module.run_all(
+            now=_kst_datetime(2026, 4, 20, 9, 5),
+            sheets=sheets,
+        )
+
+    assert summary["status"] == "completed"
+    assert calls == ["signals", "curated_balance", "news_rss", "broadcast_daily"]
+    assert publish_success_event.call_args_list == [
+        call(
+            section="watchlist",
+            pipeline="curated_balance",
+            result={
+                "status": "completed",
+                "details": "runner=curated_balance",
+                "run_id": "curated_balance_20260420_000000",
+                "finished_at": "2026-04-20T00:00:05+00:00",
+            },
+            slot_key="20260420T0900",
+        ),
+        call(
+            section="news",
+            pipeline="news_rss",
+            result={
+                "status": "completed",
+                "details": "runner=news_rss",
+                "run_id": "news_rss_20260420_000000",
+                "finished_at": "2026-04-20T00:00:05+00:00",
+            },
+            slot_key="20260420T0900",
+        )
+    ]
+
+
+def test_run_all_skips_publish_for_non_completed_results():
+    sheets = FakeSheets()
+
+    def _record(name: str, *, status: str = "completed"):
+        return {
+            "status": status,
+            "details": f"runner={name}",
+            "run_id": f"{name}_20260420_000000",
+            "finished_at": "2026-04-20T00:00:05+00:00",
+        }
+
+    with patch.object(run_all_module, "run_signals_pipeline", return_value=_record("signals")), patch.object(
+        run_all_module, "run_curated_balance_refresh", return_value=_record("curated_balance")
+    ), patch.object(
+        run_all_module, "run_news_rss_refresh", return_value=_record("news_rss", status="completed_with_errors")
+    ), patch.object(
+        run_all_module, "run_broadcast_daily", return_value=_record("broadcast_daily")
+    ), patch.object(run_all_module, "publish_success_event") as publish_success_event:
+        run_all_module.run_all(
+            now=_kst_datetime(2026, 4, 20, 9, 5),
+            sheets=sheets,
+        )
+
+    assert publish_success_event.call_args_list == [
+        call(
+            section="watchlist",
+            pipeline="curated_balance",
+            result={
+                "status": "completed",
+                "details": "runner=curated_balance",
+                "run_id": "curated_balance_20260420_000000",
+                "finished_at": "2026-04-20T00:00:05+00:00",
+            },
+            slot_key="20260420T0900",
+        )
+    ]
