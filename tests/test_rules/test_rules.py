@@ -186,6 +186,32 @@ class TestCexInflowSpike:
         assert sig.source == "chain"
         assert sig.score == pytest.approx(7.0)
 
+    def test_per_chain_override_raises_btc_threshold(self):
+        rule = _load(
+            "cex_inflow_spike",
+            {
+                "per_chain_overrides": {
+                    "BTC": {"min_usd": 5_000_000},
+                }
+            },
+        )
+        ev = _evt(chain="BTC", direction="in", counterparty_category="cex", amount_usd=3_500_000)
+        assert rule([ev], _ctx()) == []
+
+    def test_per_chain_override_allows_xrp_signal(self):
+        rule = _load(
+            "cex_inflow_spike",
+            {
+                "per_chain_overrides": {
+                    "XRP": {"min_usd": 2_000_000},
+                }
+            },
+        )
+        ev = _evt(chain="XRP", direction="in", counterparty_category="cex", amount_usd=3_500_000)
+        signals = rule([ev], _ctx())
+        assert len(signals) == 1
+        assert signals[0].extra["chain"] == "XRP"
+
 
 # ---------------------------------------------------------------------------
 # Rule 3: cold_to_hot_transfer
@@ -214,6 +240,18 @@ class TestColdToHotTransfer:
         ]
         signals = rule(evs, _ctx())
         assert len(signals) == 2
+
+    def test_per_chain_override_blocks_small_btc_hot_transfer(self):
+        rule = _load(
+            "cold_to_hot_transfer",
+            {
+                "per_chain_overrides": {
+                    "BTC": {"min_usd": 10_000_000},
+                }
+            },
+        )
+        ev = _evt(chain="BTC", direction="out", counterparty_category="hot", amount_usd=6_000_000)
+        assert rule([ev], _ctx()) == []
 
 
 # ---------------------------------------------------------------------------

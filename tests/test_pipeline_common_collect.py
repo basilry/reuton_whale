@@ -3,9 +3,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
+from src.ingestion.bitcoin import BitcoinCollector
+from src.ingestion.dogecoin import DogecoinCollector
 from src.ingestion.etherscan import EtherscanCollector
 from src.ingestion.solscan import SolscanCollector
-from src.pipeline.common import collect_recent_events
+from src.ingestion.tron import TronCollector
+from src.ingestion.xrpl import XrplCollector
+from src.pipeline.common import PipelineEnv, build_optional_collectors, collect_recent_events
 from src.signals.models import Event
 
 
@@ -87,3 +91,23 @@ def test_collect_recent_events_keeps_existing_evm_sol_behavior_and_reports_unsup
     assert collected.coverage["unsupported_chain_count"] == 1
     assert collected.coverage["unsupported_chain_names"] == "BTC=1"
     assert collected.coverage["per_chain_event_count"] == "ARB=1,BASE=1,BSC=1,ETH=1,POLYGON=1,SOL=1"
+
+
+def test_build_optional_collectors_enables_all_supported_optional_chains() -> None:
+    env = PipelineEnv(
+        sheet_id="sheet",
+        google_credentials="{}",
+        enable_chain_xrp=True,
+        enable_chain_trx=True,
+        enable_chain_btc=True,
+        enable_chain_doge=True,
+    )
+
+    collectors = build_optional_collectors(env)
+
+    assert [type(collector) for collector in collectors] == [
+        XrplCollector,
+        TronCollector,
+        BitcoinCollector,
+        DogecoinCollector,
+    ]

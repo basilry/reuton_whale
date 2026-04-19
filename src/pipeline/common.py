@@ -55,6 +55,12 @@ class PipelineEnv:
     enable_chain_trx: bool = False
     trongrid_api_key: str = ""
     trongrid_api_base: str = "https://api.trongrid.io"
+    enable_chain_btc: bool = False
+    btc_indexer_base: str = "https://mempool.space/api"
+    btc_indexer_key: str = ""
+    enable_chain_doge: bool = False
+    doge_indexer_base: str = "https://api.blockchair.com/dogecoin"
+    doge_indexer_key: str = ""
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
     groq_api_key: str = ""
@@ -137,16 +143,34 @@ def load_pipeline_env(
         os.getenv("TRONGRID_API_BASE", "https://api.trongrid.io").strip()
         or "https://api.trongrid.io"
     )
+    enable_chain_btc = env_bool("ENABLE_CHAIN_BTC", default=False)
+    btc_indexer_base = (
+        os.getenv("BTC_INDEXER_BASE", "https://mempool.space/api").strip()
+        or "https://mempool.space/api"
+    )
+    btc_indexer_key = os.getenv("BTC_INDEXER_KEY", "").strip()
+    enable_chain_doge = env_bool("ENABLE_CHAIN_DOGE", default=False)
+    doge_indexer_base = (
+        os.getenv("DOGE_INDEXER_BASE", "https://api.blockchair.com/dogecoin").strip()
+        or "https://api.blockchair.com/dogecoin"
+    )
+    doge_indexer_key = os.getenv("DOGE_INDEXER_KEY", "").strip()
     anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
     gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip()
     groq_api_key = os.getenv("GROQ_API_KEY", "").strip()
     telegram_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 
-    if require_chain_api and not (etherscan_api_key or enable_chain_xrp or enable_chain_trx):
+    if require_chain_api and not (
+        etherscan_api_key
+        or enable_chain_xrp
+        or enable_chain_trx
+        or enable_chain_btc
+        or enable_chain_doge
+    ):
         raise ValueError(
             "Missing required chain collector configuration: set ETHERSCAN_API_KEY "
             "or enable at least one optional collector such as ENABLE_CHAIN_XRP=true "
-            "or ENABLE_CHAIN_TRX=true"
+            "or ENABLE_CHAIN_TRX=true or ENABLE_CHAIN_BTC=true or ENABLE_CHAIN_DOGE=true"
         )
     if require_llm and not any((anthropic_api_key, gemini_api_key, groq_api_key)):
         raise ValueError(
@@ -166,6 +190,12 @@ def load_pipeline_env(
         enable_chain_trx=enable_chain_trx,
         trongrid_api_key=trongrid_api_key,
         trongrid_api_base=trongrid_api_base,
+        enable_chain_btc=enable_chain_btc,
+        btc_indexer_base=btc_indexer_base,
+        btc_indexer_key=btc_indexer_key,
+        enable_chain_doge=enable_chain_doge,
+        doge_indexer_base=doge_indexer_base,
+        doge_indexer_key=doge_indexer_key,
         anthropic_api_key=anthropic_api_key,
         gemini_api_key=gemini_api_key,
         groq_api_key=groq_api_key,
@@ -247,6 +277,26 @@ def build_optional_collectors(env: PipelineEnv) -> tuple[ChainCollector, ...]:
                 api_key=getattr(env, "trongrid_api_key", "") or None,
                 base_url=getattr(env, "trongrid_api_base", "https://api.trongrid.io")
                 or "https://api.trongrid.io",
+            )
+        )
+    if getattr(env, "enable_chain_btc", False):
+        from src.ingestion.bitcoin import BitcoinCollector
+
+        collectors.append(
+            BitcoinCollector(
+                api_base=getattr(env, "btc_indexer_base", "https://mempool.space/api")
+                or "https://mempool.space/api",
+                api_key=getattr(env, "btc_indexer_key", "") or None,
+            )
+        )
+    if getattr(env, "enable_chain_doge", False):
+        from src.ingestion.dogecoin import DogecoinCollector
+
+        collectors.append(
+            DogecoinCollector(
+                base_url=getattr(env, "doge_indexer_base", "https://api.blockchair.com/dogecoin")
+                or "https://api.blockchair.com/dogecoin",
+                api_key=getattr(env, "doge_indexer_key", "") or None,
             )
         )
     return tuple(collectors)

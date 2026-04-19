@@ -7,6 +7,7 @@ from src.signals.models import Event
 
 class ChainCollector(ABC):
     supported_chains: tuple[str, ...] = ()
+    is_partial_view: bool = False
     chain_aliases: dict[str, str] = {}
     expanded_aliases: dict[str, tuple[str, ...]] = {}
 

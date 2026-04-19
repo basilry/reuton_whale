@@ -591,6 +591,13 @@ export type WhaleStoryParticipant = {
   curatedWallet?: CuratedWalletMatch;
 };
 
+export type WhaleStoryPartialView = {
+  badge: string;
+  tooltip: string;
+  cardSummary: string;
+  detailSummary: string;
+};
+
 export type WhaleStory = {
   id: string;
   kind: "transaction" | "signal" | "brief" | "empty";
@@ -600,6 +607,7 @@ export type WhaleStory = {
   tone: WhaleStoryTone;
   observationLabel?: string;
   observationSource?: "direct_chain" | "tg_mirror" | "corroborated";
+  partialView?: WhaleStoryPartialView;
   externalChannel?: string;
   externalConfidence?: string;
   hash?: string;

@@ -72,6 +72,9 @@ function humanizeChain(value?: string): string {
   if (normalized === "btc" || normalized === "bitcoin") {
     return "Bitcoin";
   }
+  if (normalized === "doge" || normalized === "dogecoin") {
+    return "Dogecoin";
+  }
   return value ?? "체인 미상";
 }
 
@@ -301,6 +304,7 @@ export function WhaleStoryDetailModal({
   const fromParticipant = participants.find((participant) => participant.role === "from") ?? null;
   const toParticipant = participants.find((participant) => participant.role === "to") ?? null;
   const signalCount = story.supportingSignalIds.length;
+  const hasBadgeRow = Boolean(story.observationLabel || story.partialView);
   const facts = [
     story.symbol ? `자산 ${story.symbol}` : "",
     story.amountToken ? `수량 ${formatTokenAmount(story.amountToken, story.symbol)}` : "",
@@ -325,9 +329,21 @@ export function WhaleStoryDetailModal({
         <div className={styles.header}>
           <div className={styles.headerCopy}>
             <p className={styles.eyebrow}>Whale Story Detail</p>
-            {story.observationLabel ? (
+            {hasBadgeRow ? (
               <div className={styles.observationBadgeRow}>
-                <span className={styles.observationBadge}>{story.observationLabel}</span>
+                {story.observationLabel ? (
+                  <span className={styles.observationBadge}>{story.observationLabel}</span>
+                ) : null}
+                {story.partialView ? (
+                  <span
+                    aria-label={`${story.partialView.badge}: ${story.partialView.tooltip}`}
+                    className={styles.observationBadge}
+                    data-variant="partial"
+                    title={story.partialView.tooltip}
+                  >
+                    {story.partialView.badge}
+                  </span>
+                ) : null}
               </div>
             ) : null}
             <h3 id={titleId} className={styles.title}>
@@ -336,6 +352,11 @@ export function WhaleStoryDetailModal({
             <p id={descriptionId} className={styles.description}>
               {story.body}
             </p>
+            {story.partialView ? (
+              <div className={styles.partialViewCallout}>
+                <p className={styles.partialViewText}>{story.partialView.detailSummary}</p>
+              </div>
+            ) : null}
           </div>
           <button
             ref={closeButtonRef}
@@ -381,6 +402,14 @@ export function WhaleStoryDetailModal({
             <div className={styles.metaItem}>
               <span className={styles.metaLabel}>관측 레인</span>
               <strong className={styles.metaValue}>{story.observationLabel}</strong>
+            </div>
+          ) : null}
+          {story.partialView ? (
+            <div className={styles.metaItem}>
+              <span className={styles.metaLabel}>관측 범위</span>
+              <strong className={styles.metaValue} title={story.partialView.tooltip}>
+                {story.partialView.badge}
+              </strong>
             </div>
           ) : null}
         </div>

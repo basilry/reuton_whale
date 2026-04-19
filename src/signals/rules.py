@@ -41,6 +41,20 @@ def _score_from_z(z: float, sigma: float) -> float:
     return min(10.0, 5.0 + (z - sigma))
 
 
+def _rule_cfg_for_chain(cfg: dict, chain: str | None) -> dict:
+    if not chain:
+        return cfg
+    overrides = cfg.get("per_chain_overrides")
+    if not isinstance(overrides, dict):
+        return cfg
+    chain_override = overrides.get(str(chain).upper())
+    if not isinstance(chain_override, dict):
+        return cfg
+    merged = dict(cfg)
+    merged.update(chain_override)
+    return merged
+
+
 def _external_channel_label(event: Event) -> str:
     return event.external_channel or event.external_channel_handle or "Telegram"
 
@@ -56,12 +70,8 @@ def _external_confidence(event: Event) -> str:
 # Rule 1: CEX outflow spike
 # ---------------------------------------------------------------------------
 def _make_cex_outflow_spike(cfg: dict) -> Callable:
-    window_h = cfg["window_hours"]
-    sigma = cfg["sigma_threshold"]
-    min_usd = cfg["min_usd"]
-    severity_base = cfg["severity_base"]
-
     def rule(events: list[Event], ctx: RuleContext) -> list[Signal]:
+        window_h = cfg["window_hours"]
         cutoff = ctx.now - timedelta(hours=window_h)
         window_events = [
             e for e in events
@@ -72,29 +82,41 @@ def _make_cex_outflow_spike(cfg: dict) -> Callable:
         ]
         if not window_events:
             return []
-        total_usd = sum(e.amount_usd for e in window_events)
-        if total_usd < min_usd:
-            return []
-        b = ctx.chain_baselines.get("default", {})
-        mean = b.get("out_mean_usd", 0.0)
-        std = b.get("out_std_usd", 1.0)
-        z = (total_usd - mean) / max(std, 1.0)
-        if z < sigma:
-            return []
-        score = _score_from_z(z, sigma)
-        tx_hashes = [e.tx_hash for e in window_events if e.tx_hash]
-        return [Signal(
-            signal_id=_new_id(),
-            rule="cex_outflow_spike",
-            severity=severity_base,
-            score=round(score, 2),
-            confidence="medium",
-            source="chain",
-            evidence_tx_hashes=tx_hashes,
-            window_start=cutoff,
-            window_end=ctx.now,
-            summary=f"CEX outflow spike: ${total_usd:,.0f} (z={z:.1f})",
-        )]
+        by_chain: dict[str, list[Event]] = {}
+        for event in window_events:
+            by_chain.setdefault(event.chain.upper(), []).append(event)
+
+        signals: list[Signal] = []
+        for chain, chain_events in by_chain.items():
+            chain_cfg = _rule_cfg_for_chain(cfg, chain)
+            sigma = chain_cfg["sigma_threshold"]
+            min_usd = chain_cfg["min_usd"]
+            severity_base = chain_cfg["severity_base"]
+            total_usd = sum(e.amount_usd for e in chain_events)
+            if total_usd < min_usd:
+                continue
+            b = ctx.chain_baselines.get("default", {})
+            mean = b.get("out_mean_usd", 0.0)
+            std = b.get("out_std_usd", 1.0)
+            z = (total_usd - mean) / max(std, 1.0)
+            if z < sigma:
+                continue
+            score = _score_from_z(z, sigma)
+            tx_hashes = [e.tx_hash for e in chain_events if e.tx_hash]
+            signals.append(Signal(
+                signal_id=_new_id(),
+                rule="cex_outflow_spike",
+                severity=severity_base,
+                score=round(score, 2),
+                confidence="medium",
+                source="chain",
+                evidence_tx_hashes=tx_hashes,
+                window_start=cutoff,
+                window_end=ctx.now,
+                summary=f"CEX outflow spike [{chain}]: ${total_usd:,.0f} (z={z:.1f})",
+                extra={"chain": chain, "amount_usd": total_usd, "direction": "out"},
+            ))
+        return signals
 
     return rule
 
@@ -103,12 +125,8 @@ def _make_cex_outflow_spike(cfg: dict) -> Callable:
 # Rule 2: CEX inflow spike
 # ---------------------------------------------------------------------------
 def _make_cex_inflow_spike(cfg: dict) -> Callable:
-    window_h = cfg["window_hours"]
-    sigma = cfg["sigma_threshold"]
-    min_usd = cfg["min_usd"]
-    severity_base = cfg["severity_base"]
-
     def rule(events: list[Event], ctx: RuleContext) -> list[Signal]:
+        window_h = cfg["window_hours"]
         cutoff = ctx.now - timedelta(hours=window_h)
         window_events = [
             e for e in events
@@ -119,29 +137,41 @@ def _make_cex_inflow_spike(cfg: dict) -> Callable:
         ]
         if not window_events:
             return []
-        total_usd = sum(e.amount_usd for e in window_events)
-        if total_usd < min_usd:
-            return []
-        b = ctx.chain_baselines.get("default", {})
-        mean = b.get("in_mean_usd", 0.0)
-        std = b.get("in_std_usd", 1.0)
-        z = (total_usd - mean) / max(std, 1.0)
-        if z < sigma:
-            return []
-        score = _score_from_z(z, sigma)
-        tx_hashes = [e.tx_hash for e in window_events if e.tx_hash]
-        return [Signal(
-            signal_id=_new_id(),
-            rule="cex_inflow_spike",
-            severity=severity_base,
-            score=round(score, 2),
-            confidence="medium",
-            source="chain",
-            evidence_tx_hashes=tx_hashes,
-            window_start=cutoff,
-            window_end=ctx.now,
-            summary=f"CEX inflow spike: ${total_usd:,.0f} (z={z:.1f})",
-        )]
+        by_chain: dict[str, list[Event]] = {}
+        for event in window_events:
+            by_chain.setdefault(event.chain.upper(), []).append(event)
+
+        signals: list[Signal] = []
+        for chain, chain_events in by_chain.items():
+            chain_cfg = _rule_cfg_for_chain(cfg, chain)
+            sigma = chain_cfg["sigma_threshold"]
+            min_usd = chain_cfg["min_usd"]
+            severity_base = chain_cfg["severity_base"]
+            total_usd = sum(e.amount_usd for e in chain_events)
+            if total_usd < min_usd:
+                continue
+            b = ctx.chain_baselines.get("default", {})
+            mean = b.get("in_mean_usd", 0.0)
+            std = b.get("in_std_usd", 1.0)
+            z = (total_usd - mean) / max(std, 1.0)
+            if z < sigma:
+                continue
+            score = _score_from_z(z, sigma)
+            tx_hashes = [e.tx_hash for e in chain_events if e.tx_hash]
+            signals.append(Signal(
+                signal_id=_new_id(),
+                rule="cex_inflow_spike",
+                severity=severity_base,
+                score=round(score, 2),
+                confidence="medium",
+                source="chain",
+                evidence_tx_hashes=tx_hashes,
+                window_start=cutoff,
+                window_end=ctx.now,
+                summary=f"CEX inflow spike [{chain}]: ${total_usd:,.0f} (z={z:.1f})",
+                extra={"chain": chain, "amount_usd": total_usd, "direction": "in"},
+            ))
+        return signals
 
     return rule
 
@@ -150,19 +180,20 @@ def _make_cex_inflow_spike(cfg: dict) -> Callable:
 # Rule 3: Cold-to-hot transfer
 # ---------------------------------------------------------------------------
 def _make_cold_to_hot_transfer(cfg: dict) -> Callable:
-    min_usd = cfg["min_usd"]
-    severity_base = cfg["severity_base"]
-
     def rule(events: list[Event], ctx: RuleContext) -> list[Signal]:
-        hits = [
-            e for e in events
-            if e.source == "chain"
-            and e.counterparty_category == "hot"
-            and e.direction == "out"
-            and e.amount_usd >= min_usd
-        ]
         signals = []
-        for e in hits:
+        for e in events:
+            if not (
+                e.source == "chain"
+                and e.counterparty_category == "hot"
+                and e.direction == "out"
+            ):
+                continue
+            chain_cfg = _rule_cfg_for_chain(cfg, e.chain.upper())
+            min_usd = chain_cfg["min_usd"]
+            severity_base = chain_cfg["severity_base"]
+            if e.amount_usd < min_usd:
+                continue
             ratio = e.amount_usd / min_usd
             score = min(10.0, 5.0 + math.log10(max(ratio, 1.0)) * 2)
             signals.append(Signal(
@@ -175,7 +206,8 @@ def _make_cold_to_hot_transfer(cfg: dict) -> Callable:
                 evidence_tx_hashes=[e.tx_hash] if e.tx_hash else [],
                 window_start=e.block_time,
                 window_end=e.block_time,
-                summary=f"Cold→hot transfer: ${e.amount_usd:,.0f}",
+                summary=f"Cold→hot transfer [{e.chain.upper()}]: ${e.amount_usd:,.0f}",
+                extra={"chain": e.chain.upper(), "amount_usd": e.amount_usd, "direction": "out"},
             ))
         return signals
 

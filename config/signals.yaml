@@ -9,6 +9,11 @@ rules:
     sigma_threshold: 3.0
     min_usd: 1000000
     severity_base: medium
+    per_chain_overrides:
+      BTC: { min_usd: 5000000 }
+      DOGE: { min_usd: 500000 }
+      XRP: { min_usd: 2000000 }
+      TRX: { min_usd: 3000000 }
   # cex_inflow_spike: 외부(온체인 송신자)에서 CEX로 들어오는 대규모 플로우.
   # 주의: counterparty_category="cex_to_cex"는 의도적으로 제외됨.
   # 변경 시 src/main.py::_tg_direction 및 src/signals/rules.py 모듈 docstring 동시 확인.
@@ -18,9 +23,17 @@ rules:
     sigma_threshold: 3.0
     min_usd: 1000000
     severity_base: medium
+    per_chain_overrides:
+      BTC: { min_usd: 5000000 }
+      DOGE: { min_usd: 500000 }
+      XRP: { min_usd: 2000000 }
+      TRX: { min_usd: 3000000 }
   - name: cold_to_hot_transfer
     min_usd: 5000000
     severity_base: high
+    per_chain_overrides:
+      BTC: { min_usd: 10000000 }
+      DOGE: { min_usd: 2000000 }
   - name: smart_money_accumulation
     window_hours: 24
     min_addresses: 3

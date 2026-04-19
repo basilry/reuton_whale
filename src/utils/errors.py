@@ -39,5 +39,13 @@ class TronError(Exception):
     pass
 
 
+class BitcoinError(Exception):
+    pass
+
+
+class DogecoinError(Exception):
+    pass
+
+
 class SignalEngineError(Exception):
     pass

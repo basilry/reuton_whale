@@ -40,6 +40,7 @@ export function WhaleStoryPanel({
     <>
       <div className={styles.panel}>
         {visibleStories.map((story) => {
+          const hasBadgeRow = Boolean(story.observationLabel || story.partialView);
           const meta = [
             story.meta,
             story.generatedAt ? `${generatedPrefix} ${formatStoryTimestamp(story.generatedAt)}` : "",
@@ -56,13 +57,28 @@ export function WhaleStoryPanel({
               <div className={styles.storyCard}>
                 <div className={styles.storyDot} data-tone={story.tone} />
                 <div className={styles.storyCopy}>
-                  {story.observationLabel ? (
+                  {hasBadgeRow ? (
                     <div className={styles.observationBadgeRow}>
-                      <span className={styles.observationBadge}>{story.observationLabel}</span>
+                      {story.observationLabel ? (
+                        <span className={styles.observationBadge}>{story.observationLabel}</span>
+                      ) : null}
+                      {story.partialView ? (
+                        <span
+                          aria-label={`${story.partialView.badge}: ${story.partialView.tooltip}`}
+                          className={styles.observationBadge}
+                          data-variant="partial"
+                          title={story.partialView.tooltip}
+                        >
+                          {story.partialView.badge}
+                        </span>
+                      ) : null}
                     </div>
                   ) : null}
                   <h4 className={styles.storyTitle}>{story.title}</h4>
                   <p className={styles.storyBody}>{story.body}</p>
+                  {story.partialView ? (
+                    <p className={styles.storyScopeNote}>{story.partialView.cardSummary}</p>
+                  ) : null}
                   <div className={styles.storyMeta}>
                     {meta.map((item) => (
                       <span key={item}>{item}</span>

@@ -11,6 +11,7 @@ import type {
   CuratedWalletEntry,
   CuratedWalletMatch,
   WhaleStory,
+  WhaleStoryPartialView,
   WhaleStoryParticipant,
   WhaleStoryTone,
 } from "./types";
@@ -47,7 +48,10 @@ type BriefLike = {
   date?: string;
 };
 
-type StoryCard = Pick<WhaleStory, "title" | "body" | "meta" | "hash" | "tone" | "generatedAt">;
+type StoryCard = Pick<
+  WhaleStory,
+  "title" | "body" | "meta" | "hash" | "tone" | "generatedAt" | "observationLabel" | "partialView"
+>;
 
 type ObservationPresentation = {
   label?: string;
@@ -117,6 +121,38 @@ function buildObservationPresentation(signal: SignalLike | null): ObservationPre
   }
 
   return {};
+}
+
+function parseBooleanish(value: unknown): boolean | undefined {
+  const normalized = compactString(String(value ?? "")).toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (["true", "1", "yes", "y"].includes(normalized)) {
+    return true;
+  }
+  if (["false", "0", "no", "n"].includes(normalized)) {
+    return false;
+  }
+  return undefined;
+}
+
+function signalClusterApplied(signal: SignalLike | null): boolean | undefined {
+  const extra = signalExtra(signal);
+
+  for (const key of [
+    "cluster_applied",
+    "clusters_applied",
+    "entity_cluster_applied",
+    "wallet_cluster_applied",
+  ]) {
+    const parsed = parseBooleanish(extra[key]);
+    if (parsed !== undefined) {
+      return parsed;
+    }
+  }
+
+  return undefined;
 }
 
 function signalChain(signal: SignalLike | null): string | undefined {
@@ -232,7 +268,44 @@ function chainLabel(value?: string): string {
   if (normalized === "bitcoin" || normalized === "btc") {
     return "Bitcoin";
   }
+  if (normalized === "dogecoin" || normalized === "doge") {
+    return "Dogecoin";
+  }
   return compactString(value);
+}
+
+function isUtxoPartialViewChain(value?: string): boolean {
+  const normalized = normalizeText(value);
+  return (
+    normalized === "bitcoin" ||
+    normalized === "btc" ||
+    normalized === "dogecoin" ||
+    normalized === "doge"
+  );
+}
+
+function buildPartialViewPresentation(
+  chain: string | undefined,
+  signal: SignalLike | null,
+): WhaleStoryPartialView | undefined {
+  const clusterApplied = signalClusterApplied(signal);
+  const needsClusterDisclaimer =
+    clusterApplied === false || (clusterApplied !== true && isUtxoPartialViewChain(chain));
+
+  if (!needsClusterDisclaimer) {
+    return undefined;
+  }
+
+  const readableChain = chainLabel(chain);
+
+  return {
+    badge: "부분 관측 · cluster 미적용",
+    tooltip: `${readableChain} 스토리는 주소 cluster를 아직 합치지 않아 개별 주소 흐름만 반영합니다.`,
+    cardSummary: `${readableChain}은 주소 cluster를 아직 합치지 않아 개별 주소 기준 흐름만 보입니다.`,
+    detailSummary:
+      `${readableChain} 스토리는 주소 cluster를 아직 적용하지 않아 동일 주체의 분산 주소가 하나로 묶이지 않을 수 있습니다. ` +
+      "현재 이동은 개별 주소 기준의 부분 관측으로 해석해야 합니다.",
+  };
 }
 
 function buildExplorerUrl(chain: string | undefined, hash: string | undefined): string | undefined {
@@ -443,6 +516,7 @@ function buildTransactionStory(
   );
   const signal = topSignal(relatedSignals);
   const observation = buildObservationPresentation(signal);
+  const partialView = buildPartialViewPresentation(transaction.blockchain, signal);
   const curatedParticipants = [fromParticipant, toParticipant].filter(
     (item) => item.curatedWallet,
   );
@@ -483,6 +557,7 @@ function buildTransactionStory(
     tone: toneForTransaction(amountUsd, signal),
     observationLabel: observation.label,
     observationSource: observation.sourceKind,
+    partialView,
     externalChannel: observation.source,
     externalConfidence: observation.confidence,
     hash: txHash,
@@ -504,6 +579,7 @@ function buildSignalStory(signal: SignalLike): WhaleStory {
   const label = humanizeRule(signal.rule);
   const observation = buildObservationPresentation(signal);
   const chain = signalChain(signal);
+  const partialView = buildPartialViewPresentation(chain, signal);
   const symbol = signalSymbol(signal);
   const amountUsd = signalAmountUsd(signal);
   const externalSource = observation.source;
@@ -534,6 +610,7 @@ function buildSignalStory(signal: SignalLike): WhaleStory {
     tone: toneForSignal(signal),
     observationLabel: observation.label,
     observationSource: observation.sourceKind,
+    partialView,
     externalChannel: observation.source,
     externalConfidence: observation.confidence,
     symbol,
@@ -659,5 +736,7 @@ export function buildWhaleStoryCards(stories: readonly WhaleStory[]): StoryCard[
     hash: story.hash,
     tone: story.tone,
     generatedAt: story.generatedAt,
+    observationLabel: story.observationLabel,
+    partialView: story.partialView,
   }));
 }
