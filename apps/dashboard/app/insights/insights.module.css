@@ -1438,9 +1438,13 @@
 
   .newsRail {
     grid-column: 3;
+    align-self: stretch;
+    height: 100%;
+  }
+
+  .newsRail > * {
     position: sticky;
     top: calc(var(--inset-navbar) + var(--space-sm));
-    align-self: flex-start;
     max-height: calc(100vh - var(--inset-navbar) - var(--space-md));
     overflow-y: auto;
     padding-bottom: var(--space-xs);
@@ -1499,61 +1503,139 @@
 /* ── Mobile adjustments ──────────────────────────────────────────────────── */
 @media (max-width: 767px) {
   .layoutShell {
-    gap: var(--space-md);
-    padding: calc(var(--inset-navbar) + var(--space-xs)) var(--space-sm) var(--space-2xl);
+    gap: var(--space-sm);
+    padding: calc(var(--inset-navbar) + var(--space-xs)) var(--space-sm) var(--space-lg);
   }
 
   .content {
-    gap: var(--space-lg);
+    gap: var(--space-md);
+  }
+
+  .bentoGrid {
+    gap: var(--space-sm);
   }
 
   .heroCard {
-    padding: var(--space-lg);
+    padding: var(--space-md);
   }
 
-  .heroTitle {
-    font-size: var(--text-xl);
+  .heroTopline {
+    margin-bottom: var(--space-sm);
   }
 
   .heroSummary {
     font-size: var(--text-base);
+    margin-bottom: var(--space-md);
+  }
+
+  .heroTitle {
+    font-size: var(--text-xl);
+    margin-bottom: var(--space-sm);
+  }
+
+  .analysisItems {
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+  }
+
+  .moodCard {
+    padding: var(--space-md);
+    gap: var(--space-sm);
+  }
+
+  .moodLabel {
+    margin-bottom: var(--space-sm);
+  }
+
+  .moodGauge {
+    margin-bottom: var(--space-sm);
+  }
+
+  .signalSectionTitle {
+    margin-bottom: var(--space-sm);
   }
 
   .signalGrid {
     grid-template-columns: 1fr;
+    gap: var(--space-sm);
   }
 
-  .footerInner {
-    grid-template-columns: 1fr;
+  .signalCard {
+    padding: var(--space-md);
   }
 
-  .footerRight {
-    text-align: left;
+  .watchlistCard {
+    padding: var(--space-md);
+  }
+
+  .watchlistTitle {
+    margin-bottom: var(--space-sm);
+  }
+
+  .watchlistLead {
+    margin: calc(var(--space-sm) * -1 + var(--space-xs)) 0 var(--space-sm);
+  }
+
+  .watchlistItems {
+    gap: var(--space-sm);
+  }
+
+  .watchStoryRow {
+    gap: var(--space-sm);
+  }
+
+  .storyItem {
+    padding: var(--space-md);
   }
 
   .telegramCta {
-    padding: var(--space-xl) var(--space-lg);
+    gap: var(--space-md);
+    padding: var(--space-lg) var(--space-md);
     text-align: center;
   }
 
   .telegramCtaTitle {
     font-size: var(--text-xl);
+    margin-bottom: var(--space-sm);
+  }
+
+  .explainSection {
+    padding: var(--space-lg) 0;
+  }
+
+  .explainTitle {
+    margin-bottom: var(--space-lg);
   }
 
   .explainFlow {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-sm);
+    gap: var(--space-xs);
     max-width: 100%;
   }
 
   .explainStep {
     width: 100%;
-    padding: var(--space-sm);
+    padding: var(--space-xs);
+    gap: var(--space-xs);
   }
 
   .explainConnector {
     display: none !important;
+  }
+
+  .footer {
+    padding: var(--space-lg) var(--space-md);
+  }
+
+  .footerInner {
+    grid-template-columns: 1fr;
+    gap: var(--space-md);
+    padding-top: var(--space-md);
+  }
+
+  .footerRight {
+    text-align: left;
   }
 
   .signalModalMetaGrid {

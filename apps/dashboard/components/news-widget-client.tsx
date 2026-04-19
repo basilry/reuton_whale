@@ -90,6 +90,26 @@ function sourceCaption(
   return dictionary.news.sourceCaptionFallback;
 }
 
+const GENERIC_TAG_PATTERN = /^news\s*\d+$/i;
+
+function normalizeTags(raw: readonly string[] | undefined | null): string[] {
+  if (!raw) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const tag of raw) {
+    const trimmed = tag?.trim();
+    if (!trimmed) continue;
+    if (GENERIC_TAG_PATTERN.test(trimmed)) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const pretty =
+      trimmed.length <= 3 ? trimmed.toUpperCase() : trimmed[0].toUpperCase() + trimmed.slice(1);
+    result.push(pretty);
+  }
+  return result;
+}
+
 function buildStalenessWarning(
   data: NewsWidgetData,
   dictionary: ReturnType<typeof useDashboardI18n>["dictionary"],
@@ -202,15 +222,18 @@ export function NewsWidgetClient({
               </div>
               <h3 className={styles.itemTitle}>{displayTitle}</h3>
               <p className={styles.itemSummary}>{displaySummary}</p>
-              {item.tags.length > 0 ? (
-                <div className={styles.tagRow}>
-                  {item.tags.map((tag) => (
-                    <span key={`${item.id}-${tag}`} className={styles.tag}>
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
+              {(() => {
+                const displayTags = normalizeTags(item.tags);
+                return displayTags.length > 0 ? (
+                  <div className={styles.tagRow}>
+                    {displayTags.map((tag) => (
+                      <span key={`${item.id}-${tag}`} className={styles.tag}>
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                ) : null;
+              })()}
             </>
           );
 

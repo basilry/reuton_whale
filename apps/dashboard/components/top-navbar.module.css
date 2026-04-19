@@ -189,24 +189,154 @@
     0 0 0 calc(var(--focus-ring-offset) + var(--focus-ring-width)) var(--focus-ring-color);
 }
 
-/* ── Mobile: compact padding + scrollable tabs ── */
+/* ── Hamburger button — mobile only ── */
+.hamburger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--line);
+  background: var(--surface-container);
+  color: var(--on-surface);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: var(--transition-bg);
+}
+
+.hamburger:hover {
+  background: var(--surface-container-high);
+}
+
+.hamburger:active {
+  transform: scale(0.95);
+}
+
+.hamburger:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 var(--focus-ring-offset) var(--panel),
+    0 0 0 calc(var(--focus-ring-offset) + var(--focus-ring-width)) var(--focus-ring-color);
+}
+
+/* ── Mobile drawer backdrop ── */
+.drawerBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal-backdrop);
+  background: var(--surface-container-highest);
+  opacity: 0.6;
+}
+
+/* ── Mobile nav drawer ── */
+.drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--z-modal);
+  background: var(--panel-strong);
+  border-bottom: 1px solid var(--line);
+  box-shadow: var(--elev-2);
+  display: none;
+  flex-direction: column;
+  transform: translateY(-100%);
+  transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.drawer[data-open="true"] {
+  transform: translateY(0);
+}
+
+.drawerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: var(--space-md) var(--space-md);
+  border-bottom: 1px solid var(--line);
+}
+
+.drawerClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--line);
+  background: var(--surface-container);
+  color: var(--on-surface);
+  cursor: pointer;
+  transition: var(--transition-bg);
+}
+
+.drawerClose:hover {
+  background: var(--surface-container-high);
+}
+
+.drawerClose:active {
+  transform: scale(0.95);
+}
+
+.drawerClose:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 var(--focus-ring-offset) var(--panel),
+    0 0 0 calc(var(--focus-ring-offset) + var(--focus-ring-width)) var(--focus-ring-color);
+}
+
+.drawerLink {
+  display: flex;
+  align-items: center;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--on-surface-variant);
+  padding: var(--space-md) var(--space-lg);
+  min-height: 56px;
+  border-bottom: 1px solid var(--line);
+  transition: var(--transition-color), var(--transition-bg);
+}
+
+.drawerLink:hover {
+  color: var(--accent);
+  background: var(--accent-softer);
+}
+
+.drawerLink:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 var(--focus-ring-offset) var(--panel),
+    0 0 0 calc(var(--focus-ring-offset) + var(--focus-ring-width)) var(--focus-ring-color);
+}
+
+.drawerLink[data-active="true"] {
+  color: var(--accent);
+  font-weight: var(--weight-semibold);
+  background: var(--accent-softer);
+}
+
+/* ── Mobile: compact padding + drawer activation ── */
 @media (max-width: 640px) {
   .inner {
     padding: var(--space-md) var(--space-md);
     gap: var(--space-xs);
   }
 
+  /* Hide horizontal tab nav on mobile */
   .tabNav {
-    justify-content: flex-start;
-    gap: var(--space-3xs);
-    scroll-padding-inline: var(--space-md);
+    display: none;
   }
 
-  .tabLink {
-    padding: var(--space-2xs) var(--space-xs);
-    font-size: var(--text-xs);
-    min-height: 44px;
-    min-width: 44px;
+  /* Show hamburger on mobile */
+  .hamburger {
+    display: flex;
+  }
+
+  /* Show drawer on mobile */
+  .drawer {
+    display: flex;
   }
 
   .themeBtn {
@@ -240,7 +370,14 @@
 @media (prefers-reduced-motion: reduce) {
   .brand,
   .tabLink,
-  .themeBtn {
+  .themeBtn,
+  .hamburger,
+  .drawerClose,
+  .drawerLink {
+    transition-duration: 0.01ms;
+  }
+
+  .drawer {
     transition-duration: 0.01ms;
   }
 }
