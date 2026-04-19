@@ -11,6 +11,7 @@ from src.storage.schema import (
     ANALYSIS_LOG_HEADERS,
     BRIEF_COST_LEDGER_HEADERS,
     BROADCAST_LOG_HEADERS,
+    SERVICE_HEALTH_HEADERS,
     DAILY_BRIEF_HEADERS,
     SUBSCRIBERS_HEADERS,
     SYSTEM_LOG_HEADERS,
@@ -53,6 +54,18 @@ class TestSchema:
     def test_subscribers_tab_registered(self):
         assert TAB_SUBSCRIBERS in ALL_TABS
         assert TAB_HEADERS[TAB_SUBSCRIBERS] == SUBSCRIBERS_HEADERS
+
+    def test_service_health_headers_include_v2_tail_columns(self):
+        assert SERVICE_HEALTH_HEADERS[-8:] == [
+            "instance_id",
+            "job_name",
+            "last_success_at",
+            "last_failure_at",
+            "processed_count",
+            "lag_seconds",
+            "duration_ms",
+            "source_name",
+        ]
 
 
 class TestQueries:
@@ -206,6 +219,39 @@ class TestSheetsClient:
         assert row[BROADCAST_LOG_HEADERS.index("message_length")] == "1500"
         assert row[BROADCAST_LOG_HEADERS.index("content_hash")] == "abc123"
         assert row[BROADCAST_LOG_HEADERS.index("delivery_mode")] == "dry_run"
+
+    def test_append_service_health_extends_schema_and_writes_v2_metadata(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ws.col_count = 7
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [SERVICE_HEALTH_HEADERS[:7]]
+
+        client.append_service_health(
+            {
+                "ts": "2026-04-19T01:00:00+00:00",
+                "service": "pipeline.run_all",
+                "component": "orchestrator",
+                "status": "ok",
+                "heartbeat_key": "run_all:20260419T1000",
+                "details": "{}",
+                "error": "",
+                "instance_id": "i-123",
+                "job_name": "dispatcher",
+                "last_success_at": "2026-04-19T01:00:00+00:00",
+                "processed_count": 4,
+                "lag_seconds": 12,
+                "duration_ms": 321,
+                "source_name": "scheduler",
+            }
+        )
+
+        mock_ws.update.assert_called_once()
+        row = mock_ws.append_row.call_args[0][0]
+        assert row[SERVICE_HEALTH_HEADERS.index("instance_id")] == "i-123"
+        assert row[SERVICE_HEALTH_HEADERS.index("job_name")] == "dispatcher"
+        assert row[SERVICE_HEALTH_HEADERS.index("processed_count")] == "4"
+        assert row[SERVICE_HEALTH_HEADERS.index("duration_ms")] == "321"
 
     def test_append_and_list_brief_cost_ledger(self):
         client, mock_ss = self._make_client()

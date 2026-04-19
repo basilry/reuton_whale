@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 
 from src.main import _event_to_address_activity, _event_to_dict, _load_signals_cfg
-from src.observability.service_health import append_service_heartbeat, pipeline_status_to_health
+from src.observability.service_health import (
+    append_service_heartbeat,
+    coalesce_source_names,
+    pipeline_status_to_health,
+)
 from src.pipeline.common import (
     build_price_services,
     build_sheets_client,
@@ -31,18 +35,28 @@ def _error_preview(errors: list[str], *, limit: int = 3) -> str:
     return " | ".join(preview) + suffix
 
 
-def _record_signals_heartbeat(sheets, result: dict[str, object]) -> None:
+def _record_signals_heartbeat(
+    sheets,
+    result: dict[str, object],
+    *,
+    processed_count: int | None = None,
+    source_name: str = "",
+) -> None:
     append_service_heartbeat(
         sheets,
         service="pipeline.signals",
         component="pipeline",
         status=pipeline_status_to_health(result.get("status")),
+        run_status=result.get("status"),
         heartbeat_key=str(result.get("run_id", "")),
         details={
             "status": result.get("status"),
             "details": result.get("details", ""),
         },
         error=result.get("errors", ""),
+        observed_at=result.get("finished_at") or result.get("started_at"),
+        processed_count=processed_count if processed_count is not None else result.get("transactions_count"),
+        source_name=source_name,
     )
 
 
@@ -70,6 +84,9 @@ def run_signals_pipeline() -> dict[str, object]:
         max(0, len(collected.raw_events) - len(collected.chain_events)),
         len(collected.transactions),
         len(collected.errors),
+    )
+    heartbeat_source_name = coalesce_source_names(
+        *(getattr(event, "source", "") for event in collected.raw_events)
     )
 
     persisted = persist_chain_activity(
@@ -102,7 +119,12 @@ def run_signals_pipeline() -> dict[str, object]:
             details="No recent events found",
         )
         sheets.log_run(result)
-        _record_signals_heartbeat(sheets, result)
+        _record_signals_heartbeat(
+            sheets,
+            result,
+            processed_count=len(collected.raw_events),
+            source_name=heartbeat_source_name,
+        )
         logger.info(
             "signals pipeline finished status=%s details=%s error_count=%d error_preview=%s",
             result["status"],
@@ -152,7 +174,12 @@ def run_signals_pipeline() -> dict[str, object]:
         details=details,
     )
     sheets.log_run(result)
-    _record_signals_heartbeat(sheets, result)
+    _record_signals_heartbeat(
+        sheets,
+        result,
+        processed_count=len(collected.raw_events),
+        source_name=heartbeat_source_name,
+    )
     logger.info(
         "signals pipeline finished status=%s details=%s error_count=%d error_preview=%s",
         result["status"],

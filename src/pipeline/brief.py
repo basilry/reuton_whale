@@ -84,12 +84,16 @@ def _record_brief_heartbeat(sheets, result: dict[str, object]) -> None:
         service="pipeline.brief",
         component="pipeline",
         status=pipeline_status_to_health(result.get("status")),
+        run_status=result.get("status"),
         heartbeat_key=str(result.get("run_id", "")),
         details={
             "status": result.get("status"),
             "details": result.get("details", ""),
         },
         error=result.get("errors", ""),
+        observed_at=result.get("finished_at") or result.get("started_at"),
+        processed_count=result.get("transactions_count"),
+        source_name="signals+transactions+llm",
     )
 
 

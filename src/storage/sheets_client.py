@@ -1715,6 +1715,13 @@ class SheetsClient:
         with self._write_lock:
             try:
                 ws = self._worksheet(TAB_SERVICE_HEALTH)
+                all_values = ws.get_all_values()
+                self._ensure_append_only_header_schema(
+                    ws,
+                    all_values,
+                    SERVICE_HEALTH_HEADERS,
+                    tab_name=TAB_SERVICE_HEALTH,
+                )
                 normalized = {
                     "ts": entry.get("ts", now_iso()),
                     "service": str(entry.get("service", "")),
@@ -1723,16 +1730,37 @@ class SheetsClient:
                     "heartbeat_key": str(entry.get("heartbeat_key", "")),
                     "details": str(entry.get("details", ""))[:4000],
                     "error": str(entry.get("error", ""))[:1000],
+                    "instance_id": str(entry.get("instance_id", "")),
+                    "job_name": str(entry.get("job_name", "")),
+                    "last_success_at": str(entry.get("last_success_at", "")),
+                    "last_failure_at": str(entry.get("last_failure_at", "")),
+                    "processed_count": (
+                        entry.get("processed_count", "")
+                        if entry.get("processed_count") not in (None, "")
+                        else ""
+                    ),
+                    "lag_seconds": (
+                        entry.get("lag_seconds", "")
+                        if entry.get("lag_seconds") not in (None, "")
+                        else ""
+                    ),
+                    "duration_ms": (
+                        entry.get("duration_ms", "")
+                        if entry.get("duration_ms") not in (None, "")
+                        else ""
+                    ),
+                    "source_name": str(entry.get("source_name", "")),
                 }
                 ws.append_row(
                     dict_to_row(normalized, SERVICE_HEALTH_HEADERS),
                     value_input_option="RAW",
                 )
                 logger.info(
-                    "Appended service health service=%s status=%s key=%s",
+                    "Appended service health service=%s status=%s key=%s job=%s",
                     normalized["service"],
                     normalized["status"],
                     normalized["heartbeat_key"],
+                    normalized["job_name"],
                 )
             except gspread.exceptions.APIError as e:
                 raise StorageError(f"Failed to append service health: {e}") from e

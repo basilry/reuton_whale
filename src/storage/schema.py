@@ -260,6 +260,14 @@ SERVICE_HEALTH_HEADERS = [
     "heartbeat_key",
     "details",
     "error",
+    "instance_id",
+    "job_name",
+    "last_success_at",
+    "last_failure_at",
+    "processed_count",
+    "lag_seconds",
+    "duration_ms",
+    "source_name",
 ]
 
 ALL_TABS.extend([

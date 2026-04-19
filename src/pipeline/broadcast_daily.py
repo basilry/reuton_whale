@@ -54,18 +54,23 @@ def _record_broadcast_heartbeat(
     *,
     subscriber_result: dict[str, int] | None = None,
     channel_status: str | None = None,
+    processed_count: int | None = None,
 ) -> None:
     append_service_heartbeat(
         sheets,
         service="pipeline.broadcast_daily",
         component="pipeline",
         status=pipeline_status_to_health(result.get("status")),
+        run_status=result.get("status"),
         heartbeat_key=str(result.get("run_id", "")),
         details={
             "status": result.get("status"),
             "details": result.get("details", ""),
         },
         error=result.get("errors", ""),
+        observed_at=result.get("finished_at") or result.get("started_at"),
+        processed_count=processed_count,
+        source_name="daily_brief+telegram",
     )
     if subscriber_result is not None or channel_status is not None:
         append_service_heartbeat(
@@ -73,12 +78,16 @@ def _record_broadcast_heartbeat(
             service="telegram.broadcast",
             component="bot",
             status=pipeline_status_to_health(result.get("status")),
+            run_status=result.get("status"),
             heartbeat_key=str(result.get("run_id", "")),
             details={
                 "channel_status": channel_status or "",
                 "subscriber_result": subscriber_result or {},
             },
             error=result.get("errors", ""),
+            observed_at=result.get("finished_at") or result.get("started_at"),
+            processed_count=processed_count,
+            source_name="telegram",
         )
 
 
@@ -98,7 +107,7 @@ def run_broadcast_daily(*, force: bool = False) -> dict[str, object]:
             details="Outside KST 09:00 broadcast window",
         )
         sheets.log_run(result)
-        _record_broadcast_heartbeat(sheets, result)
+        _record_broadcast_heartbeat(sheets, result, processed_count=0)
         return result
 
     window_start, window_end = _broadcast_window(now)
@@ -115,7 +124,7 @@ def run_broadcast_daily(*, force: bool = False) -> dict[str, object]:
             details="Broadcast already completed for current KST 09:00 slot",
         )
         sheets.log_run(result)
-        _record_broadcast_heartbeat(sheets, result)
+        _record_broadcast_heartbeat(sheets, result, processed_count=0)
         return result
 
     brief = sheets.get_latest_daily_brief()
@@ -127,7 +136,7 @@ def run_broadcast_daily(*, force: bool = False) -> dict[str, object]:
             details="No latest daily brief available",
         )
         sheets.log_run(result)
-        _record_broadcast_heartbeat(sheets, result)
+        _record_broadcast_heartbeat(sheets, result, processed_count=0)
         return result
 
     date_value = str(brief.get("date", "")).strip() or now.astimezone(_KST).strftime("%Y-%m-%d")
@@ -176,6 +185,7 @@ def run_broadcast_daily(*, force: bool = False) -> dict[str, object]:
         result,
         subscriber_result=subscriber_result,
         channel_status=broadcast_attempt.status,
+        processed_count=subscriber_result["sent"] + subscriber_result["failed"] + subscriber_result["blocked"],
     )
     return result
 

@@ -49,6 +49,7 @@ def _record_channel_health_heartbeat(sheets, result: dict[str, object], entry: d
         service="telegram.channel_health",
         component="channel",
         status=pipeline_status_to_health(result.get("status")),
+        run_status=result.get("status"),
         heartbeat_key=str(result.get("run_id", "")),
         details={
             "status": entry.get("status", ""),
@@ -56,6 +57,9 @@ def _record_channel_health_heartbeat(sheets, result: dict[str, object], entry: d
             "member_count": entry.get("member_count", ""),
         },
         error=entry.get("error", "") or result.get("errors", ""),
+        observed_at=result.get("finished_at") or result.get("started_at") or entry.get("ts"),
+        processed_count=1 if entry.get("status") == "ok" else 0,
+        source_name="telegram_api",
     )
 
 

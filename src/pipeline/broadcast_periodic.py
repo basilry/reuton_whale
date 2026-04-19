@@ -203,6 +203,7 @@ def _record_broadcast_heartbeat(
     result: dict[str, object],
     *,
     channel_status: str = "",
+    processed_count: int | None = None,
 ) -> None:
     health_status = _health_for_status(result.get("status"))
     append_service_heartbeat(
@@ -210,12 +211,16 @@ def _record_broadcast_heartbeat(
         service="pipeline.broadcast_periodic",
         component="pipeline",
         status=health_status,
+        run_status=result.get("status"),
         heartbeat_key=str(result.get("run_id", "")),
         details={
             "status": result.get("status"),
             "details": result.get("details", ""),
         },
         error=result.get("errors", ""),
+        observed_at=result.get("finished_at") or result.get("started_at"),
+        processed_count=processed_count,
+        source_name="signals+transactions+telegram",
     )
     if channel_status:
         append_service_heartbeat(
@@ -223,11 +228,15 @@ def _record_broadcast_heartbeat(
             service="telegram.broadcast.periodic",
             component="bot",
             status=health_status,
+            run_status=result.get("status"),
             heartbeat_key=str(result.get("run_id", "")),
             details={
                 "channel_status": channel_status,
             },
             error=result.get("errors", ""),
+            observed_at=result.get("finished_at") or result.get("started_at"),
+            processed_count=processed_count,
+            source_name="telegram",
         )
 
 
@@ -253,7 +262,7 @@ def run_broadcast_periodic() -> dict[str, object]:
             details="Periodic broadcast already completed for current 15m slot",
         )
         sheets.log_run(result)
-        _record_broadcast_heartbeat(sheets, result)
+        _record_broadcast_heartbeat(sheets, result, processed_count=0)
         return result
 
     signal_rows = sheets.list_signals(since=window_start, limit=20)
@@ -285,7 +294,7 @@ def run_broadcast_periodic() -> dict[str, object]:
             details="signals=0; transactions=0; recent_window=15m",
         )
         sheets.log_run(result)
-        _record_broadcast_heartbeat(sheets, result)
+        _record_broadcast_heartbeat(sheets, result, processed_count=0)
         return result
 
     broadcaster = TelegramBroadcastAdapter(
@@ -338,7 +347,12 @@ def run_broadcast_periodic() -> dict[str, object]:
             ),
         )
         sheets.log_run(result)
-        _record_broadcast_heartbeat(sheets, result, channel_status="skipped_duplicate_content")
+        _record_broadcast_heartbeat(
+            sheets,
+            result,
+            channel_status="skipped_duplicate_content",
+            processed_count=len(signal_rows) + len(transaction_rows),
+        )
         logger.info(
             "broadcast_periodic skipped duplicate content signals=%d transactions=%d slot=%s",
             len(signal_rows),
@@ -373,7 +387,12 @@ def run_broadcast_periodic() -> dict[str, object]:
         ),
     )
     sheets.log_run(result)
-    _record_broadcast_heartbeat(sheets, result, channel_status=attempt.status)
+    _record_broadcast_heartbeat(
+        sheets,
+        result,
+        channel_status=attempt.status,
+        processed_count=len(signal_rows) + len(transaction_rows),
+    )
     logger.info(
         "broadcast_periodic finished status=%s signals=%d transactions=%d broadcast=%s",
         result["status"],

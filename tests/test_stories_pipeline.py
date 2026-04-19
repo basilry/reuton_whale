@@ -94,6 +94,10 @@ def test_run_stories_pipeline_publishes_completed_update():
 
     assert result["status"] == "completed"
     assert len(sheets.story_rows) == 1
+    heartbeat = sheets.service_health[-1]
+    assert heartbeat["job_name"] == "stories"
+    assert heartbeat["processed_count"] == 1
+    assert heartbeat["last_success_at"]
     publish_success_event.assert_called_once_with(
         section="stories",
         pipeline="stories",

@@ -119,7 +119,14 @@ def test_run_all_executes_snapped_slot_for_non_boundary_minute():
         "brief",
         "broadcast_daily",
     ]
-    assert sheets.service_health_entries[-1]["service"] == "pipeline.run_all"
+    summary_entry = sheets.service_health_entries[-1]
+    assert summary_entry["service"] == "pipeline.run_all"
+    assert summary_entry["job_name"] == "dispatcher"
+    assert summary_entry["processed_count"] == 6
+    assert summary_entry["lag_seconds"] == 300
+    assert summary_entry["duration_ms"] >= 0
+    assert summary_entry["last_success_at"]
+    assert summary_entry["last_failure_at"] == ""
 
 
 def test_run_all_continues_after_individual_job_failure():
@@ -160,6 +167,14 @@ def test_run_all_continues_after_individual_job_failure():
         "weekly_trend",
     ]
     assert summary["failed_jobs"] == {"signals": "signals boom"}
+    signal_entry = next(
+        entry for entry in sheets.service_health_entries
+        if entry["service"] == "pipeline.signals"
+    )
+    assert signal_entry["job_name"] == "signals"
+    assert signal_entry["last_success_at"] == ""
+    assert signal_entry["last_failure_at"]
+    assert signal_entry["source_name"] == "etherscan+solscan+tg_whale_events"
 
 
 def test_run_all_skips_duplicate_jobs_for_same_slot():

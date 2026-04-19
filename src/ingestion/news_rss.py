@@ -13,6 +13,7 @@ from xml.etree import ElementTree
 import requests
 
 from src.config import load_listener_config
+from src.observability.service_health import append_service_heartbeat, pipeline_status_to_health
 from src.pipeline.common import init_run_result
 from src.storage.queries import now_iso
 from src.storage.sheets_client import SheetsClient
@@ -358,6 +359,21 @@ def run_news_rss_refresh() -> dict[str, object]:
         feed_results=[asdict(item) for item in feed_results],
     )
     client.log_run(result)
+    append_service_heartbeat(
+        client,
+        service="pipeline.news_rss",
+        component="pipeline",
+        status=pipeline_status_to_health(result.get("status")),
+        heartbeat_key=str(result.get("run_id", "")),
+        details={
+            "status": result.get("status"),
+            "details": result.get("details", ""),
+        },
+        error=result.get("errors", ""),
+        job_name="news_rss",
+        processed_count=inserted,
+        source_name="rss_feeds",
+    )
     logger.info(
         "Stored %d news_feed rows feeds_ok=%d feeds_failed=%d",
         inserted,

@@ -21,6 +21,15 @@ SCOPES = [
 ]
 
 
+def _column_label(index: int) -> str:
+    label = ""
+    current = index
+    while current > 0:
+        current, remainder = divmod(current - 1, 26)
+        label = chr(ord("A") + remainder) + label
+    return label
+
+
 def main() -> None:
     load_dotenv()
 
@@ -37,10 +46,16 @@ def main() -> None:
     created = 0
 
     for tab_name in ALL_TABS:
+        headers = TAB_HEADERS[tab_name]
         if tab_name in existing:
             logger.info("Tab already exists: %s", tab_name)
+            ws = spreadsheet.worksheet(tab_name)
+            current_headers = ws.row_values(1)
+            if current_headers != headers:
+                end_col = _column_label(len(headers))
+                ws.update(f"A1:{end_col}1", [headers], value_input_option="RAW")
+                logger.info("Updated headers for tab: %s (%d columns)", tab_name, len(headers))
             continue
-        headers = TAB_HEADERS[tab_name]
         ws = spreadsheet.add_worksheet(title=tab_name, rows=1000, cols=len(headers))
         ws.append_row(headers)
         logger.info("Created tab: %s (%d columns)", tab_name, len(headers))

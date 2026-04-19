@@ -340,6 +340,9 @@ class TelethonListener:
                 details=details,
                 error=error,
                 observed_at=now,
+                job_name=event,
+                processed_count=self._message_count,
+                source_name="telegram_channel",
             )
             self._last_heartbeat_at = now
         except Exception as exc:

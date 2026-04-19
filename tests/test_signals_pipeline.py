@@ -84,3 +84,9 @@ def test_run_signals_pipeline_logs_stage_diagnostics():
     assert any("signals detected signals=2 detect_errors=1 raw_events=2" in message for message in messages)
     assert any("signals stored stored_signals=1 persist_signal_errors=1 cumulative_errors=5" in message for message in messages)
     assert any("signals pipeline finished status=completed_with_errors" in message for message in messages)
+    heartbeat = sheets.service_health[-1]
+    assert heartbeat["job_name"] == "signals"
+    assert heartbeat["processed_count"] == 2
+    assert heartbeat["source_name"] == "chain,tg"
+    assert heartbeat["last_success_at"]
+    assert heartbeat["last_failure_at"]

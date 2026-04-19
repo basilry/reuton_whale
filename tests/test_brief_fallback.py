@@ -238,6 +238,10 @@ def test_run_brief_pipeline_uses_transaction_fallback_when_signals_are_empty():
     brief = sheets.saved_briefs[0][1][0]
     assert brief["alert_count"] == 0
     assert "fallback_tx_based" in brief["note"]
+    heartbeat = sheets.service_health[-1]
+    assert heartbeat["job_name"] == "brief"
+    assert heartbeat["processed_count"] == 2
+    assert heartbeat["last_success_at"]
     assert "||meta:" in brief["note"]
     assert "최근 60분 온체인 대형 이동" in brief["summary"]
     note_meta = json.loads(brief["note"].split("||meta:", 1)[1])
@@ -301,6 +305,10 @@ def test_run_brief_pipeline_prefers_llm_path_when_signals_exist():
     assert sheets.brief_cost_ledger_rows[-1]["decision"] == "generated"
     assert sheets.brief_cost_ledger_rows[-1]["llm_called"] == "true"
     assert sheets.brief_cost_ledger_rows[-1]["model_id"] == "gemini/gemini-2.5-flash"
+    heartbeat = sheets.service_health[-1]
+    assert heartbeat["job_name"] == "brief"
+    assert heartbeat["processed_count"] == 1
+    assert heartbeat["source_name"] == "signals+transactions+llm"
 
 
 def test_run_brief_pipeline_reuses_cached_completion_for_same_fingerprint():

@@ -83,6 +83,11 @@ class TestTelethonListenerHandleMessage:
         assert log_args[0] == "info"
         assert log_args[1] == "telethon_listener"
         assert log_args[2]["event"] == "message_processed"
+        heartbeat = mock_storage.append_service_health.call_args[0][0]
+        assert heartbeat["job_name"] == "message_processed"
+        assert heartbeat["processed_count"] == 1
+        assert heartbeat["source_name"] == "telegram_channel"
+        assert heartbeat["last_success_at"]
 
     @pytest.mark.asyncio
     async def test_skips_unparseable_without_router(self):
@@ -156,6 +161,18 @@ class TestTelethonListenerHandleMessage:
         assert log_args[0] == "error"
         assert log_args[1] == "telethon_listener"
         assert log_args[2]["stage"] == "storage"
+
+    @pytest.mark.asyncio
+    async def test_listener_heartbeat_uses_render_instance_id_when_available(self, monkeypatch):
+        mock_storage = MagicMock()
+        listener = TelethonListener(12345, "hash", "session", mock_storage, channel="@whale")
+        monkeypatch.setenv("RENDER_INSTANCE_ID", "render-i-123")
+
+        await listener._record_service_heartbeat(status="ok", event="listener_start", force=True)
+
+        heartbeat = mock_storage.append_service_health.call_args[0][0]
+        assert heartbeat["instance_id"] == "render-i-123"
+        assert heartbeat["job_name"] == "listener_start"
 
 
 class TestTelethonListenerRun:
