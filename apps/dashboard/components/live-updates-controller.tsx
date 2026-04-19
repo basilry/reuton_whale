@@ -18,11 +18,23 @@ type StreamPayload = {
   event?: string;
   kind?: string;
   type?: string;
+  eventId?: string;
+  publishedAt?: string;
 };
 
-type StreamStatusPayload = {
+type StreamStatusPayload = StreamPayload & {
   state?: "enabled" | "disabled";
-  reason?: "feature_disabled" | "not_configured";
+  reason?: "feature_disabled" | "redis_missing" | "token_missing";
+};
+
+type LiveUpdatesConnectionState = {
+  status: LiveUpdateStatus;
+  detail: string;
+  receivedAt: number | null;
+  latencyMs: number | null;
+  reconnectCount: number;
+  lastErrorAt: number | null;
+  lastEventId: string | null;
 };
 
 const STREAM_PATH = "/api/stream";
@@ -41,21 +53,25 @@ const MIN_REFRESH_INTERVAL_MS = 8_000;
 const REFRESH_DEBOUNCE_MS = 1_500;
 const RECONNECT_BACKOFF_MS = [1_000, 2_000, 5_000, 10_000, 30_000] as const;
 
-function normalizeKind(eventType: string, rawData: string): LiveUpdateKind | null {
+function parseStreamPayload(rawData: string): StreamPayload | null {
+  try {
+    const parsed = JSON.parse(rawData) as StreamPayload;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeKind(eventType: string, payload: StreamPayload | null): LiveUpdateKind | null {
   const eventKey = eventType.trim().toLowerCase();
   if (eventKey && eventKey !== "message") {
     return KIND_ALIASES[eventKey] ?? null;
   }
 
-  try {
-    const parsed = JSON.parse(rawData) as StreamPayload;
-    const payloadKey = String(parsed.kind ?? parsed.type ?? parsed.event ?? "")
-      .trim()
-      .toLowerCase();
-    return KIND_ALIASES[payloadKey] ?? null;
-  } catch {
-    return null;
-  }
+  const payloadKey = String(payload?.kind ?? payload?.type ?? payload?.event ?? "")
+    .trim()
+    .toLowerCase();
+  return KIND_ALIASES[payloadKey] ?? null;
 }
 
 function formatTime(language: "ko" | "en", value: number): string {
@@ -86,7 +102,8 @@ function getCopy(language: "ko" | "en") {
         offline: "네트워크 또는 스트림 연결이 오프라인 상태입니다.",
         unsupported: "이 브라우저는 EventSource를 지원하지 않습니다.",
         featureDisabled: "실시간 자동 새로고침 기능이 현재 비활성화되어 있습니다.",
-        notConfigured: "실시간 자동 새로고침 구성이 아직 연결되지 않았습니다.",
+        redisMissing: "실시간 자동 새로고침에 필요한 Redis REST URL이 설정되지 않았습니다.",
+        tokenMissing: "실시간 자동 새로고침에 필요한 Redis REST 토큰이 설정되지 않았습니다.",
       },
     };
   }
@@ -107,7 +124,8 @@ function getCopy(language: "ko" | "en") {
       offline: "The network or stream connection is offline.",
       unsupported: "This browser does not support EventSource.",
       featureDisabled: "Live auto-refresh is currently disabled.",
-      notConfigured: "Live auto-refresh is not configured yet.",
+      redisMissing: "Live auto-refresh is missing the Redis REST URL.",
+      tokenMissing: "Live auto-refresh is missing the Redis REST token.",
     },
   };
 }
@@ -138,15 +156,6 @@ function humanizeKind(kind: LiveUpdateKind, language: "ko" | "en"): string {
   return "Stories";
 }
 
-function parseStatusPayload(rawData: string): StreamStatusPayload | null {
-  try {
-    const parsed = JSON.parse(rawData) as StreamStatusPayload;
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 function detailForStatusReason(
   copy: ReturnType<typeof getCopy>,
   reason?: StreamStatusPayload["reason"],
@@ -155,11 +164,38 @@ function detailForStatusReason(
     return copy.details.featureDisabled;
   }
 
-  if (reason === "not_configured") {
-    return copy.details.notConfigured;
+  if (reason === "redis_missing") {
+    return copy.details.redisMissing;
+  }
+
+  if (reason === "token_missing") {
+    return copy.details.tokenMissing;
   }
 
   return copy.details.offline;
+}
+
+function parseTimestamp(value?: string): number | null {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function initialConnectionState(
+  copy: ReturnType<typeof getCopy>,
+): LiveUpdatesConnectionState {
+  return {
+    status: "reconnecting",
+    detail: copy.details.reconnecting(1),
+    receivedAt: null,
+    latencyMs: null,
+    reconnectCount: 0,
+    lastErrorAt: null,
+    lastEventId: null,
+  };
 }
 
 export function LiveUpdatesController({
@@ -169,8 +205,9 @@ export function LiveUpdatesController({
 }: LiveUpdatesControllerProps) {
   const router = useRouter();
   const copy = getCopy(language);
-  const [status, setStatus] = useState<LiveUpdateStatus>("reconnecting");
-  const [detail, setDetail] = useState(copy.details.reconnecting(1));
+  const [connection, setConnection] = useState<LiveUpdatesConnectionState>(() =>
+    initialConnectionState(copy),
+  );
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
@@ -182,6 +219,35 @@ export function LiveUpdatesController({
 
   useEffect(() => {
     const effectCopy = getCopy(language);
+
+    const patchConnection = (patch: Partial<LiveUpdatesConnectionState>) => {
+      setConnection((current) => ({
+        ...current,
+        ...patch,
+      }));
+    };
+
+    const recordIncomingEvent = (event: MessageEvent<string>) => {
+      const payload = parseStreamPayload(event.data);
+      const receivedAt = Date.now();
+      const publishedAt = parseTimestamp(payload?.publishedAt);
+      const lastEventId =
+        event.lastEventId.trim() ||
+        (typeof payload?.eventId === "string" ? payload.eventId.trim() : "") ||
+        null;
+
+      setConnection((current) => ({
+        ...current,
+        receivedAt,
+        latencyMs: publishedAt == null ? null : Math.max(0, receivedAt - publishedAt),
+        lastEventId: lastEventId ?? current.lastEventId,
+      }));
+
+      return {
+        payload,
+        receivedAt,
+      };
+    };
 
     const clearReconnectTimer = () => {
       if (reconnectTimerRef.current !== null) {
@@ -208,7 +274,10 @@ export function LiveUpdatesController({
 
     const requestRefresh = (kind: LiveUpdateKind, receivedAt: number) => {
       pendingRefreshRef.current = true;
-      setDetail(effectCopy.details.connectedEvent(kind, receivedAt));
+      patchConnection({
+        status: "connected",
+        detail: effectCopy.details.connectedEvent(kind, receivedAt),
+      });
 
       if (!visibleRef.current || !onlineRef.current) {
         return;
@@ -243,41 +312,51 @@ export function LiveUpdatesController({
       closeStream();
 
       if (!("EventSource" in window)) {
-        setStatus("offline");
-        setDetail(effectCopy.details.unsupported);
+        patchConnection({
+          status: "offline",
+          detail: effectCopy.details.unsupported,
+        });
         return;
       }
 
       if (!visibleRef.current) {
-        setStatus("offline");
-        setDetail(effectCopy.details.hidden);
+        patchConnection({
+          status: "offline",
+          detail: effectCopy.details.hidden,
+        });
         return;
       }
 
       if (!onlineRef.current) {
-        setStatus("offline");
-        setDetail(effectCopy.details.offline);
+        patchConnection({
+          status: "offline",
+          detail: effectCopy.details.offline,
+        });
         return;
       }
 
       const source = new EventSource(STREAM_PATH);
       eventSourceRef.current = source;
-      setStatus("reconnecting");
-      setDetail(effectCopy.details.reconnecting(1));
+      patchConnection({
+        status: "reconnecting",
+        detail: effectCopy.details.reconnecting(1),
+      });
 
-      const handleIncoming = (eventType: string, rawData: string) => {
-        const kind = normalizeKind(eventType, rawData);
+      const handleIncoming = (eventType: string, event: MessageEvent<string>) => {
+        const { payload, receivedAt } = recordIncomingEvent(event);
+        const kind = normalizeKind(eventType, payload);
         if (!kind || !REFRESHABLE_KINDS.has(kind)) {
           return;
         }
-        setStatus("connected");
-        requestRefresh(kind, Date.now());
+        requestRefresh(kind, receivedAt);
       };
 
       source.onopen = () => {
         reconnectAttemptRef.current = 0;
-        setStatus("connected");
-        setDetail(effectCopy.details.connectedIdle);
+        patchConnection({
+          status: "connected",
+          detail: effectCopy.details.connectedIdle,
+        });
         if (pendingRefreshRef.current) {
           requestRefresh("brief", Date.now());
         }
@@ -291,13 +370,18 @@ export function LiveUpdatesController({
         const delay =
           RECONNECT_BACKOFF_MS[Math.min(attempt - 1, RECONNECT_BACKOFF_MS.length - 1)];
         const nextStatus = attempt >= 3 ? "offline" : "reconnecting";
+        const lastErrorAt = Date.now();
 
-        setStatus(nextStatus);
-        setDetail(
-          visibleRef.current && onlineRef.current
-            ? effectCopy.details.reconnecting(Math.round(delay / 1000))
-            : effectCopy.details.offline,
-        );
+        setConnection((current) => ({
+          ...current,
+          status: nextStatus,
+          detail:
+            visibleRef.current && onlineRef.current
+              ? effectCopy.details.reconnecting(Math.round(delay / 1000))
+              : effectCopy.details.offline,
+          reconnectCount: current.reconnectCount + 1,
+          lastErrorAt,
+        }));
 
         if (!visibleRef.current || !onlineRef.current) {
           return;
@@ -310,36 +394,44 @@ export function LiveUpdatesController({
       };
 
       source.onmessage = (event) => {
-        handleIncoming("message", event.data);
+        handleIncoming("message", event);
       };
 
       source.addEventListener("brief", (event) => {
-        handleIncoming("brief", event.data);
+        handleIncoming("brief", event as MessageEvent<string>);
       });
       source.addEventListener("news", (event) => {
-        handleIncoming("news", event.data);
+        handleIncoming("news", event as MessageEvent<string>);
       });
       source.addEventListener("watchlist", (event) => {
-        handleIncoming("watchlist", event.data);
+        handleIncoming("watchlist", event as MessageEvent<string>);
       });
       source.addEventListener("stories", (event) => {
-        handleIncoming("stories", event.data);
+        handleIncoming("stories", event as MessageEvent<string>);
       });
       source.addEventListener("whale_story", (event) => {
-        handleIncoming("whale_story", event.data);
+        handleIncoming("whale_story", event as MessageEvent<string>);
+      });
+      source.addEventListener("heartbeat", (event) => {
+        recordIncomingEvent(event as MessageEvent<string>);
       });
       source.addEventListener("status", (event) => {
-        const payload = parseStatusPayload(event.data);
+        const { payload } = recordIncomingEvent(event as MessageEvent<string>);
+        const statusPayload = payload as StreamStatusPayload | null;
 
-        if (payload?.state === "disabled") {
-          setStatus("offline");
-          setDetail(detailForStatusReason(effectCopy, payload.reason));
+        if (statusPayload?.state === "disabled") {
+          patchConnection({
+            status: "offline",
+            detail: detailForStatusReason(effectCopy, statusPayload.reason),
+          });
           return;
         }
 
-        if (payload?.state === "enabled") {
-          setStatus("connected");
-          setDetail(effectCopy.details.connectedIdle);
+        if (statusPayload?.state === "enabled") {
+          patchConnection({
+            status: "connected",
+            detail: effectCopy.details.connectedIdle,
+          });
         }
       });
     };
@@ -358,8 +450,10 @@ export function LiveUpdatesController({
       clearReconnectTimer();
       clearRefreshTimer();
       closeStream();
-      setStatus("offline");
-      setDetail(effectCopy.details.hidden);
+      patchConnection({
+        status: "offline",
+        detail: effectCopy.details.hidden,
+      });
     };
 
     const handleOnline = () => {
@@ -372,8 +466,10 @@ export function LiveUpdatesController({
       clearReconnectTimer();
       clearRefreshTimer();
       closeStream();
-      setStatus("offline");
-      setDetail(effectCopy.details.offline);
+      patchConnection({
+        status: "offline",
+        detail: effectCopy.details.offline,
+      });
     };
 
     visibleRef.current = !document.hidden;
@@ -382,8 +478,10 @@ export function LiveUpdatesController({
     if (onlineRef.current && visibleRef.current) {
       connect();
     } else {
-      setStatus("offline");
-      setDetail(visibleRef.current ? effectCopy.details.offline : effectCopy.details.hidden);
+      patchConnection({
+        status: "offline",
+        detail: visibleRef.current ? effectCopy.details.offline : effectCopy.details.hidden,
+      });
     }
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -400,8 +498,13 @@ export function LiveUpdatesController({
     };
   }, [language, router]);
 
-  const tone = status === "connected" ? "good" : status === "reconnecting" ? "warn" : "bad";
-  const label = copy.labels[status];
+  const tone =
+    connection.status === "connected"
+      ? "good"
+      : connection.status === "reconnecting"
+        ? "warn"
+        : "bad";
+  const label = copy.labels[connection.status];
 
   return (
     <LiveUpdatesStatus
@@ -409,7 +512,7 @@ export function LiveUpdatesController({
       chipClassName={chipClassName}
       dotClassName={dotClassName}
       label={label}
-      title={detail}
+      title={connection.detail}
       tone={tone}
     />
   );

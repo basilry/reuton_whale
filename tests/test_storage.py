@@ -46,6 +46,7 @@ class TestSchema:
             "created_at",
             "updated_at",
             "last_brief_at",
+            "status_changed_at",
         }
         assert required.issubset(set(SUBSCRIBERS_HEADERS))
 
@@ -93,7 +94,16 @@ class TestQueries:
         assert "+" in ts or "Z" in ts
 
 
-def _make_sub_row(chat_id, username="", status="active", coins="", created="", updated="", last_brief=""):
+def _make_sub_row(
+    chat_id,
+    username="",
+    status="active",
+    coins="",
+    created="",
+    updated="",
+    last_brief="",
+    status_changed="",
+):
     row = [""] * len(SUBSCRIBERS_HEADERS)
     row[SUBSCRIBERS_HEADERS.index("chat_id")] = str(chat_id)
     row[SUBSCRIBERS_HEADERS.index("username")] = username
@@ -102,6 +112,7 @@ def _make_sub_row(chat_id, username="", status="active", coins="", created="", u
     row[SUBSCRIBERS_HEADERS.index("created_at")] = created
     row[SUBSCRIBERS_HEADERS.index("updated_at")] = updated
     row[SUBSCRIBERS_HEADERS.index("last_brief_at")] = last_brief
+    row[SUBSCRIBERS_HEADERS.index("status_changed_at")] = status_changed
     return row
 
 
@@ -250,18 +261,39 @@ class TestSheetsClient:
         assert result[0]["watchlist"] == ["BTC", "ETH"]
         assert result[1]["watchlist"] == []
 
+    def test_list_subscribers_filters_for_churn_statuses(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [
+            SUBSCRIBERS_HEADERS,
+            _make_sub_row(1, "alice", "active", status_changed="2026-04-10T00:00:00+00:00"),
+            _make_sub_row(2, "bob", "blocked", status_changed="2026-04-11T00:00:00+00:00"),
+            _make_sub_row(3, "carol", "deactivated", status_changed="2026-04-12T00:00:00+00:00"),
+        ]
+
+        result = client.list_subscribers(statuses=["blocked", "deactivated"])
+
+        assert [row["chat_id"] for row in result] == [2, 3]
+        assert result[0]["status"] == "blocked"
+        assert result[0]["status_changed_at"] == "2026-04-11T00:00:00+00:00"
+        assert result[1]["status"] == "deactivated"
+
     def test_add_subscriber_new(self):
         client, mock_ss = self._make_client()
         mock_ws = MagicMock()
         mock_ss.worksheet.return_value = mock_ws
         mock_ws.get_all_values.return_value = [SUBSCRIBERS_HEADERS]
 
-        client.add_subscriber(chat_id=100, username="alice")
+        with patch("src.storage.sheets_client.now_iso", return_value="2026-04-19T00:00:00+00:00"):
+            client.add_subscriber(chat_id=100, username="alice")
         mock_ws.append_row.assert_called_once()
         row_data = mock_ws.append_row.call_args[0][0]
         assert row_data[SUBSCRIBERS_HEADERS.index("chat_id")] == "100"
         assert row_data[SUBSCRIBERS_HEADERS.index("username")] == "alice"
         assert row_data[SUBSCRIBERS_HEADERS.index("status")] == "active"
+        assert row_data[SUBSCRIBERS_HEADERS.index("updated_at")] == "2026-04-19T00:00:00+00:00"
+        assert row_data[SUBSCRIBERS_HEADERS.index("status_changed_at")] == "2026-04-19T00:00:00+00:00"
 
     def test_add_subscriber_reactivates_existing(self):
         client, mock_ss = self._make_client()
@@ -269,10 +301,18 @@ class TestSheetsClient:
         mock_ss.worksheet.return_value = mock_ws
         mock_ws.get_all_values.return_value = [
             SUBSCRIBERS_HEADERS,
-            _make_sub_row(100, "alice", "paused", "BTC", created="old"),
+            _make_sub_row(
+                100,
+                "alice",
+                "paused",
+                "BTC",
+                created="old",
+                status_changed="2026-04-01T00:00:00+00:00",
+            ),
         ]
 
-        client.add_subscriber(chat_id=100, username="alice")
+        with patch("src.storage.sheets_client.now_iso", return_value="2026-04-19T00:00:00+00:00"):
+            client.add_subscriber(chat_id=100, username="alice")
         mock_ws.append_row.assert_not_called()
         mock_ws.update.assert_called_once()
         row_written = mock_ws.update.call_args[0][1][0]
@@ -280,6 +320,8 @@ class TestSheetsClient:
         # preserved watchlist
         assert row_written[SUBSCRIBERS_HEADERS.index("watchlist_coins")] == "BTC"
         assert row_written[SUBSCRIBERS_HEADERS.index("created_at")] == "old"
+        assert row_written[SUBSCRIBERS_HEADERS.index("updated_at")] == "2026-04-19T00:00:00+00:00"
+        assert row_written[SUBSCRIBERS_HEADERS.index("status_changed_at")] == "2026-04-19T00:00:00+00:00"
 
     def test_get_watchlist_returns_list(self):
         client, mock_ss = self._make_client()
@@ -314,6 +356,29 @@ class TestSheetsClient:
         row_written = mock_ws.update.call_args[0][1][0]
         assert row_written[SUBSCRIBERS_HEADERS.index("watchlist_coins")] == "ETH,SOL"
 
+    def test_set_watchlist_preserves_status_changed_at(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [
+            SUBSCRIBERS_HEADERS,
+            _make_sub_row(
+                100,
+                "alice",
+                "active",
+                "BTC",
+                updated="2026-04-10T00:00:00+00:00",
+                status_changed="2026-04-01T00:00:00+00:00",
+            ),
+        ]
+
+        with patch("src.storage.sheets_client.now_iso", return_value="2026-04-19T00:00:00+00:00"):
+            client.set_watchlist(chat_id=100, coins=["eth", "sol"])
+
+        row_written = mock_ws.update.call_args[0][1][0]
+        assert row_written[SUBSCRIBERS_HEADERS.index("updated_at")] == "2026-04-19T00:00:00+00:00"
+        assert row_written[SUBSCRIBERS_HEADERS.index("status_changed_at")] == "2026-04-01T00:00:00+00:00"
+
     def test_set_watchlist_creates_when_missing(self):
         client, mock_ss = self._make_client()
         mock_ws = MagicMock()
@@ -329,12 +394,46 @@ class TestSheetsClient:
         mock_ss.worksheet.return_value = mock_ws
         mock_ws.get_all_values.return_value = [
             SUBSCRIBERS_HEADERS,
-            _make_sub_row(100, "alice", "active", "BTC"),
+            _make_sub_row(
+                100,
+                "alice",
+                "active",
+                "BTC",
+                updated="2026-04-10T00:00:00+00:00",
+                status_changed="2026-04-01T00:00:00+00:00",
+            ),
         ]
 
-        client.set_status(chat_id=100, status="paused")
+        with patch("src.storage.sheets_client.now_iso", return_value="2026-04-19T00:00:00+00:00"):
+            client.set_status(chat_id=100, status="paused")
         row_written = mock_ws.update.call_args[0][1][0]
         assert row_written[SUBSCRIBERS_HEADERS.index("status")] == "paused"
+        assert row_written[SUBSCRIBERS_HEADERS.index("updated_at")] == "2026-04-19T00:00:00+00:00"
+        assert row_written[SUBSCRIBERS_HEADERS.index("status_changed_at")] == "2026-04-19T00:00:00+00:00"
+
+    def test_set_status_same_status_preserves_status_changed_at(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [
+            SUBSCRIBERS_HEADERS,
+            _make_sub_row(
+                100,
+                "alice",
+                "paused",
+                "BTC",
+                updated="2026-04-10T00:00:00+00:00",
+                status_changed="2026-04-01T00:00:00+00:00",
+            ),
+        ]
+
+        with patch("src.storage.sheets_client.now_iso", return_value="2026-04-19T00:00:00+00:00"):
+            client.set_status(chat_id=100, status="paused")
+
+        row_written = mock_ws.update.call_args[0][1][0]
+        assert row_written[SUBSCRIBERS_HEADERS.index("status")] == "paused"
+        assert row_written[SUBSCRIBERS_HEADERS.index("updated_at")] == "2026-04-19T00:00:00+00:00"
+        assert row_written[SUBSCRIBERS_HEADERS.index("status_changed_at")] == "2026-04-01T00:00:00+00:00"
 
     def test_set_status_invalid_raises(self):
         from src.utils.errors import StorageError
@@ -359,7 +458,14 @@ class TestSheetsClient:
         mock_ss.worksheet.return_value = mock_ws
         mock_ws.get_all_values.return_value = [
             SUBSCRIBERS_HEADERS,
-            _make_sub_row(100, "alice", "active", "BTC,ETH", last_brief="2026-04-14"),
+            _make_sub_row(
+                100,
+                "alice",
+                "active",
+                "BTC,ETH",
+                last_brief="2026-04-14",
+                status_changed="2026-04-10T00:00:00+00:00",
+            ),
         ]
 
         info = client.get_subscriber_info(chat_id=100)
@@ -368,6 +474,7 @@ class TestSheetsClient:
         assert info["status"] == "active"
         assert info["watchlist"] == ["BTC", "ETH"]
         assert info["last_brief_at"] == "2026-04-14"
+        assert info["status_changed_at"] == "2026-04-10T00:00:00+00:00"
 
     def test_get_subscriber_info_miss(self):
         client, mock_ss = self._make_client()

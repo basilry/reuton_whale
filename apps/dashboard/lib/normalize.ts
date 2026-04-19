@@ -633,6 +633,7 @@ export function normalizeWatchlistItems(value: unknown): CuratedWatchlistItem[] 
       symbol: toText(row.symbol, "UNKNOWN"),
       title: toText(row.title, "Unnamed item"),
       note: toText(row.note, "설명 없음"),
+      noteVariantId: toText(row.noteVariantId || row.note_variant_id) || undefined,
       badge: toText(row.badge),
       address: toText(row.address),
       chain: toText(row.chain, "unknown"),

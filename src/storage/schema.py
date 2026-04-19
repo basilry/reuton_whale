@@ -50,6 +50,7 @@ SUBSCRIBERS_HEADERS = [
     "created_at",
     "updated_at",
     "last_brief_at",
+    "status_changed_at",
 ]
 
 ANALYSIS_LOG_HEADERS = [

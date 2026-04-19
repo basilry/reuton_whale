@@ -112,9 +112,15 @@ class WhaleScopeBot:
                 )
                 result["sent"] += 1
             except Exception as exc:
-                if self._is_blocked_send_error(exc):
+                delivery_status = self._delivery_failure_status(exc)
+                if delivery_status is not None:
                     result["blocked"] += 1
-                    logger.info("User %s blocked the bot", chat_id)
+                    self._mark_delivery_failure(chat_id, delivery_status)
+                    logger.info(
+                        "User %s delivery failed with subscriber status=%s",
+                        chat_id,
+                        delivery_status,
+                    )
                 else:
                     result["failed"] += 1
                     logger.warning("Failed to send to %s: %s", chat_id, exc)
@@ -213,14 +219,28 @@ class WhaleScopeBot:
         return isinstance(exc, (RetryAfter, TimedOut, NetworkError))
 
     def _is_blocked_send_error(self, exc: Exception) -> bool:
-        if isinstance(exc, Forbidden):
-            return True
+        return self._delivery_failure_status(exc) is not None
 
+    def _delivery_failure_status(self, exc: Exception) -> str | None:
         message = str(exc).lower()
-        if isinstance(exc, BadRequest):
-            return "chat not found" in message
+        if "deactivated" in message or "chat not found" in message:
+            return "deactivated"
+        if isinstance(exc, Forbidden) or "blocked" in message:
+            return "blocked"
+        if isinstance(exc, BadRequest) and "chat not found" in message:
+            return "deactivated"
+        return None
 
-        return "blocked" in message or "deactivated" in message or "chat not found" in message
+    def _mark_delivery_failure(self, chat_id: int, status: str) -> None:
+        try:
+            self._sheets.set_status(chat_id=chat_id, status=status)
+        except Exception as exc:
+            logger.warning(
+                "Failed to persist subscriber %s delivery status=%s: %s",
+                chat_id,
+                status,
+                exc,
+            )
 
     def _filter_brief(self, brief_text: str, watchlist: list[str]) -> str:
         if not watchlist:
@@ -297,7 +317,12 @@ class WhaleScopeBot:
             )
             return
 
-        status_map = {"active": "활성", "paused": "일시중지"}
+        status_map = {
+            "active": "활성",
+            "paused": "일시중지",
+            "blocked": "차단됨",
+            "deactivated": "비활성화",
+        }
         status_raw = info.get("status", "")
         status_text = status_map.get(status_raw, status_raw or "알 수 없음")
         watchlist = info.get("watchlist", [])

@@ -6,6 +6,11 @@ import { CuratedWatchlistPanel } from "@/components/curated-watchlist-panel";
 import { FearGreedGauge } from "@/components/fear-greed-gauge";
 import { LanguageSelector } from "@/components/language-selector";
 import { WhaleStoryPanel } from "@/components/whale-story-panel";
+import {
+  FEAR_GREED_ENDPOINT,
+  FEAR_GREED_REVALIDATE_SECONDS,
+  getFearGreedData,
+} from "@/lib/fear-greed";
 
 import {
   applyDashboardTestDocument,
@@ -13,11 +18,18 @@ import {
   buildCuratedWatchlistItem,
   buildFearGreedCopy,
   buildFearGreedFixture,
-  buildFearGreedUnavailableFixture,
   buildWalletDetailPayload,
   buildWhaleStory,
   TEST_SURFACE_STYLE,
 } from "./dashboard-accessibility.harness";
+
+function getExpectedGaugeProgress(value: number): number {
+  return Math.max(Math.min(Math.max(value, 0), 100), 0.0001);
+}
+
+function getExpectedNeedleRotation(value: number): number {
+  return Math.min(Math.max(value, 0), 100) * 1.8 - 90;
+}
 
 async function mockWalletDetailResponse(
   page: Page,
@@ -59,16 +71,26 @@ test("curated wallet modal passes axe and preserves focus semantics", async ({
 }) => {
   await mockWalletDetailResponse(page);
   await page.evaluate(applyDashboardTestDocument, "en");
+  const item = buildCuratedWatchlistItem("wallet-e2e", {
+    noteVariantId: "critical-07",
+  });
 
   const component = await mount(
     <div style={TEST_SURFACE_STYLE}>
       <CuratedWatchlistPanel
-        items={[buildCuratedWatchlistItem()]}
+        items={[item]}
         initialLanguage="en"
       />
     </div>,
   );
-  const trigger = component.getByRole("button", { name: /alpha treasury/i });
+  const trigger = component.getByRole("button", {
+    name: /alpha treasury.*recent exchange-linked inflow needs a closer read\..*last seen 2026\.04\.19 09:00:00.*open detail/i,
+  });
+
+  await expect(trigger).toHaveAccessibleName(
+    /alpha treasury.*recent exchange-linked inflow needs a closer read\..*last seen 2026\.04\.19 09:00:00.*open detail/i,
+  );
+  await expect(trigger).not.toHaveAccessibleName(/critical-07/i);
 
   await trigger.click();
 
@@ -168,51 +190,102 @@ test("fear and greed gauge exposes aria labels and updates copy after ko/en swit
     </div>,
   );
   const gauge = component.getByRole("img");
-  const languageButton = component.getByRole("button", {
-    name: /대시보드 언어 선택|select dashboard language/i,
-  });
+  const languageButton = component.getByRole("button", { name: "대시보드 언어 선택" });
 
   await expect(component).toContainText("시장 공포탐욕지수");
   await expect(gauge).toHaveAttribute("aria-label", /현재 시장 공포탐욕지수 72, 탐욕 구간/);
+  await expect(languageButton).toHaveAccessibleName("대시보드 언어 선택");
 
   await languageButton.click();
+  await expect(page.getByRole("listbox", { name: "대시보드 언어" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "한국어" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await page.getByRole("option", { name: "English" }).click();
 
+  const englishLanguageButton = component.getByRole("button", {
+    name: "Select dashboard language",
+  });
   await expect(component).toContainText("Fear & Greed Index");
   await expect(gauge).toHaveAttribute(
     "aria-label",
     /Current market fear and greed index 72, Greed\./,
   );
+  await expect(englishLanguageButton).toHaveAccessibleName("Select dashboard language");
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(page.locator("html")).toHaveAttribute("data-dashboard-lang", "en");
+
+  await englishLanguageButton.click();
+  await expect(page.getByRole("listbox", { name: "Dashboard language" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "English" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.getByRole("option", { name: "Korean" }).click();
+
+  await expect(component).toContainText("시장 공포탐욕지수");
+  await expect(gauge).toHaveAttribute("aria-label", /현재 시장 공포탐욕지수 72, 탐욕 구간/);
+  await expect(page.locator("html")).toHaveAttribute("lang", "ko");
+  await expect(page.locator("html")).toHaveAttribute("data-dashboard-lang", "ko");
 });
 
-test("fear and greed gauge renders source and freshness metadata when the feed is unavailable", async ({
+test("fear and greed gauge fallback preserves accessible metadata and supports forced failures", async ({
   mount,
   page,
 }) => {
+  const unavailable = await getFearGreedData({
+    forcedUnavailableReason: "payload_error",
+    fetchedAt: "2026-04-19T00:07:00.000Z",
+  });
+
+  expect(unavailable.status).toBe("unavailable");
+  expect(unavailable.unavailableReason).toBe("payload_error");
+  expect(unavailable.fetchedAt).toBe("2026-04-19T00:07:00.000Z");
+
   await page.evaluate(applyDashboardTestDocument, "ko");
 
   const component = await mount(
     <div style={{ ...TEST_SURFACE_STYLE, display: "grid", gap: "16px", maxWidth: "420px" }}>
+      <LanguageSelector currentLang="ko" />
       <FearGreedGauge
         copy={buildFearGreedCopy()}
-        data={buildFearGreedUnavailableFixture()}
+        data={unavailable}
         fallback={<p>Fallback summary</p>}
         language="ko"
       />
     </div>,
   );
+  const languageButton = component.getByRole("button", { name: "대시보드 언어 선택" });
 
   await expect(component.getByText("Fallback summary")).toBeVisible();
-  await expect(component.getByText("Alternative.me · 외부 시장 심리 지수")).toBeVisible();
+  await expect(
+    component.getByRole("link", { name: "Alternative.me · 외부 시장 심리 지수" }),
+  ).toBeVisible();
   await expect(component.getByText("최근 지수 시각")).toBeVisible();
   await expect(component.getByText("업데이트 대기")).toBeVisible();
   await expect(component.getByText("마지막 확인")).toBeVisible();
   await expect(component.getByText(/고래 시그널 기반 시장 분위기 설명만 우선 보여주고 있습니다/)).toBeVisible();
   await expect(component.getByRole("img")).toHaveCount(0);
+
+  await languageButton.click();
+  await page.getByRole("option", { name: "English" }).click();
+
+  await expect(
+    component.getByRole("link", { name: "Alternative.me · External market sentiment index" }),
+  ).toBeVisible();
+  await expect(component.getByText("Latest index reading")).toBeVisible();
+  await expect(component.getByText("Awaiting update")).toBeVisible();
+  await expect(component.getByText("Last checked")).toBeVisible();
+  await expect(
+    component.getByText(
+      /Alternative\.me is currently unavailable, so WhaleScope is showing the market mood summary without the index gauge\./,
+    ),
+  ).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
 });
 
-test("fear and greed gauge keeps boundary values readable at 0 and 100", async ({
+test("fear and greed gauge keeps boundary values and needle positions deterministic at 0, 50, and 100", async ({
   mount,
   page,
 }) => {
@@ -228,6 +301,12 @@ test("fear and greed gauge keeps boundary values readable at 0 and 100", async (
       />
       <FearGreedGauge
         copy={buildFearGreedCopy()}
+        data={buildFearGreedBoundaryFixture(50, "neutral")}
+        fallback={<p>Fallback</p>}
+        language="ko"
+      />
+      <FearGreedGauge
+        copy={buildFearGreedCopy()}
         data={buildFearGreedBoundaryFixture(100, "extreme_greed")}
         fallback={<p>Fallback</p>}
         language="ko"
@@ -236,6 +315,7 @@ test("fear and greed gauge keeps boundary values readable at 0 and 100", async (
   );
 
   const gauges = component.getByRole("img");
+  const boundaryCopy = buildFearGreedCopy();
 
   await expect(gauges.nth(0)).toHaveAttribute(
     "aria-label",
@@ -243,6 +323,110 @@ test("fear and greed gauge keeps boundary values readable at 0 and 100", async (
   );
   await expect(gauges.nth(1)).toHaveAttribute(
     "aria-label",
+    /현재 시장 공포탐욕지수 50, 중립 구간/,
+  );
+  await expect(gauges.nth(2)).toHaveAttribute(
+    "aria-label",
     /현재 시장 공포탐욕지수 100, .*탐욕 구간/,
   );
+
+  const expectedBoundaries = [
+    {
+      value: 0,
+      rotation: getExpectedNeedleRotation(0),
+      progress: getExpectedGaugeProgress(0),
+      label: boundaryCopy.classificationLabels.extreme_fear,
+    },
+    {
+      value: 50,
+      rotation: getExpectedNeedleRotation(50),
+      progress: getExpectedGaugeProgress(50),
+      label: boundaryCopy.classificationLabels.neutral,
+    },
+    {
+      value: 100,
+      rotation: getExpectedNeedleRotation(100),
+      progress: getExpectedGaugeProgress(100),
+      label: boundaryCopy.classificationLabels.extreme_greed,
+    },
+  ];
+
+  for (const [index, expected] of expectedBoundaries.entries()) {
+    const gauge = gauges.nth(index);
+
+    await expect(gauge).toHaveAttribute("data-current-value", String(expected.value));
+    await expect(
+      gauge.locator('[data-testid="fear-greed-progress"]'),
+    ).toHaveAttribute("data-progress", String(expected.progress));
+    await expect(
+      gauge.locator('[data-testid="fear-greed-needle"]'),
+    ).toHaveAttribute("data-needle-rotation", String(expected.rotation));
+    await expect(gauge.locator('[data-testid="fear-greed-value"]')).toHaveText(String(expected.value));
+    await expect(gauge.locator('[data-testid="fear-greed-classification"]')).toHaveText(expected.label);
+  }
+});
+
+test("getFearGreedData uses Alternative.me fetch options and supports local fallback verification", async () => {
+  const calls: Array<{
+    input: RequestInfo | URL;
+    init: RequestInit | undefined;
+  }> = [];
+
+  const ready = await getFearGreedData({
+    fetchedAt: "2026-04-19T00:07:00.000Z",
+    fetchImpl: async (input, init) => {
+      calls.push({ input, init });
+
+      const rows = Array.from({ length: 31 }, (_, index) => ({
+        value: String(100 - index),
+        value_classification: index === 0 ? "Extreme Greed" : "Greed",
+        timestamp: String(1_776_528_000 - index * 86_400),
+        time_until_update: index === 0 ? "900" : undefined,
+      }));
+
+      return new Response(JSON.stringify({ data: rows }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+    },
+  });
+
+  expect(calls).toHaveLength(1);
+  expect(String(calls[0]?.input)).toBe(FEAR_GREED_ENDPOINT);
+  expect((calls[0]?.init?.headers as Record<string, string> | undefined)?.Accept).toBe(
+    "application/json",
+  );
+  expect(
+    ((calls[0]?.init as RequestInit & { next?: { revalidate?: number } } | undefined)?.next
+      ?.revalidate),
+  ).toBe(FEAR_GREED_REVALIDATE_SECONDS);
+  expect(ready.status).toBe("ready");
+  expect(ready.current?.value).toBe(100);
+  expect(ready.current?.classification).toBe("extreme_greed");
+  expect(ready.nextUpdateInSeconds).toBe(900);
+  expect(ready.fetchedAt).toBe("2026-04-19T00:07:00.000Z");
+
+  const payloadError = await getFearGreedData({
+    fetchedAt: "2026-04-19T00:08:00.000Z",
+    fetchImpl: async () =>
+      new Response(
+        JSON.stringify({
+          metadata: {
+            error: "upstream unavailable",
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      ),
+  });
+
+  expect(payloadError.status).toBe("unavailable");
+  expect(payloadError.unavailableReason).toBe("payload_error");
+  expect(payloadError.fetchedAt).toBe("2026-04-19T00:08:00.000Z");
 });

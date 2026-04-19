@@ -56,6 +56,14 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+export function getFearGreedGaugeProgress(value: number): number {
+  return Math.max(clamp(value, 0, 100), 0.0001);
+}
+
+export function getFearGreedNeedleRotation(value: number): number {
+  return clamp(value, 0, 100) * 1.8 - 90;
+}
+
 function getSignedDelta(current: number, snapshot?: FearGreedSnapshot): number | null {
   if (!snapshot) {
     return null;
@@ -240,8 +248,8 @@ export function FearGreedGauge({ data, fallback, language, copy }: FearGreedGaug
 
   const currentValue = clamp(data.current.value, 0, 100);
   const classificationLabel = activeCopy.classificationLabels[data.current.classification];
-  const progress = Math.max(currentValue, 0.0001);
-  const needleRotation = currentValue * 1.8 - 90;
+  const progress = getFearGreedGaugeProgress(currentValue);
+  const needleRotation = getFearGreedNeedleRotation(currentValue);
   const comparisons = [
     buildComparisonValue(activeCopy.compareLabels.yesterday, currentValue, data.yesterday),
     buildComparisonValue(activeCopy.compareLabels.week, currentValue, data.weekAgo),
@@ -271,6 +279,9 @@ export function FearGreedGauge({ data, fallback, language, copy }: FearGreedGaug
         <svg
           aria-label={ariaLabel}
           className={styles.gauge}
+          data-classification={data.current.classification}
+          data-current-value={currentValue}
+          data-testid="fear-greed-gauge"
           role="img"
           viewBox="0 0 320 220"
         >
@@ -290,11 +301,15 @@ export function FearGreedGauge({ data, fallback, language, copy }: FearGreedGaug
             className={styles.progress}
             d={SEMICIRCLE_PATH}
             data-tone={data.current.classification}
+            data-progress={progress}
+            data-testid="fear-greed-progress"
             pathLength={100}
             strokeDasharray={`${progress} ${100 - progress}`}
           />
           <line
             className={styles.needle}
+            data-needle-rotation={needleRotation}
+            data-testid="fear-greed-needle"
             data-tone={data.current.classification}
             style={{ transform: `rotate(${needleRotation}deg)` }}
             x1="160"
@@ -303,10 +318,15 @@ export function FearGreedGauge({ data, fallback, language, copy }: FearGreedGaug
             y2="58"
           />
           <circle className={styles.hub} cx="160" cy="160" r="9" />
-          <text className={styles.value} x="160" y="112">
+          <text className={styles.value} data-testid="fear-greed-value" x="160" y="112">
             {currentValue}
           </text>
-          <text className={styles.classification} x="160" y="138">
+          <text
+            className={styles.classification}
+            data-testid="fear-greed-classification"
+            x="160"
+            y="138"
+          >
             {classificationLabel}
           </text>
         </svg>

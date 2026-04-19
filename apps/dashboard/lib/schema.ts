@@ -74,6 +74,7 @@ export const SUBSCRIBERS_HEADERS = [
   "created_at",
   "updated_at",
   "last_brief_at",
+  "status_changed_at",
 ] as const;
 
 export const TG_WHALE_EVENTS_HEADERS = [
@@ -330,6 +331,7 @@ export interface SubscriberRow {
   created_at: string;
   updated_at: string;
   last_brief_at: string;
+  status_changed_at: string;
 }
 
 export interface SheetRowMap {

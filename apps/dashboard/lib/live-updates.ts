@@ -12,11 +12,25 @@ export type LiveUpdateSection = (typeof LIVE_UPDATE_SECTIONS)[number];
 
 export type LiveUpdateStatusReason =
   | "feature_disabled"
-  | "not_configured";
+  | "redis_missing"
+  | "token_missing";
+
+export type LiveUpdateStreamStatusReason =
+  | "feature_disabled"
+  | "redis_missing"
+  | "token_missing";
 
 export type LiveUpdateStatusEvent = {
   state: "enabled" | "disabled";
   reason?: LiveUpdateStatusReason;
+  pollIntervalMs: number;
+  heartbeatIntervalMs: number;
+  sections: LiveUpdateSection[];
+};
+
+export type LiveUpdateStreamStatusEvent = {
+  state: "enabled" | "disabled";
+  reason?: LiveUpdateStreamStatusReason;
   pollIntervalMs: number;
   heartbeatIntervalMs: number;
   sections: LiveUpdateSection[];
@@ -33,6 +47,9 @@ export type LiveUpdateEvent = {
 export type LiveUpdateStatusInput = {
   enabled: boolean;
   configured: boolean;
+  configurationReason?: "redis_missing" | "token_missing";
+  restUrl?: string;
+  restToken?: string;
 };
 
 export function liveUpdateTimestampValue(update: LiveUpdateEvent): number {
@@ -56,7 +73,52 @@ export function getLiveUpdateStatus(
   if (!input.configured) {
     return {
       state: "disabled",
-      reason: "not_configured",
+      reason: input.configurationReason ?? (!hasConfiguredValue(input.restUrl) ? "redis_missing" : "token_missing"),
+      pollIntervalMs: LIVE_UPDATE_POLL_INTERVAL_MS,
+      heartbeatIntervalMs: LIVE_UPDATE_HEARTBEAT_INTERVAL_MS,
+      sections: [...LIVE_UPDATE_SECTIONS],
+    };
+  }
+
+  return {
+    state: "enabled",
+    pollIntervalMs: LIVE_UPDATE_POLL_INTERVAL_MS,
+    heartbeatIntervalMs: LIVE_UPDATE_HEARTBEAT_INTERVAL_MS,
+    sections: [...LIVE_UPDATE_SECTIONS],
+  };
+}
+
+function hasConfiguredValue(value?: string): boolean {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+export function getLiveUpdateStreamStatus(
+  input: LiveUpdateStatusInput,
+): LiveUpdateStreamStatusEvent {
+  if (!input.enabled) {
+    return {
+      state: "disabled",
+      reason: "feature_disabled",
+      pollIntervalMs: LIVE_UPDATE_POLL_INTERVAL_MS,
+      heartbeatIntervalMs: LIVE_UPDATE_HEARTBEAT_INTERVAL_MS,
+      sections: [...LIVE_UPDATE_SECTIONS],
+    };
+  }
+
+  if (!hasConfiguredValue(input.restUrl)) {
+    return {
+      state: "disabled",
+      reason: "redis_missing",
+      pollIntervalMs: LIVE_UPDATE_POLL_INTERVAL_MS,
+      heartbeatIntervalMs: LIVE_UPDATE_HEARTBEAT_INTERVAL_MS,
+      sections: [...LIVE_UPDATE_SECTIONS],
+    };
+  }
+
+  if (!hasConfiguredValue(input.restToken)) {
+    return {
+      state: "disabled",
+      reason: "token_missing",
       pollIntervalMs: LIVE_UPDATE_POLL_INTERVAL_MS,
       heartbeatIntervalMs: LIVE_UPDATE_HEARTBEAT_INTERVAL_MS,
       sections: [...LIVE_UPDATE_SECTIONS],

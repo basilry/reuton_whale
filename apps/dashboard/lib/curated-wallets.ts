@@ -47,6 +47,7 @@ type WalletActivity = {
   wallet: CuratedWalletEntry;
   symbol: string;
   note: string;
+  noteVariantId: string;
   badge: string;
   tone: WhaleStoryTone;
   lastSeenAt?: string;
@@ -76,7 +77,15 @@ type CuratedWalletRowExtended = CuratedWalletRow & {
   display_priority?: string;
 };
 
-type CuratedNoteBucket = "idle" | "active" | "critical";
+export type CuratedNoteBucket = "idle" | "active" | "critical";
+type CuratedNoteDefinition = {
+  id: string;
+  text: string;
+};
+
+export type CuratedWatchlistItemWithNoteVariant = CuratedWatchlistItem & {
+  noteVariantId?: string;
+};
 
 const WALLET_CATEGORY_WEIGHT: Record<CuratedWalletCategory, number> = {
   celebrity: 0,
@@ -92,33 +101,96 @@ const WALLET_CATEGORY_WEIGHT: Record<CuratedWalletCategory, number> = {
   unknown: 10,
 };
 
-const CURATED_NOTE_POOL: Record<CuratedNoteBucket, string[]> = {
+const CURATED_NOTE_POOL: Record<CuratedNoteBucket, ReadonlyArray<CuratedNoteDefinition>> = {
   idle: [
-    "오늘은 비교적 조용하지만, 움직임 하나로 시장 서사가 바뀔 수 있는 지갑입니다.",
-    "현재는 관망 구간이지만 보유 성격 자체가 심리적 기준점으로 작동합니다.",
-    "직접적인 거래가 없어도 내러티브 추적용 기준선으로 유지할 가치가 있습니다.",
-    "변동이 적은 날에도 뉴스와 연결해 함께 확인해야 하는 큐레이션 지갑입니다.",
-    "최근 대형 이동은 없지만, 다시 움직이면 해석 우선순위가 바로 올라갑니다.",
-    "시장 참여자들이 꾸준히 관찰하는 대표 지갑으로 watchlist에 유지 중입니다.",
-    "조용한 구간일수록 다음 이동의 맥락을 준비해 두기 좋은 대상입니다.",
+    {
+      id: "idle-01",
+      text: "오늘은 비교적 조용하지만, 움직임 하나로 시장 서사가 바뀔 수 있는 지갑입니다.",
+    },
+    {
+      id: "idle-02",
+      text: "현재는 관망 구간이지만 보유 성격 자체가 심리적 기준점으로 작동합니다.",
+    },
+    {
+      id: "idle-03",
+      text: "직접적인 거래가 없어도 내러티브 추적용 기준선으로 유지할 가치가 있습니다.",
+    },
+    {
+      id: "idle-04",
+      text: "변동이 적은 날에도 뉴스와 연결해 함께 확인해야 하는 큐레이션 지갑입니다.",
+    },
+    {
+      id: "idle-05",
+      text: "최근 대형 이동은 없지만, 다시 움직이면 해석 우선순위가 바로 올라갑니다.",
+    },
+    {
+      id: "idle-06",
+      text: "시장 참여자들이 꾸준히 관찰하는 대표 지갑으로 watchlist에 유지 중입니다.",
+    },
+    {
+      id: "idle-07",
+      text: "조용한 구간일수록 다음 이동의 맥락을 준비해 두기 좋은 대상입니다.",
+    },
   ],
   active: [
-    "최근 흐름이 다시 살아나면서 시장 심리와 연결해 볼 가치가 커졌습니다.",
-    "이 지갑의 자금 이동이 관련 프로젝트 뉴스 사이클과 맞물리는 구간입니다.",
-    "평소 대비 활동성이 올라와 해석 우선순위를 한 단계 높여 봐야 합니다.",
-    "연결된 주소 또는 토큰 흐름과 함께 읽으면 맥락이 더 선명해집니다.",
-    "최근 움직임이 단발성인지 포지션 재편인지 계속 추적할 필요가 있습니다.",
-    "시장 참가자 시선이 다시 모일 수 있는 활동 구간으로 판단합니다.",
-    "현재 관측된 흐름이 내러티브 재점화 신호인지 확인 중입니다.",
+    {
+      id: "active-01",
+      text: "최근 흐름이 다시 살아나면서 시장 심리와 연결해 볼 가치가 커졌습니다.",
+    },
+    {
+      id: "active-02",
+      text: "이 지갑의 자금 이동이 관련 프로젝트 뉴스 사이클과 맞물리는 구간입니다.",
+    },
+    {
+      id: "active-03",
+      text: "평소 대비 활동성이 올라와 해석 우선순위를 한 단계 높여 봐야 합니다.",
+    },
+    {
+      id: "active-04",
+      text: "연결된 주소 또는 토큰 흐름과 함께 읽으면 맥락이 더 선명해집니다.",
+    },
+    {
+      id: "active-05",
+      text: "최근 움직임이 단발성인지 포지션 재편인지 계속 추적할 필요가 있습니다.",
+    },
+    {
+      id: "active-06",
+      text: "시장 참가자 시선이 다시 모일 수 있는 활동 구간으로 판단합니다.",
+    },
+    {
+      id: "active-07",
+      text: "현재 관측된 흐름이 내러티브 재점화 신호인지 확인 중입니다.",
+    },
   ],
   critical: [
-    "오늘 브리핑에서 우선 확인해야 할 상위 고래 활동 축에 들어갑니다.",
-    "최근 감지된 대형 이동이 단기 변동성에 직접 영향을 줄 수 있는 수준입니다.",
-    "동일 주체의 관련 주소 흐름까지 함께 보면 의미 있는 재배치 가능성이 큽니다.",
-    "이번 움직임은 시장 해석을 바꿀 수 있어 긴급 모니터링 대상으로 올립니다.",
-    "뉴스와 온체인 신호가 한 지점으로 겹치는 보기 드문 활동 구간입니다.",
-    "단순 잡음으로 보기 어려운 강도의 움직임이어서 맥락 점검이 필요합니다.",
-    "현재 변동성의 배경 설명에 직접 들어갈 정도로 존재감이 큰 활동입니다.",
+    {
+      id: "critical-01",
+      text: "오늘 브리핑에서 우선 확인해야 할 상위 고래 활동 축에 들어갑니다.",
+    },
+    {
+      id: "critical-02",
+      text: "최근 감지된 대형 이동이 단기 변동성에 직접 영향을 줄 수 있는 수준입니다.",
+    },
+    {
+      id: "critical-03",
+      text: "동일 주체의 관련 주소 흐름까지 함께 보면 의미 있는 재배치 가능성이 큽니다.",
+    },
+    {
+      id: "critical-04",
+      text: "이번 움직임은 시장 해석을 바꿀 수 있어 긴급 모니터링 대상으로 올립니다.",
+    },
+    {
+      id: "critical-05",
+      text: "뉴스와 온체인 신호가 한 지점으로 겹치는 보기 드문 활동 구간입니다.",
+    },
+    {
+      id: "critical-06",
+      text: "단순 잡음으로 보기 어려운 강도의 움직임이어서 맥락 점검이 필요합니다.",
+    },
+    {
+      id: "critical-07",
+      text: "현재 변동성의 배경 설명에 직접 들어갈 정도로 존재감이 큰 활동입니다.",
+    },
   ],
 };
 
@@ -1150,14 +1222,37 @@ function currentKstDateSeed(date = new Date()): string {
   return `${byType.year ?? "0000"}-${byType.month ?? "00"}-${byType.day ?? "00"}`;
 }
 
-function selectCuratedNote(
+export function listCuratedNoteVariants(): ReadonlyArray<{
+  id: string;
+  text: string;
+  bucket: CuratedNoteBucket;
+}> {
+  return (Object.entries(CURATED_NOTE_POOL) as Array<
+    [CuratedNoteBucket, ReadonlyArray<CuratedNoteDefinition>]
+  >).flatMap(([bucket, variants]) =>
+    variants.map((variant) => ({
+      id: variant.id,
+      text: variant.text,
+      bucket,
+    })),
+  );
+}
+
+function selectCuratedNoteVariant(
   wallet: CuratedWalletEntry,
   bucket: CuratedNoteBucket,
   seed = "watchlist",
-): string {
+  dateSeed?: string,
+): CuratedNoteDefinition {
   const pool = CURATED_NOTE_POOL[bucket];
-  const hashInput = `${wallet.id}:${currentKstDateSeed()}:${seed}`;
-  return pool[hashStringToIndex(hashInput, pool.length)] ?? pool[0] ?? "";
+  const effectiveDateSeed = compactString(dateSeed) || currentKstDateSeed();
+  const hashInput = `${wallet.id}:${effectiveDateSeed}:${seed}`;
+  return (
+    pool[hashStringToIndex(hashInput, pool.length)] ?? {
+      id: `${bucket}-01`,
+      text: "",
+    }
+  );
 }
 
 function walletNarrativeLead(wallet: CuratedWalletEntry): string {
@@ -1454,6 +1549,7 @@ function walletActivity(
   wallet: CuratedWalletEntry,
   transactions: readonly TransactionLike[],
   signals: readonly SignalLike[],
+  dateSeed?: string,
 ): WalletActivity {
   const matched = newestFirst(
     transactions.filter((transaction) => roleFromTransaction(wallet, transaction) !== null),
@@ -1464,10 +1560,12 @@ function walletActivity(
   if (!matched) {
     const symbol = wallet.focusSymbols?.[0] ?? wallet.chain.toUpperCase();
     const bucket = activityBucketFor(0, 0);
+    const noteVariant = selectCuratedNoteVariant(wallet, bucket, "watchlist", dateSeed);
     return {
       wallet,
       symbol,
-      note: joinNoteParts([walletNarrativeLead(wallet), selectCuratedNote(wallet, bucket)]),
+      note: joinNoteParts([walletNarrativeLead(wallet), noteVariant.text]),
+      noteVariantId: noteVariant.id,
       badge: `${wallet.grade}등급 ${categoryLabel(wallet.category)}`,
       tone: "neutral",
       relatedSignalCount: 0,
@@ -1485,17 +1583,19 @@ function walletActivity(
   const role = roleFromTransaction(wallet, matched);
   const direction = role === "from" ? "출금" : "유입";
   const bucket = activityBucketFor(amountUsd, relatedSignals);
+  const noteVariant = selectCuratedNoteVariant(wallet, bucket, direction, dateSeed);
   const note = joinNoteParts([
     amountUsd > 0
       ? `${symbol} ${formatCompactUsd(amountUsd)} ${direction} 움직임이 최근 감지되었습니다.`
       : `${symbol} ${direction} 움직임이 최근 감지되었습니다.`,
-    selectCuratedNote(wallet, bucket, direction),
+    noteVariant.text,
   ]);
 
   return {
     wallet,
     symbol,
     note,
+    noteVariantId: noteVariant.id,
     badge:
       relatedSignals > 0
         ? `${relatedSignals}개 관련 시그널`
@@ -1518,14 +1618,15 @@ export function buildCuratedWatchlistItems(options?: {
   recentTransactions?: readonly TransactionLike[];
   recentSignals?: readonly SignalLike[];
   maxItems?: number;
-}): CuratedWatchlistItem[] {
+  dateSeed?: string;
+}): CuratedWatchlistItemWithNoteVariant[] {
   const wallets = options?.wallets ?? listEnabledCuratedWalletEntries();
   const transactions = options?.recentTransactions ?? [];
   const signals = options?.recentSignals ?? [];
   const maxItems = options?.maxItems ?? 20;
 
   return wallets
-    .map((wallet) => walletActivity(wallet, transactions, signals))
+    .map((wallet) => walletActivity(wallet, transactions, signals, options?.dateSeed))
     .sort((left, right) => {
       if (left.activityScore !== right.activityScore) {
         return right.activityScore - left.activityScore;
@@ -1538,6 +1639,7 @@ export function buildCuratedWatchlistItems(options?: {
       symbol: activity.symbol,
       title: activity.wallet.label,
       note: activity.note,
+      noteVariantId: activity.noteVariantId,
       badge: activity.badge,
       address: activity.wallet.address,
       chain: activity.wallet.chain,

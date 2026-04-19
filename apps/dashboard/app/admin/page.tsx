@@ -179,16 +179,78 @@ function formatDurationSeconds(value: number): string {
   return `${(value / 1000).toFixed(1)}초`;
 }
 
+function formatLatencyMs(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "기록 없음";
+  }
+  if (value < 1000) {
+    return `${Math.max(0, Math.round(value))}ms`;
+  }
+  return formatDurationSeconds(value);
+}
+
+function formatSignedCount(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "기록 없음";
+  }
+  const normalized = Math.trunc(value);
+  if (normalized === 0) {
+    return "0";
+  }
+  return `${normalized > 0 ? "+" : ""}${normalized.toLocaleString("ko-KR")}`;
+}
+
 function humanizeLiveUpdateReason(
   reason: AdminObservabilitySummary["liveUpdates"]["reason"],
 ): string {
   if (reason === "feature_disabled") {
     return "기능 비활성화";
   }
-  if (reason === "not_configured") {
-    return "Redis 미구성";
+  if (reason === "redis_missing") {
+    return "Redis URL 누락";
+  }
+  if (reason === "token_missing") {
+    return "Redis token 누락";
   }
   return "정상";
+}
+
+function humanizeMarketSourceId(id: AdminObservabilitySummary["marketSources"][number]["id"]): string {
+  switch (id) {
+    case "binance":
+      return "Binance";
+    case "upbit":
+      return "Upbit";
+    case "bitflyer":
+      return "Bitflyer";
+    case "kraken":
+      return "Kraken";
+    case "fx":
+      return "FX";
+    case "snapshot":
+      return "Snapshot";
+    case "fear_greed":
+      return "Fear & Greed";
+    default:
+      return id;
+  }
+}
+
+function humanizeMarketSourceStatus(
+  status: AdminObservabilitySummary["marketSources"][number]["status"],
+): string {
+  switch (status) {
+    case "ready":
+      return "정상";
+    case "degraded":
+      return "지연";
+    case "manual_check":
+      return "배포 확인 필요";
+    case "unavailable":
+      return "미가용";
+    default:
+      return status;
+  }
 }
 
 function buildObservabilityCards(summary: AdminObservabilitySummary | null) {
@@ -258,15 +320,54 @@ function buildObservabilityCards(summary: AdminObservabilitySummary | null) {
       lines: [
         `상태 ${summary.liveUpdates.state === "enabled" ? "활성" : "비활성"} · 사유 ${humanizeLiveUpdateReason(summary.liveUpdates.reason)}`,
         `poll ${formatDurationSeconds(summary.liveUpdates.pollIntervalMs)} · heartbeat ${formatDurationSeconds(summary.liveUpdates.heartbeatIntervalMs)}`,
+        `lastEvent ${summary.liveUpdates.lastEventId ?? "기록 없음"} · 지연 ${formatLatencyMs(summary.liveUpdates.latestLatencyMs)}`,
         summary.liveUpdates.sections
           .map((section) => {
             const ageLabel =
               section.ageMinutes == null ? "기록 없음" : `${section.ageMinutes.toLocaleString("ko-KR")}분 전`;
-            return `${section.section} ${ageLabel}`;
+            return `${section.section} ${ageLabel} · revalidate ${formatObservedTime(section.lastRevalidatedAt)}`;
           })
           .join(" · "),
       ],
-      hint: `최근 이벤트 기준: ${formatObservedTime(summary.liveUpdates.latestActivityAt)}`,
+      hint: `최근 이벤트 기준: ${formatObservedTime(summary.liveUpdates.latestActivityAt)} · reconnect ${summary.liveUpdates.reconnectCount}회`,
+    },
+    {
+      key: "telegram-ops",
+      title: "Telegram 운영",
+      tone:
+        summary.telegram.lastBroadcastStatus === "failed"
+          ? "bad"
+          : summary.telegram.subscriberCountActive > 0 || summary.telegram.channelMemberCountLatest != null
+            ? "good"
+            : "neutral",
+      lines: [
+        `활성 ${formatCompactCount(summary.telegram.subscriberCountActive)} · 일시중지 ${formatCompactCount(summary.telegram.subscriberCountPaused)} · 차단 ${formatCompactCount(summary.telegram.subscriberCountBlocked)} · 비활성 ${formatCompactCount(summary.telegram.subscriberCountDeactivated)}`,
+        `24h 이탈 ${formatCompactCount(summary.telegram.unsubscribe24h)}건 · 이탈률 ${formatRatio(summary.telegram.unsubscribeRate24h)}`,
+        `채널 멤버 ${summary.telegram.channelMemberCountLatest == null ? "기록 없음" : formatCompactCount(summary.telegram.channelMemberCountLatest)} · 24h 변화 ${formatSignedCount(summary.telegram.channelMemberDelta24h)}`,
+      ],
+      hint: `최근 channel_health ${formatObservedTime(summary.telegram.lastChannelHealthAt)} · 최근 발송 ${formatObservedTime(summary.telegram.lastBroadcastAt)} · ${summary.telegram.lastBroadcastDeliveryMode ?? "mode 없음"} / ${summary.telegram.lastBroadcastStatus ?? "status 없음"}`,
+    },
+    {
+      key: "market-sources",
+      title: "시장 소스 진단",
+      tone: summary.marketSources.every((item) => item.status === "ready")
+        ? "good"
+        : summary.marketSources.some((item) => item.status === "unavailable")
+          ? "warn"
+          : "neutral",
+      lines: summary.marketSources.map((item) => {
+        const freshness =
+          item.freshnessSeconds == null
+            ? "freshness 없음"
+            : `${item.freshnessSeconds.toLocaleString("ko-KR")}초`;
+        const suffix = item.lastSuccessAt
+          ? `최근 성공 ${formatObservedTime(item.lastSuccessAt)}`
+          : item.failureReason
+            ? item.failureReason
+            : "수동 확인 대기";
+        return `${humanizeMarketSourceId(item.id)} · ${humanizeMarketSourceStatus(item.status)} · ${item.transport} · ${freshness} · ${suffix}`;
+      }),
+      hint: "websocket/live 소스는 배포 브라우저에서 최종 상태를 확인해야 합니다.",
     },
   ];
 }

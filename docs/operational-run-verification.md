@@ -12,7 +12,8 @@
 - 대시보드 실행: `npm run dashboard:dev`
 - 운영 저장소: Google Sheets
 - 운영 발송 채널: Telegram Bot
-- 검증된 자동 테스트: `pytest -q` 기준 `265 passed`
+- 검증된 자동 테스트: `pytest -q` 기준 `386 passed`
+- 검증된 프런트 회귀: `npm run dashboard:e2e` 기준 live updates / Fear & Greed / curated watchlist component spec 통과
 
 ## 검증 목표
 
@@ -192,6 +193,7 @@ python -m src.main --dry-run
 | `daily_brief` |  |  | brief 생성 시 증가 |
 | `analysis_log` |  |  | LLM 호출 성공 시 증가 |
 | `system_log` |  |  | 매 실행마다 증가 |
+| `subscribers` |  |  | 상태 변경 시 `status_changed_at` 갱신 |
 | `brief_cost_ledger` |  |  | brief 실행마다 1행 증가 |
 | `broadcast_log` |  |  | broadcast_daily 또는 broadcast_periodic 실행 시 증가 |
 | `channel_health` |  |  | channel health 워커 실행 시 증가 |
@@ -245,6 +247,7 @@ npm run dashboard:dev
 | `signals` | `signal_id`, `rule`, `severity`, `score`, `summary` |
 | `daily_brief` | `date`, `summary`, `top_transactions`, `alert_count` |
 | `analysis_log` | `task`, `model_id`, `tokens_in`, `tokens_out`, `latency_ms` |
+| `subscribers` | `chat_id`, `status`, `status_changed_at`, `updated_at` |
 | `brief_cost_ledger` | `slot_key`, `decision`, `llm_called`, `cost_usd`, `input_fingerprint`, `reason` |
 | `broadcast_log` | `kind`, `status`, `message_length`, `content_hash`, `slot_key`, `delivery_mode` |
 | `channel_health` | `chat_id`, `username`, `member_count`, `status`, `error` |
@@ -256,6 +259,7 @@ npm run dashboard:dev
 - `raw_response_hash` 기준 중복 저장이 방지된다.
 - 시그널이 생성된 경우 `signals`에 저장된다.
 - 브리핑이 생성된 경우 `daily_brief`에 저장된다.
+- `subscribers.status_changed_at`이 상태 변경 시각 기준으로 갱신된다.
 - `brief_cost_ledger`는 brief 실행 경로마다 반드시 1행 기록된다.
 - `broadcast_periodic`가 비어 있거나 중복 내용이면 `broadcast_log`에 skip 사유가 남는다.
 - 실제 발송 또는 dry-run 모두 `broadcast_log.message_length <= 1500` 기준을 만족한다.
@@ -351,6 +355,9 @@ TG_CHANNEL=@whale_alert_io python scripts/run_listener.py
 | 최근 메시지 길이 | `broadcast_log.message_length` 최신 row와 일치 |
 | 최근 brief 생성 시각 / 최근 periodic 발송 시각 | 각 원장 최신 row 시각과 일치 |
 | SSE live updates 상태 | `WHALESCOPE_SSE_ENABLED`, Redis REST 구성, `service_health` 최근 시각과 정합 |
+| SSE 진단 | `lastEventId`, 최근 이벤트 지연, 섹션별 revalidate 시각이 `/admin`에 표시되고, 브라우저 reconnect 안정성은 Step 10에서 별도 확인 |
+| 시장 소스 진단 | `binance/upbit/bitflyer/kraken/fx/snapshot/fear_greed` 별 `transport`, `status`, `freshness`, `failureReason`이 `/admin`에 표시되고, 수동 확인 대상은 이유 문구로 바로 식별 가능 |
+| Telegram 운영 요약 | 활성/일시중지/차단/비활성 구독자 수, `unsubscribe24h`, `unsubscribeRate24h`, 최근 `channel_health`, 최근 `broadcast_log` 상태가 `/admin`에 표시 |
 
 운영자가 시트 raw row를 뒤지지 않고 `/admin`에서 바로 판정 가능해야 한다.
 
@@ -360,13 +367,53 @@ TG_CHANNEL=@whale_alert_io python scripts/run_listener.py
 
 | 영역 | 확인 방법 | 합격 기준 |
 |---|---|---|
-| SSE 연결 | 브라우저 DevTools Network에서 `/api/stream` 확인 | `content-type: text/event-stream` 유지 |
-| UI 갱신 지연 | 파이프라인 수동 실행 후 10초 내 `/` 또는 `/admin` 갱신 | 최근 상태/카드가 10초 내 반영 |
-| `/admin` live updates 카드 | 상태/사유/poll/heartbeat/섹션별 최근 시각 확인 | 배포 환경 설정과 실제 최근 갱신 시각이 모순 없이 표시 |
-| Alternative.me 실값 | 공개 지수 페이지와 비교 | 숫자/분류가 동일 |
-| Bitflyer / Kraken 값 | 시장 티커와 fallback 문구 확인 | 지연 시 stale/fallback 설명이 정합 |
-| Telegram shadow/live | `TELEGRAM_BROADCAST_DRY_RUN=true`로 24h 관측 후 live 전환 | shadow 기간 실패 없음, live 전환 후 단일 채널 도착 확인 |
-| 장시간 연결 | 30분 유지 후 재연결 관찰 | listener/SSE 모두 crash 없이 재연결 |
+| SSE 연결 | Vercel 배포 브라우저 DevTools Network에서 `/api/stream` 확인 | `content-type: text/event-stream` 유지 |
+| UI 갱신 지연 | Render 파이프라인 수동 실행 후 10초 내 Vercel `/` 또는 `/admin` 갱신 | 최근 상태/카드가 10초 내 반영 |
+| `/admin` live updates 카드 | `/admin`에서 상태/사유/poll/heartbeat/`lastEventId`/지연/revalidate 시각 확인 | 배포 환경 설정과 실제 최근 갱신 시각이 모순 없이 표시 |
+| 시장 소스 카드 | `/admin`에서 `binance/upbit/bitflyer/kraken/fx/snapshot/fear_greed` 상태 확인 | 수동 확인 대상과 자동 확인 대상이 구분되어 표시 |
+| Alternative.me 실값 | 공개 지수 페이지와 `/admin`·사용자 홈의 게이지 비교 | 숫자/분류가 동일 |
+| Bitflyer / Kraken 값 | Vercel 사용자 홈 시장 티커와 `/admin` 진단 카드 확인 | 지연 시 stale/fallback 설명이 정합 |
+| Telegram shadow/live | Telegram 채널과 `broadcast_log`, `channel_health`, `/admin` Telegram 카드 비교 | shadow 기간 실패 없음, live 전환 후 단일 채널 도착 확인 |
+| 장시간 연결 | 30분 유지 후 Vercel 브라우저와 Render 로그 동시 관찰 | listener/SSE 모두 crash 없이 재연결 |
+
+### Step 10.5. 잔여 체크리스트 판정 매트릭스
+
+아래 표는 "코드가 미완료인지"와 "배포 관측만 남았는지"를 혼동하지 않기 위한 기준이다.
+
+| 마일스톤 | 항목 | 로컬 증빙 | 배포 관측 위치 | 닫힘 기준 |
+|---|---|---|---|---|
+| M1 | Fear & Greed fallback, reduced motion, ko/en aria-label | `npm run dashboard:e2e -- tests/e2e/dashboard-accessibility.spec.tsx` | 배포 브라우저, 스크린리더 | 로컬 spec 통과 후, 배포 브라우저에서 실제 읽기와 값 일치 확인 |
+| M1 | CURATED_NOTE_POOL 21개 도달 가능성 | `npm run dashboard:e2e -- tests/e2e/dashboard-curated-watchlist.spec.ts` | 운영 로그 또는 별도 관찰 기록 | 로컬 reachability 확인 후, 실제 1주 운영 분포 관측 |
+| M1 | Binance/Upbit/Bitflyer/Kraken live 상태와 가격 갱신 | 없음. 로컬은 `/admin` 진단 문구와 카드 렌더까지만 본다. | Vercel 사용자 홈, `/admin`, 브라우저 console/network | 네 소스 상태와 Bitflyer/Kraken 가격 갱신이 배포 환경에서 확인 |
+| M1 | Alternative.me 실값 일치 | 로컬에서는 실패 주입과 fallback만 검증 | 사용자 홈, `/admin`, Alternative.me 공개 페이지 | 사용자 홈 게이지 값/분류가 원본과 일치 |
+| M3 | SSE payload 메타데이터, disabled reason, refresh/reconnect 로직 | `npm run dashboard:e2e -- tests/e2e/dashboard-live-updates.spec.tsx` | Vercel DevTools, `/admin`, Upstash console | `event-stream`, 10초 내 반영, 30분 안정성, Upstash 사용량 확인 |
+| M4 | brief / periodic cadence 슬롯 로직 | `pytest tests/test_run_all.py -q` | Render logs, Google Sheets, `/admin` | 실제 시간대 실행과 `/admin` 집계가 일치 |
+| M4 | brief ledger/skip/budget 경로 | `pytest tests/test_brief_fallback.py -q` | Google Sheets `brief_cost_ledger`, `/admin` | 24h decision 비율과 `llm_called` count 관측 가능 |
+| M4 | periodic dedup / empty skip / 1500자 cap | `pytest tests/test_broadcast_periodic.py -q` | Google Sheets `broadcast_log`, Telegram channel, `/admin` | 15분 cadence, skip 비율, 1500자 cap, 실제 채널 도착 확인 |
+| M4 | Telegram churn 집계 | `pytest tests/test_storage.py -q tests/test_distributor.py -q` | Google Sheets `subscribers`, `/admin` Telegram 카드 | `status_changed_at` 기준 `unsubscribe24h` / `unsubscribeRate24h`가 운영값과 일치 |
+
+원칙:
+
+- 로컬 테스트로 닫히는 항목은 코드/QA 완료로 본다.
+- 24시간/7일 추세, 브라우저 네트워크, 실제 Telegram 도착, 실시간 외부 API 값 일치는 배포 관측 없이는 닫지 않는다.
+- `/admin` 카드가 보여주는 값과 원장 시트(`brief_cost_ledger`, `broadcast_log`, `channel_health`, `subscribers`)가 다르면 배포 관측 실패로 본다.
+
+현재 기준, 코드/로컬 QA 후에도 배포 전용으로 남는 항목:
+
+- M1: Binance/Upbit/Bitflyer/Kraken 칩 실제 live 상태
+- M1: Bitflyer BTC_JPY / Kraken XBT/USD 30초 내 갱신
+- M1: CURATED_NOTE_POOL 21개 실제 운영 분포 1주 관측
+- M1: Alternative.me 실값과 사용자 홈 게이지 값 일치
+- M1: 스크린리더 실제 낭독 품질
+- M3: DevTools `event-stream` 확인
+- M3: 파이프라인 완료 후 10초 내 revalidate 반영
+- M3: Upstash Redis 사용량 일 100 command 이하
+- M3: 30분 연결 안정성
+- M4: brief 시간당 실행과 평균 skip rate 40%+
+- M4: 실제 `llm_called=true` 일 평균 8~10회
+- M4: `broadcast_periodic` 15분 cadence와 빈 슬롯 skip률 50%+
+- M4: `@whalescope_alertz` 실제 채널 도착과 1500자 초과 없음
+- M4: 24h 구독 해지율 `< 5%`
 
 ## 운영 실행 판정 기준
 

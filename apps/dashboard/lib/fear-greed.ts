@@ -1,7 +1,7 @@
-const FEAR_GREED_ENDPOINT = "https://api.alternative.me/fng/?limit=31&format=json";
+export const FEAR_GREED_ENDPOINT = "https://api.alternative.me/fng/?limit=31&format=json";
 export const FEAR_GREED_SOURCE_NAME = "Alternative.me";
 export const FEAR_GREED_SOURCE_URL = "https://alternative.me/crypto/fear-and-greed-index/";
-const FEAR_GREED_REVALIDATE_SECONDS = 600;
+export const FEAR_GREED_REVALIDATE_SECONDS = 600;
 const FEAR_GREED_STALE_MS = 36 * 60 * 60 * 1000;
 
 type FearGreedApiRow = {
@@ -51,6 +51,12 @@ export type FearGreedData = {
   sourceName: string;
   sourceUrl: string;
   unavailableReason: FearGreedUnavailableReason | null;
+};
+
+export type GetFearGreedDataOptions = {
+  forcedUnavailableReason?: FearGreedUnavailableReason | null;
+  fetchedAt?: string;
+  fetchImpl?: typeof fetch;
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -105,7 +111,7 @@ export function isFearGreedStale(snapshot: FearGreedSnapshot, now = Date.now()):
   return now - timestamp > FEAR_GREED_STALE_MS;
 }
 
-function buildUnavailableData(
+export function buildFearGreedUnavailableData(
   reason: FearGreedUnavailableReason,
   fetchedAt = new Date().toISOString(),
 ): FearGreedData {
@@ -120,9 +126,17 @@ function buildUnavailableData(
   };
 }
 
-export async function getFearGreedData(): Promise<FearGreedData> {
+export async function getFearGreedData(
+  options: GetFearGreedDataOptions = {},
+): Promise<FearGreedData> {
+  const resolveFetchedAt = () => options.fetchedAt ?? new Date().toISOString();
+
+  if (options.forcedUnavailableReason) {
+    return buildFearGreedUnavailableData(options.forcedUnavailableReason, resolveFetchedAt());
+  }
+
   try {
-    const response = await fetch(FEAR_GREED_ENDPOINT, {
+    const response = await (options.fetchImpl ?? fetch)(FEAR_GREED_ENDPOINT, {
       headers: {
         Accept: "application/json",
       },
@@ -132,18 +146,18 @@ export async function getFearGreedData(): Promise<FearGreedData> {
     });
 
     if (!response.ok) {
-      return buildUnavailableData("http_error");
+      return buildFearGreedUnavailableData("http_error", resolveFetchedAt());
     }
 
     const payload = (await response.json()) as FearGreedApiResponse;
     if (payload.metadata?.error) {
-      return buildUnavailableData("payload_error");
+      return buildFearGreedUnavailableData("payload_error", resolveFetchedAt());
     }
 
     const rows = payload.data ?? [];
     const current = toSnapshot(rows[0]);
     if (!current) {
-      return buildUnavailableData("empty_payload");
+      return buildFearGreedUnavailableData("empty_payload", resolveFetchedAt());
     }
 
     return {
@@ -153,13 +167,13 @@ export async function getFearGreedData(): Promise<FearGreedData> {
       weekAgo: toSnapshot(rows[7]) ?? undefined,
       monthAgo: toSnapshot(rows[30]) ?? undefined,
       nextUpdateInSeconds: parseNextUpdateInSeconds(rows[0]?.time_until_update),
-      fetchedAt: new Date().toISOString(),
+      fetchedAt: resolveFetchedAt(),
       isStale: isFearGreedStale(current),
       sourceName: FEAR_GREED_SOURCE_NAME,
       sourceUrl: FEAR_GREED_SOURCE_URL,
       unavailableReason: null,
     };
   } catch {
-    return buildUnavailableData("network_error");
+    return buildFearGreedUnavailableData("network_error", resolveFetchedAt());
   }
 }

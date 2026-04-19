@@ -1,14 +1,20 @@
 import "../../app/globals.css";
 
 import type { CuratedWalletDetailPayload } from "@/components/curated-wallet-detail-modal";
+import type { CuratedWatchlistItemWithNoteVariant } from "@/lib/curated-wallets";
 import type {
   FearGreedClassification,
   FearGreedData,
   FearGreedSnapshot,
+  FearGreedUnavailableReason,
 } from "@/lib/fear-greed";
-import { FEAR_GREED_SOURCE_NAME, FEAR_GREED_SOURCE_URL } from "@/lib/fear-greed";
+import {
+  buildFearGreedUnavailableData,
+  FEAR_GREED_SOURCE_NAME,
+  FEAR_GREED_SOURCE_URL,
+} from "@/lib/fear-greed";
 import { koDictionary } from "@/lib/i18n/dictionaries/ko";
-import type { CuratedWatchlistItem, WhaleStory } from "@/lib/types";
+import type { WhaleStory } from "@/lib/types";
 
 export const TEST_SURFACE_STYLE = {
   minHeight: "100vh",
@@ -113,24 +119,22 @@ export function buildFearGreedBoundaryFixture(
   });
 }
 
-export function buildFearGreedUnavailableFixture(): FearGreedData {
-  return {
-    status: "unavailable",
-    nextUpdateInSeconds: null,
-    fetchedAt: "2026-04-19T00:07:00.000Z",
-    isStale: false,
-    sourceName: FEAR_GREED_SOURCE_NAME,
-    sourceUrl: FEAR_GREED_SOURCE_URL,
-    unavailableReason: "network_error",
-  };
+export function buildFearGreedUnavailableFixture(
+  reason: FearGreedUnavailableReason = "network_error",
+): FearGreedData {
+  return buildFearGreedUnavailableData(reason, "2026-04-19T00:07:00.000Z");
 }
 
-export function buildCuratedWatchlistItem(id = "wallet-e2e"): CuratedWatchlistItem {
+export function buildCuratedWatchlistItem(
+  id = "wallet-e2e",
+  overrides: Partial<CuratedWatchlistItemWithNoteVariant> = {},
+): CuratedWatchlistItemWithNoteVariant {
   return {
     id,
     symbol: "BTC",
     title: "Alpha Treasury",
     note: "Recent exchange-linked inflow needs a closer read.",
+    noteVariantId: "active-01",
     badge: "A등급 거래소",
     address: "0x1111111111111111111111111111111111111111",
     chain: "ethereum",
@@ -145,6 +149,7 @@ export function buildCuratedWatchlistItem(id = "wallet-e2e"): CuratedWatchlistIt
     tone: "watch",
     lastSeenAt: "2026.04.19 09:00:00",
     relatedSignalCount: 2,
+    ...overrides,
   };
 }
 

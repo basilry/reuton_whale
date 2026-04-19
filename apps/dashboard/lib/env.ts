@@ -26,6 +26,7 @@ export interface DashboardEnv {
 export interface LiveUpdatesEnv {
   enabled: boolean;
   configured: boolean;
+  configurationReason?: "redis_missing" | "token_missing";
   restUrl?: string;
   restToken?: string;
 }
@@ -217,10 +218,17 @@ export function getLiveUpdatesEnv(): LiveUpdatesEnv {
   const restUrl = readEnvValue("WHALESCOPE_REDIS_REST_URL");
   const restToken = readEnvValue("WHALESCOPE_REDIS_REST_TOKEN");
   const configured = Boolean(restUrl && restToken);
+  const configurationReason =
+    configured || !enabled
+      ? undefined
+      : !restUrl
+        ? "redis_missing"
+        : "token_missing";
 
   return {
     enabled,
     configured,
+    configurationReason,
     restUrl: configured ? restUrl : undefined,
     restToken: configured ? restToken : undefined,
   };

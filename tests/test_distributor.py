@@ -288,6 +288,7 @@ class TestWhaleScopeBot:
         assert result["sent"] == 0
         assert result["failed"] == 0
         assert mock_app.bot.send_message.call_count == 1
+        sheets_mock.set_status.assert_called_once_with(chat_id=456, status="blocked")
         mock_sleep.assert_not_awaited()
 
     @patch("src.utils.retry.asyncio.sleep", new_callable=AsyncMock)
@@ -313,6 +314,7 @@ class TestWhaleScopeBot:
         result = await bot.send_daily_brief("test brief")
         assert result == {"sent": 0, "failed": 0, "blocked": 1}
         assert mock_app.bot.send_message.call_count == 1
+        sheets_mock.set_status.assert_called_once_with(chat_id=789, status="deactivated")
         mock_sleep.assert_not_awaited()
 
     @patch("src.utils.retry.asyncio.sleep", new_callable=AsyncMock)

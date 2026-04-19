@@ -62,11 +62,11 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-# Extended subscribers header with "language" column appended to the right.
-# schema.py is intentionally not touched here -- this merged constant is used
-# locally so the rest of the codebase can opt into the new column without
-# changing the shared schema.
+# Shared subscriber schema now carries churn-related timestamps. The optional
+# language column remains a local extension so older readers can keep using the
+# shared header layout.
 SUBSCRIBERS_HEADERS_EXT = [*SUBSCRIBERS_HEADERS, "language"]
+SUBSCRIBER_STATUSES = {"active", "paused", "blocked", "deactivated"}
 
 
 def _parse_coins(raw: str) -> list[str]:
@@ -94,6 +94,7 @@ def _normalize_subscriber(row_dict: dict) -> dict:
         "created_at": row_dict.get("created_at", ""),
         "updated_at": row_dict.get("updated_at", ""),
         "last_brief_at": row_dict.get("last_brief_at", ""),
+        "status_changed_at": row_dict.get("status_changed_at", ""),
     }
     if language:
         result["language"] = language
@@ -314,21 +315,65 @@ class SheetsClient:
                 return i
         return None
 
+    def _ensure_subscribers_schema(
+        self,
+        ws: "gspread.Worksheet",
+        all_values: list[list[str]],
+    ) -> None:
+        self._ensure_append_only_header_schema(
+            ws,
+            all_values,
+            SUBSCRIBERS_HEADERS,
+            tab_name=TAB_SUBSCRIBERS,
+        )
+
+    def _resolve_status_changed_at(
+        self,
+        existing: dict | None,
+        status: str,
+        now: str,
+    ) -> str:
+        normalized_status = str(status or "").strip().lower()
+        if not normalized_status:
+            return str((existing or {}).get("status_changed_at", "") or "")
+
+        if existing is None:
+            return now
+
+        previous_status = str(existing.get("status", "") or "").strip().lower()
+        if previous_status != normalized_status:
+            return now
+        return str(existing.get("status_changed_at", "") or "")
+
     @retry(max_retries=3, base_delay=2.0)
-    def get_active_subscribers(self) -> list[dict]:
+    def list_subscribers(self, statuses: list[str] | None = None) -> list[dict]:
         try:
             ws = self._worksheet(TAB_SUBSCRIBERS)
             all_values = ws.get_all_values()
             if len(all_values) <= 1:
                 return []
-            status_col = SUBSCRIBERS_HEADERS_EXT.index("status")
-            return [
+
+            allowed = {
+                str(status or "").strip().lower()
+                for status in (statuses or [])
+                if str(status or "").strip()
+            }
+            rows = [
                 _normalize_subscriber(row_to_dict(row, SUBSCRIBERS_HEADERS_EXT))
                 for row in all_values[1:]
-                if status_col < len(row) and row[status_col].lower() == "active"
             ]
+            if allowed:
+                rows = [
+                    row for row in rows
+                    if str(row.get("status", "")).strip().lower() in allowed
+                ]
+            return rows
         except gspread.exceptions.APIError as e:
-            raise StorageError(f"Failed to get subscribers: {e}") from e
+            raise StorageError(f"Failed to list subscribers: {e}") from e
+
+    @retry(max_retries=3, base_delay=2.0)
+    def get_active_subscribers(self) -> list[dict]:
+        return self.list_subscribers(statuses=["active"])
 
     @retry(max_retries=3, base_delay=2.0)
     def get_subscriber_info(self, chat_id: int) -> dict | None:
@@ -349,32 +394,37 @@ class SheetsClient:
         try:
             ws = self._worksheet(TAB_SUBSCRIBERS)
             all_values = ws.get_all_values()
+            self._ensure_subscribers_schema(ws, all_values)
             row_idx = self._find_subscriber_row(all_values, chat_id)
             now = now_iso()
 
             if row_idx is not None:
                 existing = row_to_dict(all_values[row_idx - 1], SUBSCRIBERS_HEADERS_EXT)
+                status = "active"
                 entry = {
                     "chat_id": chat_id,
                     "username": username or existing.get("username", ""),
-                    "status": "active",
+                    "status": status,
                     "watchlist_coins": existing.get("watchlist_coins", ""),
                     "created_at": existing.get("created_at", "") or now,
                     "updated_at": now,
                     "last_brief_at": existing.get("last_brief_at", ""),
+                    "status_changed_at": self._resolve_status_changed_at(existing, status, now),
                     "language": existing.get("language", ""),
                 }
                 self._write_subscriber_row(ws, row_idx, entry)
                 logger.info("Reactivated subscriber %d", chat_id)
             else:
+                status = "active"
                 entry = {
                     "chat_id": chat_id,
                     "username": username,
-                    "status": "active",
+                    "status": status,
                     "watchlist_coins": "",
                     "created_at": now,
                     "updated_at": now,
                     "last_brief_at": "",
+                    "status_changed_at": now,
                     "language": "",
                 }
                 ws.append_row(
@@ -403,6 +453,7 @@ class SheetsClient:
         try:
             ws = self._worksheet(TAB_SUBSCRIBERS)
             all_values = ws.get_all_values()
+            self._ensure_subscribers_schema(ws, all_values)
             row_idx = self._find_subscriber_row(all_values, chat_id)
             now = now_iso()
             serialized = _serialize_coins(coins)
@@ -426,6 +477,7 @@ class SheetsClient:
                     "created_at": now,
                     "updated_at": now,
                     "last_brief_at": "",
+                    "status_changed_at": now,
                     "language": "",
                 }
                 ws.append_row(
@@ -438,23 +490,31 @@ class SheetsClient:
 
     @retry(max_retries=3, base_delay=2.0)
     def set_status(self, chat_id: int, status: str) -> None:
-        if status not in ("active", "paused"):
+        normalized_status = str(status or "").strip().lower()
+        if normalized_status not in SUBSCRIBER_STATUSES:
             raise StorageError(f"Invalid status: {status}")
         try:
             ws = self._worksheet(TAB_SUBSCRIBERS)
             all_values = ws.get_all_values()
+            self._ensure_subscribers_schema(ws, all_values)
             row_idx = self._find_subscriber_row(all_values, chat_id)
             if row_idx is None:
                 raise StorageError(f"Subscriber {chat_id} not found")
             existing = row_to_dict(all_values[row_idx - 1], SUBSCRIBERS_HEADERS_EXT)
+            now = now_iso()
             entry = {
                 **existing,
                 "chat_id": chat_id,
-                "status": status,
-                "updated_at": now_iso(),
+                "status": normalized_status,
+                "updated_at": now,
+                "status_changed_at": self._resolve_status_changed_at(
+                    existing,
+                    normalized_status,
+                    now,
+                ),
             }
             self._write_subscriber_row(ws, row_idx, entry)
-            logger.info("Set subscriber %d status=%s", chat_id, status)
+            logger.info("Set subscriber %d status=%s", chat_id, normalized_status)
         except gspread.exceptions.APIError as e:
             raise StorageError(f"Failed to set status: {e}") from e
 
@@ -463,6 +523,7 @@ class SheetsClient:
         try:
             ws = self._worksheet(TAB_SUBSCRIBERS)
             all_values = ws.get_all_values()
+            self._ensure_subscribers_schema(ws, all_values)
             row_idx = self._find_subscriber_row(all_values, chat_id)
             now = now_iso()
 
@@ -485,6 +546,7 @@ class SheetsClient:
                     "created_at": now,
                     "updated_at": now,
                     "last_brief_at": "",
+                    "status_changed_at": now,
                     "language": language,
                 }
                 ws.append_row(

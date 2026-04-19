@@ -20,6 +20,9 @@ import {
   formatMarketTickerKrwPrice,
   formatMarketTickerPrice,
   formatMarketTickerUpdatedAt,
+  getMarketTickerSourceProfile,
+  getMarketTickerSourceStatus,
+  isMarketTickerSourceHoldingLastSuccess,
   marketTickerTone,
   mergeMarketTickerMessage,
   mergeMarketTickerSnapshot,
@@ -27,13 +30,15 @@ import {
   type MarketTickerChartPoint,
   type MarketTickerDefinition,
   type MarketTickerItem,
+  type MarketTickerSourceHealth,
+  type MarketTickerSourceKey,
+  type MarketTickerSourcePhase,
 } from "@/lib/market-ticker";
 
 import { MarketDetailChartModal } from "./market-detail-chart-modal";
 import { MarketMiniChart } from "./market-mini-chart";
 import {
   MarketTickerSourceChips,
-  type MarketTickerChipStatus,
   type MarketTickerSourceChip,
 } from "./market-ticker-source-chips";
 import styles from "./market-ticker-strip.module.css";
@@ -46,88 +51,11 @@ type MarketTickerStripProps = {
   initialLanguage: DashboardLanguage;
 };
 
-type Phase = "loading" | "ready" | "fallback";
-type TickerSourceKey =
-  | "binance"
-  | "upbit"
-  | "bitflyer"
-  | "kraken"
-  | "fx"
-  | "snapshot";
-
-type SourceHealth = {
-  available: boolean;
-  lastSeenAt: number | null;
-  isConnecting: boolean;
-  errorAt: number | null;
-  closedAt: number | null;
-};
-
-type SourceHealthState = Record<TickerSourceKey, SourceHealth>;
-
-type SourceProfileKind = "live" | "polling";
-
-type SourceProfile = {
-  kind: SourceProfileKind;
-  liveWindowMs: number;
-  downWindowMs: number;
-  expectedIntervalMs: number;
-};
+type SourceHealthState = Record<MarketTickerSourceKey, MarketTickerSourceHealth>;
 
 type SourceHealthPatch =
-  | Partial<SourceHealth>
-  | ((current: SourceHealth) => Partial<SourceHealth>);
-
-const LIVE_SOURCE_LIVE_WINDOW_MS = 15_000;
-const LIVE_SOURCE_DOWN_WINDOW_MS = 45_000;
-const POLLING_SOURCE_LIVE_WINDOW_MS = 6 * 60_000;
-const POLLING_SOURCE_DOWN_WINDOW_MS = 15 * 60_000;
-const BITFLYER_POLL_INTERVAL_MS = 120_000;
-const BITFLYER_SOURCE_LIVE_WINDOW_MS = 3 * 60_000;
-const BITFLYER_SOURCE_DOWN_WINDOW_MS = 8 * 60_000;
-const KRAKEN_POLL_INTERVAL_MS = 60_000;
-const KRAKEN_SOURCE_LIVE_WINDOW_MS = 90_000;
-const KRAKEN_SOURCE_DOWN_WINDOW_MS = 4 * 60_000;
-const SNAPSHOT_POLL_INTERVAL_MS = 5 * 60_000;
-
-const SOURCE_PROFILES: Record<TickerSourceKey, SourceProfile> = {
-  binance: {
-    kind: "live",
-    liveWindowMs: LIVE_SOURCE_LIVE_WINDOW_MS,
-    downWindowMs: LIVE_SOURCE_DOWN_WINDOW_MS,
-    expectedIntervalMs: LIVE_SOURCE_LIVE_WINDOW_MS,
-  },
-  upbit: {
-    kind: "live",
-    liveWindowMs: LIVE_SOURCE_LIVE_WINDOW_MS,
-    downWindowMs: LIVE_SOURCE_DOWN_WINDOW_MS,
-    expectedIntervalMs: LIVE_SOURCE_LIVE_WINDOW_MS,
-  },
-  bitflyer: {
-    kind: "polling",
-    liveWindowMs: BITFLYER_SOURCE_LIVE_WINDOW_MS,
-    downWindowMs: BITFLYER_SOURCE_DOWN_WINDOW_MS,
-    expectedIntervalMs: BITFLYER_POLL_INTERVAL_MS,
-  },
-  kraken: {
-    kind: "polling",
-    liveWindowMs: KRAKEN_SOURCE_LIVE_WINDOW_MS,
-    downWindowMs: KRAKEN_SOURCE_DOWN_WINDOW_MS,
-    expectedIntervalMs: KRAKEN_POLL_INTERVAL_MS,
-  },
-  fx: {
-    kind: "polling",
-    liveWindowMs: POLLING_SOURCE_LIVE_WINDOW_MS,
-    downWindowMs: POLLING_SOURCE_DOWN_WINDOW_MS,
-    expectedIntervalMs: SNAPSHOT_POLL_INTERVAL_MS,
-  },
-  snapshot: {
-    kind: "polling",
-    liveWindowMs: POLLING_SOURCE_LIVE_WINDOW_MS,
-    downWindowMs: POLLING_SOURCE_DOWN_WINDOW_MS,
-    expectedIntervalMs: SNAPSHOT_POLL_INTERVAL_MS,
-  },
-};
+  | Partial<MarketTickerSourceHealth>
+  | ((current: MarketTickerSourceHealth) => Partial<MarketTickerSourceHealth>);
 
 function fallbackChartForDefinition(
   definition: MarketTickerDefinition,
@@ -281,51 +209,6 @@ function decodeSocketPayload(data: string | ArrayBuffer | Blob): Promise<string>
   return data.text();
 }
 
-function sourceStatus(
-  key: TickerSourceKey,
-  state: SourceHealth,
-  now: number,
-  phase: Phase,
-): MarketTickerChipStatus {
-  const profile = sourceProfile(key);
-  const lastFailureAt = Math.max(state.errorAt ?? 0, state.closedAt ?? 0);
-
-  if (
-    profile.kind === "live" &&
-    lastFailureAt > 0 &&
-    (state.lastSeenAt == null || lastFailureAt >= state.lastSeenAt)
-  ) {
-    return "down";
-  }
-
-  if (state.lastSeenAt == null) {
-    return phase === "loading" || state.isConnecting ? "connecting" : "down";
-  }
-
-  const age = now - state.lastSeenAt;
-  if (profile.kind === "live") {
-    if (age <= profile.liveWindowMs) {
-      return "live";
-    }
-    if (age <= profile.downWindowMs) {
-      return "stale";
-    }
-    return "down";
-  }
-
-  if (age <= profile.liveWindowMs) {
-    return "live";
-  }
-  if (age <= profile.downWindowMs) {
-    return "stale";
-  }
-  return "down";
-}
-
-function sourceProfile(key: TickerSourceKey): SourceProfile {
-  return SOURCE_PROFILES[key];
-}
-
 function formatCriteriaWindow(
   valueMs: number,
   language: DashboardLanguage,
@@ -395,7 +278,9 @@ export function MarketTickerStrip({
   const [miniCharts, setMiniCharts] = useState<Record<string, MarketTickerChartPoint[]>>({});
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [phase, setPhase] = useState<Phase>(symbols.length === 0 ? "ready" : "loading");
+  const [phase, setPhase] = useState<MarketTickerSourcePhase>(
+    symbols.length === 0 ? "ready" : "loading",
+  );
   const [notice, setNotice] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [sourceHealth, setSourceHealth] = useState<SourceHealthState>(() =>
@@ -573,7 +458,7 @@ export function MarketTickerStrip({
     const hasBitflyerSupport = symbols.some((item) => item.bitflyerProductCode);
     const hasKrakenSupport = symbols.some((item) => item.krakenPair);
 
-    const updateSource = (key: TickerSourceKey, patch: SourceHealthPatch) => {
+    const updateSource = (key: MarketTickerSourceKey, patch: SourceHealthPatch) => {
       if (cancelled) {
         return;
       }
@@ -1083,16 +968,16 @@ export function MarketTickerStrip({
 
     const refreshTimer = window.setInterval(() => {
       void refreshSnapshot("background");
-    }, SNAPSHOT_POLL_INTERVAL_MS);
+    }, getMarketTickerSourceProfile("snapshot").expectedIntervalMs);
     if (hasBitflyerSupport) {
       bitflyerTimer = window.setInterval(() => {
         void refreshBitflyer();
-      }, BITFLYER_POLL_INTERVAL_MS);
+      }, getMarketTickerSourceProfile("bitflyer").expectedIntervalMs);
     }
     if (hasKrakenSupport) {
       krakenTimer = window.setInterval(() => {
         void refreshKraken();
-      }, KRAKEN_POLL_INTERVAL_MS);
+      }, getMarketTickerSourceProfile("kraken").expectedIntervalMs);
     }
 
     return () => {
@@ -1130,15 +1015,13 @@ export function MarketTickerStrip({
   const visibleUpdatedAt =
     lastUpdatedAt == null ? null : Math.trunc(lastUpdatedAt / 1000) * 1000;
   const buildSourceChip = (
-    key: TickerSourceKey,
+    key: MarketTickerSourceKey,
     label: string,
-    state: SourceHealth,
+    state: MarketTickerSourceHealth,
   ): MarketTickerSourceChip => {
-    const profile = sourceProfile(key);
-    const status = sourceStatus(key, state, clock, phase);
-    const lastFailureAt = Math.max(state.errorAt ?? 0, state.closedAt ?? 0);
-    const isPollingHold =
-      profile.kind === "polling" && state.lastSeenAt != null && lastFailureAt > state.lastSeenAt;
+    const profile = getMarketTickerSourceProfile(key);
+    const status = getMarketTickerSourceStatus(key, state, clock, phase);
+    const isPollingHold = isMarketTickerSourceHoldingLastSuccess(key, state);
     const lastSeenText = formatTooltipTimestamp(state.lastSeenAt, copy.tooltipPending);
     const criteriaText = `${formatCriteriaWindow(profile.liveWindowMs, language)} live / ${formatCriteriaWindow(profile.downWindowMs, language)} stale`;
 

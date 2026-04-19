@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { MarketTickerSourceStatus } from "@/lib/market-ticker";
 
 import styles from "./market-ticker-source-chips.module.css";
 
-export type MarketTickerChipStatus = "connecting" | "live" | "stale" | "down";
+export type MarketTickerChipStatus = MarketTickerSourceStatus;
 
 export type MarketTickerSourceChip = {
   id: string;

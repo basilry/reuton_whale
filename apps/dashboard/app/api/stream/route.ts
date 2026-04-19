@@ -1,6 +1,6 @@
 import { getLiveUpdatesEnv } from "@/lib/env";
 import {
-  getLiveUpdateStatus,
+  getLiveUpdateStreamStatus,
   LIVE_UPDATE_HEARTBEAT_INTERVAL_MS,
   LIVE_UPDATE_POLL_INTERVAL_MS,
   type LiveUpdateEvent,
@@ -99,9 +99,46 @@ function eventIdFor(update: LiveUpdateEvent): string {
   return `${update.section}:${update.version}`;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function publishedAtFor(data: unknown): string {
+  if (isRecord(data)) {
+    const candidates = [data.publishedAt, data.ts, data.timestamp];
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
+  }
+
+  return new Date().toISOString();
+}
+
+function withStreamMetadata(data: unknown, eventId: string, publishedAt: string): unknown {
+  if (isRecord(data)) {
+    return {
+      ...data,
+      eventId,
+      publishedAt,
+    };
+  }
+
+  return {
+    value: data,
+    eventId,
+    publishedAt,
+  };
+}
+
 export async function GET(request: Request): Promise<Response> {
   const env = getLiveUpdatesEnv();
-  const status = getLiveUpdateStatus(env);
+  const status = getLiveUpdateStreamStatus({
+    ...env,
+    restUrl: process.env.WHALESCOPE_REDIS_REST_URL,
+    restToken: process.env.WHALESCOPE_REDIS_REST_TOKEN,
+  });
   const encoder = new TextEncoder();
   let stopStream: (() => void) | null = null;
 
@@ -139,11 +176,13 @@ export async function GET(request: Request): Promise<Response> {
       };
 
       const pushEvent = (event: string, data: unknown, id?: string) => {
+        const publishedAt = publishedAtFor(data);
+        const eventId = id ?? `${event}:${publishedAt}`;
         pushFrame(
           encodeSseFrame({
             event,
-            id,
-            data,
+            id: eventId,
+            data: withStreamMetadata(data, eventId, publishedAt),
           }),
         );
       };

@@ -7,6 +7,140 @@ import { calcOptionalKimchiPremium } from "./market-premium";
 
 export type MarketTickerSource = "live" | "rest" | "local";
 
+export type MarketTickerSourceKey =
+  | "binance"
+  | "upbit"
+  | "bitflyer"
+  | "kraken"
+  | "fx"
+  | "snapshot";
+
+export type MarketTickerSourcePhase = "loading" | "ready" | "fallback";
+
+export type MarketTickerSourceStatus = "connecting" | "live" | "stale" | "down";
+
+export type MarketTickerSourceHealth = {
+  available: boolean;
+  lastSeenAt: number | null;
+  isConnecting: boolean;
+  errorAt: number | null;
+  closedAt: number | null;
+};
+
+export type MarketTickerSourceProfileKind = "live" | "polling";
+
+export type MarketTickerSourceProfile = {
+  kind: MarketTickerSourceProfileKind;
+  liveWindowMs: number;
+  downWindowMs: number;
+  expectedIntervalMs: number;
+};
+
+const LIVE_SOURCE_LIVE_WINDOW_MS = 15_000;
+const LIVE_SOURCE_DOWN_WINDOW_MS = 45_000;
+const POLLING_SOURCE_LIVE_WINDOW_MS = 6 * 60_000;
+const POLLING_SOURCE_DOWN_WINDOW_MS = 15 * 60_000;
+const BITFLYER_POLL_INTERVAL_MS = 120_000;
+const BITFLYER_SOURCE_LIVE_WINDOW_MS = 3 * 60_000;
+const BITFLYER_SOURCE_DOWN_WINDOW_MS = 8 * 60_000;
+const KRAKEN_POLL_INTERVAL_MS = 60_000;
+const KRAKEN_SOURCE_LIVE_WINDOW_MS = 90_000;
+const KRAKEN_SOURCE_DOWN_WINDOW_MS = 4 * 60_000;
+const SNAPSHOT_POLL_INTERVAL_MS = 5 * 60_000;
+
+export const MARKET_TICKER_SOURCE_PROFILES: Record<
+  MarketTickerSourceKey,
+  MarketTickerSourceProfile
+> = {
+  binance: {
+    kind: "live",
+    liveWindowMs: LIVE_SOURCE_LIVE_WINDOW_MS,
+    downWindowMs: LIVE_SOURCE_DOWN_WINDOW_MS,
+    expectedIntervalMs: LIVE_SOURCE_LIVE_WINDOW_MS,
+  },
+  upbit: {
+    kind: "live",
+    liveWindowMs: LIVE_SOURCE_LIVE_WINDOW_MS,
+    downWindowMs: LIVE_SOURCE_DOWN_WINDOW_MS,
+    expectedIntervalMs: LIVE_SOURCE_LIVE_WINDOW_MS,
+  },
+  bitflyer: {
+    kind: "polling",
+    liveWindowMs: BITFLYER_SOURCE_LIVE_WINDOW_MS,
+    downWindowMs: BITFLYER_SOURCE_DOWN_WINDOW_MS,
+    expectedIntervalMs: BITFLYER_POLL_INTERVAL_MS,
+  },
+  kraken: {
+    kind: "polling",
+    liveWindowMs: KRAKEN_SOURCE_LIVE_WINDOW_MS,
+    downWindowMs: KRAKEN_SOURCE_DOWN_WINDOW_MS,
+    expectedIntervalMs: KRAKEN_POLL_INTERVAL_MS,
+  },
+  fx: {
+    kind: "polling",
+    liveWindowMs: POLLING_SOURCE_LIVE_WINDOW_MS,
+    downWindowMs: POLLING_SOURCE_DOWN_WINDOW_MS,
+    expectedIntervalMs: SNAPSHOT_POLL_INTERVAL_MS,
+  },
+  snapshot: {
+    kind: "polling",
+    liveWindowMs: POLLING_SOURCE_LIVE_WINDOW_MS,
+    downWindowMs: POLLING_SOURCE_DOWN_WINDOW_MS,
+    expectedIntervalMs: SNAPSHOT_POLL_INTERVAL_MS,
+  },
+};
+
+export function getMarketTickerSourceProfile(
+  key: MarketTickerSourceKey,
+): MarketTickerSourceProfile {
+  return MARKET_TICKER_SOURCE_PROFILES[key];
+}
+
+export function isMarketTickerSourceHoldingLastSuccess(
+  key: MarketTickerSourceKey,
+  state: MarketTickerSourceHealth,
+): boolean {
+  const profile = getMarketTickerSourceProfile(key);
+  const lastFailureAt = Math.max(state.errorAt ?? 0, state.closedAt ?? 0);
+
+  return (
+    profile.kind === "polling" &&
+    state.lastSeenAt != null &&
+    lastFailureAt > state.lastSeenAt
+  );
+}
+
+export function getMarketTickerSourceStatus(
+  key: MarketTickerSourceKey,
+  state: MarketTickerSourceHealth,
+  now: number,
+  phase: MarketTickerSourcePhase,
+): MarketTickerSourceStatus {
+  const profile = getMarketTickerSourceProfile(key);
+  const lastFailureAt = Math.max(state.errorAt ?? 0, state.closedAt ?? 0);
+
+  if (
+    profile.kind === "live" &&
+    lastFailureAt > 0 &&
+    (state.lastSeenAt == null || lastFailureAt >= state.lastSeenAt)
+  ) {
+    return "down";
+  }
+
+  if (state.lastSeenAt == null) {
+    return phase === "loading" || state.isConnecting ? "connecting" : "down";
+  }
+
+  const age = now - state.lastSeenAt;
+  if (age <= profile.liveWindowMs) {
+    return "live";
+  }
+  if (age <= profile.downWindowMs) {
+    return "stale";
+  }
+  return "down";
+}
+
 export type MarketTickerDefinition = {
   id: string;
   asset: string;

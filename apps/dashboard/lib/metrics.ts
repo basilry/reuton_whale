@@ -12,6 +12,7 @@ import {
 } from "./format";
 import {
   type DailyBriefRow,
+  type SubscriberRow,
   type SignalRow,
   type SystemLogRow,
   type TgWhaleEventRow,
@@ -27,15 +28,19 @@ import {
   toLegacyWatchlistEntries,
 } from "./curated-wallets";
 import { getDashboardEnv, getLiveUpdatesEnv, SHEETS_SCOPES } from "./env";
+import { getFearGreedData } from "./fear-greed";
 import { getLiveUpdateStatus } from "./live-updates";
+import { fetchLiveUpdateEvents } from "./live-updates.server";
 import {
   readDashboardSnapshot,
   readSheetRows,
 } from "./sheets";
 import { buildWhaleStories, buildWhaleStoryCards } from "./whale-stories";
 import type {
+  AdminMarketSourceObservability,
   AdminObservabilitySummary,
   AdminLiveUpdateSectionObservability,
+  AdminTelegramObservability,
   BriefMarketMood,
   CuratedWalletEntry,
   CuratedWatchlistItem,
@@ -57,6 +62,7 @@ export const SOURCE_STALE_MINUTES = 30;
 const ADMIN_OBSERVABILITY_WINDOW_HOURS = 24;
 const ADMIN_OBSERVABILITY_WINDOW_MS = ADMIN_OBSERVABILITY_WINDOW_HOURS * 60 * 60 * 1000;
 const TELEGRAM_MESSAGE_HARD_CAP = 1500;
+const TELEGRAM_UNSUBSCRIBED_STATUSES = new Set(["paused", "blocked", "deactivated"]);
 
 const SHEETS_API_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
 const OPTIONAL_TAB_RANGE = "A:ZZ";
@@ -252,6 +258,17 @@ function minutesSince(value: string | undefined, nowMs = Date.now()): number | n
   return Math.max(0, Math.round((nowMs - parsed) / 60000));
 }
 
+function secondsSince(value: string | undefined, nowMs = Date.now()): number | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = parseDateTimeSafe(value);
+  if (parsed == null) {
+    return null;
+  }
+  return Math.max(0, Math.round((nowMs - parsed) / 1000));
+}
+
 let optionalAccessTokenPromise: Promise<string> | null = null;
 
 async function getOptionalSheetsAccessToken(): Promise<string> {
@@ -397,6 +414,22 @@ function latestOptionalRow(rows: OptionalSheetRow[], keys: string[]): OptionalSh
     const value = rowValue(row, keys);
     return parseDateTimeSafe(value);
   })[0] ?? null;
+}
+
+function earliestOptionalRow(rows: OptionalSheetRow[], keys: string[]): OptionalSheetRow | null {
+  let earliest: { row: OptionalSheetRow; time: number } | null = null;
+
+  for (const row of rows) {
+    const parsed = parseDateTimeSafe(rowValue(row, keys));
+    if (parsed == null) {
+      continue;
+    }
+    if (!earliest || parsed < earliest.time) {
+      earliest = { row, time: parsed };
+    }
+  }
+
+  return earliest?.row ?? null;
 }
 
 function findServiceHealthOverride(
@@ -1328,7 +1361,9 @@ function buildOperatorChecks(args: {
     detail: liveUpdatesEnv.enabled
       ? liveUpdatesEnv.configured
         ? "WHALESCOPE_SSE_ENABLED와 Redis REST 구성이 모두 감지되었습니다."
-        : "WHALESCOPE_SSE_ENABLED는 켜져 있지만 Redis REST URL/TOKEN이 없어 /api/stream이 disabled 상태가 됩니다."
+        : liveUpdatesEnv.configurationReason === "redis_missing"
+          ? "WHALESCOPE_SSE_ENABLED는 켜져 있지만 WHALESCOPE_REDIS_REST_URL이 없어 /api/stream이 disabled 상태가 됩니다."
+          : "WHALESCOPE_SSE_ENABLED는 켜져 있지만 WHALESCOPE_REDIS_REST_TOKEN이 없어 /api/stream이 disabled 상태가 됩니다."
       : "실시간 자동 새로고침이 비활성화되어 있어 배포 검증은 수동 새로고침 기준으로만 가능합니다.",
   });
   checks.push({
@@ -1533,10 +1568,19 @@ function latestGeneratedBriefAt(
   );
 }
 
+function eventMetaString(
+  update: { meta?: Record<string, string | number | boolean> } | undefined,
+  key: string,
+): string | undefined {
+  const value = update?.meta?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 function buildLiveUpdateSections(args: {
   latestBrief: DashboardBrief | null;
   latestNewsRssLog: SystemLogRow | null;
   serviceHealthRows: OptionalSheetRow[];
+  liveEventsBySection: Map<string, { ts: string; meta?: Record<string, string | number | boolean> }>;
 }): AdminLiveUpdateSectionObservability[] {
   const latestStoriesHeartbeat = findServiceHealthOverride(args.serviceHealthRows, [
     "pipeline.stories",
@@ -1556,32 +1600,61 @@ function buildLiveUpdateSections(args: {
     section: AdminLiveUpdateSectionObservability["section"];
     source: string;
     lastUpdatedAt?: string;
+    lastRevalidatedAt?: string;
   }> = [
     {
       section: "brief",
       source: args.latestBrief?.generatedAt ? "daily_brief" : "service_health",
       lastUpdatedAt: latestTimestamp(
+        args.liveEventsBySection.get("brief")?.ts,
         args.latestBrief?.generatedAt,
         rowValue(latestBriefHeartbeat, ["ts", "updated_at", "created_at"]),
+      ),
+      lastRevalidatedAt: latestTimestamp(
+        eventMetaString(args.liveEventsBySection.get("brief"), "updatedAt"),
+        args.latestBrief?.generatedAt,
       ),
     },
     {
       section: "news",
       source: args.latestNewsRssLog ? "system_log" : "service_health",
       lastUpdatedAt: latestTimestamp(
+        args.liveEventsBySection.get("news")?.ts,
         args.latestNewsRssLog?.finished_at,
         args.latestNewsRssLog?.started_at,
+      ),
+      lastRevalidatedAt: latestTimestamp(
+        eventMetaString(args.liveEventsBySection.get("news"), "updatedAt"),
+        args.latestNewsRssLog?.finished_at,
       ),
     },
     {
       section: "watchlist",
       source: "service_health",
-      lastUpdatedAt: rowValue(latestWatchlistHeartbeat, ["ts", "updated_at", "created_at"]) || undefined,
+      lastUpdatedAt:
+        latestTimestamp(
+          args.liveEventsBySection.get("watchlist")?.ts,
+          rowValue(latestWatchlistHeartbeat, ["ts", "updated_at", "created_at"]) || undefined,
+        ) || undefined,
+      lastRevalidatedAt:
+        latestTimestamp(
+          eventMetaString(args.liveEventsBySection.get("watchlist"), "updatedAt"),
+          rowValue(latestWatchlistHeartbeat, ["ts", "updated_at", "created_at"]) || undefined,
+        ) || undefined,
     },
     {
       section: "stories",
       source: "service_health",
-      lastUpdatedAt: rowValue(latestStoriesHeartbeat, ["ts", "updated_at", "created_at"]) || undefined,
+      lastUpdatedAt:
+        latestTimestamp(
+          args.liveEventsBySection.get("stories")?.ts,
+          rowValue(latestStoriesHeartbeat, ["ts", "updated_at", "created_at"]) || undefined,
+        ) || undefined,
+      lastRevalidatedAt:
+        latestTimestamp(
+          eventMetaString(args.liveEventsBySection.get("stories"), "updatedAt"),
+          rowValue(latestStoriesHeartbeat, ["ts", "updated_at", "created_at"]) || undefined,
+        ) || undefined,
     },
   ];
 
@@ -1591,14 +1664,34 @@ function buildLiveUpdateSections(args: {
   }));
 }
 
-function buildLiveUpdatesObservability(args: {
+async function buildLiveUpdatesObservability(args: {
   latestBrief: DashboardBrief | null;
   latestNewsRssLog: SystemLogRow | null;
   serviceHealthRows: OptionalSheetRow[];
 }) {
   const env = getLiveUpdatesEnv();
   const status = getLiveUpdateStatus(env);
-  const sections = buildLiveUpdateSections(args);
+  let liveEvents: Awaited<ReturnType<typeof fetchLiveUpdateEvents>> = [];
+
+  if (env.enabled && env.configured) {
+    try {
+      liveEvents = await fetchLiveUpdateEvents(env);
+    } catch (error) {
+      console.warn(
+        "[metrics] failed to fetch live update diagnostics",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  const liveEventsBySection = new Map(
+    liveEvents.map((event) => [event.section, event] as const),
+  );
+  const latestEvent = newestFirst(liveEvents, (event) => parseDateTimeSafe(event.ts))[0];
+  const sections = buildLiveUpdateSections({
+    ...args,
+    liveEventsBySection,
+  });
 
   return {
     enabled: env.enabled,
@@ -1607,9 +1700,191 @@ function buildLiveUpdatesObservability(args: {
     reason: status.reason,
     pollIntervalMs: status.pollIntervalMs,
     heartbeatIntervalMs: status.heartbeatIntervalMs,
-    latestActivityAt: latestTimestamp(...sections.map((section) => section.lastUpdatedAt)),
+    latestActivityAt: latestTimestamp(
+      latestEvent?.ts,
+      ...sections.map((section) => section.lastUpdatedAt),
+    ),
+    lastEventId: latestEvent?.version,
+    latestLatencyMs:
+      latestEvent?.ts != null && parseDateTimeSafe(latestEvent.ts) != null
+        ? Math.max(0, Date.now() - (parseDateTimeSafe(latestEvent.ts) ?? 0))
+        : null,
+    reconnectCount: 0,
+    lastReconnectAt: undefined,
+    lastErrorAt: undefined,
     sections,
   };
+}
+
+function parseChannelMemberCount(row: OptionalSheetRow | null): number | null {
+  return rowNumber(row, ["member_count", "members", "subscriber_count"]);
+}
+
+function manualMarketSourceReason(
+  id: AdminMarketSourceObservability["id"],
+): string {
+  switch (id) {
+    case "binance":
+      return "배포 브라우저에서 WebSocket live/stale/down 상태를 최종 확인합니다.";
+    case "upbit":
+      return "배포 브라우저에서 WebSocket 연결과 정책 차단 여부를 최종 확인합니다.";
+    case "bitflyer":
+      return "배포 환경에서 REST 지연과 30초 내 가격 갱신 여부를 확인합니다.";
+    case "kraken":
+      return "배포 환경에서 REST 지연과 30초 내 가격 갱신 여부를 확인합니다.";
+    case "fx":
+      return "5분 polling 소스이므로 배포 환경 freshness와 fallback 체인을 확인합니다.";
+    case "snapshot":
+      return "REST 합성 스냅샷이므로 배포 환경 freshness와 카드 반영 시각을 확인합니다.";
+    case "fear_greed":
+      return "Alternative.me 실값과 사용자 홈 게이지 값을 함께 대조합니다.";
+    default:
+      return "배포 환경에서 최종 관측이 필요합니다.";
+  }
+}
+
+function subscriberStatus(row: SubscriberRow): string {
+  return compactString(row.status).toLowerCase();
+}
+
+function subscriberStatusChangedAt(row: SubscriberRow): string | undefined {
+  return compactString((row as { status_changed_at?: string }).status_changed_at) || undefined;
+}
+
+function buildTelegramObservability(args: {
+  subscriberRows: SubscriberRow[];
+  channelHealthRows: OptionalSheetRow[];
+  broadcastRows: OptionalSheetRow[];
+}): AdminTelegramObservability {
+  const sinceMs = Date.now() - ADMIN_OBSERVABILITY_WINDOW_MS;
+  const activeRows = args.subscriberRows.filter((row) => subscriberStatus(row) === "active");
+  const pausedRows = args.subscriberRows.filter((row) => subscriberStatus(row) === "paused");
+  const blockedRows = args.subscriberRows.filter((row) => subscriberStatus(row) === "blocked");
+  const deactivatedRows = args.subscriberRows.filter(
+    (row) => subscriberStatus(row) === "deactivated",
+  );
+  const unsubscribe24h = args.subscriberRows.filter((row) => {
+    const status = subscriberStatus(row);
+    if (!TELEGRAM_UNSUBSCRIBED_STATUSES.has(status)) {
+      return false;
+    }
+    const changedAt = subscriberStatusChangedAt(row);
+    const changedMs = changedAt ? parseDateTimeSafe(changedAt) : null;
+    return changedMs != null && changedMs >= sinceMs;
+  }).length;
+
+  const audienceTotal = Math.max(
+    1,
+    activeRows.length + pausedRows.length + blockedRows.length + deactivatedRows.length,
+  );
+  const latestChannelHealthRow = latestOptionalRow(
+    args.channelHealthRows,
+    ["ts", "updated_at", "created_at"],
+  );
+  const channelRows24h = rowsWithinWindow(
+    args.channelHealthRows,
+    ["ts", "updated_at", "created_at"],
+    sinceMs,
+  );
+  const earliestChannelRow24h = earliestOptionalRow(
+    channelRows24h,
+    ["ts", "updated_at", "created_at"],
+  );
+  const latestChannelMemberCount = parseChannelMemberCount(latestChannelHealthRow);
+  const previousChannelMemberCount = parseChannelMemberCount(earliestChannelRow24h);
+  const latestBroadcastRow = latestOptionalRow(
+    args.broadcastRows,
+    ["ts", "created_at", "updated_at"],
+  );
+
+  return {
+    subscriberCountActive: activeRows.length,
+    subscriberCountPaused: pausedRows.length,
+    subscriberCountBlocked: blockedRows.length,
+    subscriberCountDeactivated: deactivatedRows.length,
+    unsubscribe24h,
+    unsubscribeRate24h: unsubscribe24h / audienceTotal,
+    channelMemberCountLatest: latestChannelMemberCount,
+    channelMemberDelta24h:
+      latestChannelMemberCount != null && previousChannelMemberCount != null
+        ? latestChannelMemberCount - previousChannelMemberCount
+        : null,
+    lastChannelHealthAt:
+      rowValue(latestChannelHealthRow, ["ts", "updated_at", "created_at"]) || undefined,
+    lastBroadcastAt:
+      rowValue(latestBroadcastRow, ["ts", "created_at", "updated_at"]) || undefined,
+    lastBroadcastDeliveryMode:
+      rowValue(latestBroadcastRow, ["delivery_mode"]) || undefined,
+    lastBroadcastStatus:
+      rowValue(latestBroadcastRow, ["status"]) || undefined,
+  };
+}
+
+async function buildMarketSourcesObservability(): Promise<AdminMarketSourceObservability[]> {
+  const fearGreed = await getFearGreedData();
+  const fearGreedLastSuccessAt = fearGreed.current?.timestamp;
+  const fearGreedLastFailureAt =
+    fearGreed.status === "unavailable" ? fearGreed.fetchedAt : undefined;
+
+  return [
+    {
+      id: "binance",
+      transport: "websocket",
+      status: "manual_check",
+      freshnessSeconds: null,
+      failureReason: manualMarketSourceReason("binance"),
+    },
+    {
+      id: "upbit",
+      transport: "websocket",
+      status: "manual_check",
+      freshnessSeconds: null,
+      failureReason: manualMarketSourceReason("upbit"),
+    },
+    {
+      id: "bitflyer",
+      transport: "rest",
+      status: "manual_check",
+      freshnessSeconds: null,
+      failureReason: manualMarketSourceReason("bitflyer"),
+    },
+    {
+      id: "kraken",
+      transport: "rest",
+      status: "manual_check",
+      freshnessSeconds: null,
+      failureReason: manualMarketSourceReason("kraken"),
+    },
+    {
+      id: "fx",
+      transport: "rest",
+      status: "manual_check",
+      freshnessSeconds: null,
+      failureReason: manualMarketSourceReason("fx"),
+    },
+    {
+      id: "snapshot",
+      transport: "composite",
+      status: "manual_check",
+      freshnessSeconds: null,
+      failureReason: manualMarketSourceReason("snapshot"),
+    },
+    {
+      id: "fear_greed",
+      transport: "external_api",
+      status: fearGreed.status === "ready" ? "ready" : "unavailable",
+      lastSuccessAt: fearGreedLastSuccessAt,
+      lastFailureAt: fearGreedLastFailureAt,
+      freshnessSeconds:
+        fearGreed.status === "ready"
+          ? secondsSince(fearGreedLastSuccessAt ?? fearGreed.fetchedAt)
+          : null,
+      failureReason:
+        fearGreed.status === "ready"
+          ? manualMarketSourceReason("fear_greed")
+          : fearGreed.unavailableReason ?? manualMarketSourceReason("fear_greed"),
+    },
+  ];
 }
 
 function matchesPeriodicBroadcast(row: OptionalSheetRow): boolean {
@@ -1667,15 +1942,17 @@ function latestPeriodicSendAt(
   return latestPeriodicRun?.finished_at || latestPeriodicRun?.started_at;
 }
 
-function buildAdminObservabilitySummary(args: {
+async function buildAdminObservabilitySummary(args: {
   briefLedgerRows: OptionalSheetRow[];
   llmBudgetRows: OptionalSheetRow[];
   broadcastRows: OptionalSheetRow[];
+  subscriberRows: SubscriberRow[];
+  channelHealthRows: OptionalSheetRow[];
   systemLogRows: SystemLogRow[];
   latestBrief: DashboardBrief | null;
   latestNewsRssLog: SystemLogRow | null;
   serviceHealthRows: OptionalSheetRow[];
-}): AdminObservabilitySummary {
+}): Promise<AdminObservabilitySummary> {
   const sinceMs = Date.now() - ADMIN_OBSERVABILITY_WINDOW_MS;
   const briefRows24h = rowsWithinWindow(args.briefLedgerRows, ["ts", "created_at", "updated_at"], sinceMs);
   const briefTotalRuns = briefRows24h.length;
@@ -1726,10 +2003,18 @@ function buildAdminObservabilitySummary(args: {
   const latestMessageExceededCap =
     rowBoolean(latestPeriodicBroadcastRow, ["over_cap", "is_over_cap", "truncated"]) ??
     (latestMessageLength != null ? latestMessageLength > TELEGRAM_MESSAGE_HARD_CAP : null);
-  const liveUpdates = buildLiveUpdatesObservability({
-    latestBrief: args.latestBrief,
-    latestNewsRssLog: args.latestNewsRssLog,
-    serviceHealthRows: args.serviceHealthRows,
+  const [liveUpdates, marketSources] = await Promise.all([
+    buildLiveUpdatesObservability({
+      latestBrief: args.latestBrief,
+      latestNewsRssLog: args.latestNewsRssLog,
+      serviceHealthRows: args.serviceHealthRows,
+    }),
+    buildMarketSourcesObservability(),
+  ]);
+  const telegram = buildTelegramObservability({
+    subscriberRows: args.subscriberRows,
+    channelHealthRows: args.channelHealthRows,
+    broadcastRows: args.broadcastRows,
   });
 
   return {
@@ -1756,6 +2041,8 @@ function buildAdminObservabilitySummary(args: {
       latestPeriodicSendAt: latestPeriodicSendAt(periodicBroadcastRows, periodicRuns24h),
     },
     liveUpdates,
+    marketSources,
+    telegram,
   };
 }
 
@@ -1816,10 +2103,12 @@ export async function getDashboardData(options?: {
   );
   const currentLatestBrief = latestBrief(snapshot.daily_brief);
   const normalizedBrief = normalizeBrief(currentLatestBrief);
-  const adminObservability = buildAdminObservabilitySummary({
+  const adminObservability = await buildAdminObservabilitySummary({
     briefLedgerRows: briefCostLedgerRows,
     llmBudgetRows,
     broadcastRows: broadcastLogRows,
+    subscriberRows: snapshot.subscribers,
+    channelHealthRows,
     systemLogRows: snapshot.system_log,
     latestBrief: normalizedBrief,
     latestNewsRssLog,

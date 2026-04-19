@@ -43,6 +43,7 @@ export type AdminLiveUpdateSectionObservability = {
   section: AdminLiveUpdateSection;
   source: string;
   lastUpdatedAt?: string;
+  lastRevalidatedAt?: string;
   ageMinutes: number | null;
 };
 
@@ -50,17 +51,70 @@ export type AdminLiveUpdatesObservability = {
   enabled: boolean;
   configured: boolean;
   state: "enabled" | "disabled";
-  reason?: "feature_disabled" | "not_configured";
+  reason?: "feature_disabled" | "redis_missing" | "token_missing";
   pollIntervalMs: number;
   heartbeatIntervalMs: number;
   latestActivityAt?: string;
+  lastEventId?: string;
+  latestLatencyMs: number | null;
+  reconnectCount: number;
+  lastReconnectAt?: string;
+  lastErrorAt?: string;
   sections: AdminLiveUpdateSectionObservability[];
+};
+
+export type AdminMarketSourceId =
+  | "binance"
+  | "upbit"
+  | "bitflyer"
+  | "kraken"
+  | "fx"
+  | "snapshot"
+  | "fear_greed";
+
+export type AdminMarketSourceTransport =
+  | "websocket"
+  | "rest"
+  | "composite"
+  | "external_api";
+
+export type AdminMarketSourceStatus =
+  | "ready"
+  | "degraded"
+  | "manual_check"
+  | "unavailable";
+
+export type AdminMarketSourceObservability = {
+  id: AdminMarketSourceId;
+  transport: AdminMarketSourceTransport;
+  status: AdminMarketSourceStatus;
+  lastSuccessAt?: string;
+  lastFailureAt?: string;
+  freshnessSeconds: number | null;
+  failureReason?: string;
+};
+
+export type AdminTelegramObservability = {
+  subscriberCountActive: number;
+  subscriberCountPaused: number;
+  subscriberCountBlocked: number;
+  subscriberCountDeactivated: number;
+  unsubscribe24h: number;
+  unsubscribeRate24h: number;
+  channelMemberCountLatest: number | null;
+  channelMemberDelta24h: number | null;
+  lastChannelHealthAt?: string;
+  lastBroadcastAt?: string;
+  lastBroadcastDeliveryMode?: string;
+  lastBroadcastStatus?: string;
 };
 
 export type AdminObservabilitySummary = {
   brief: AdminBriefObservability;
   periodic: AdminBroadcastObservability;
   liveUpdates: AdminLiveUpdatesObservability;
+  marketSources: AdminMarketSourceObservability[];
+  telegram: AdminTelegramObservability;
 };
 
 export type SourceFailureKind =
@@ -341,6 +395,7 @@ export type CuratedWatchlistItem = {
   symbol: string;
   title: string;
   note: string;
+  noteVariantId?: string;
   badge: string;
   address: string;
   chain: string;
