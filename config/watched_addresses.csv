@@ -1,3 +1,6 @@
+# chain enum: ETH, ARB, BASE, BSC, POLYGON, SOL, XRP, TRX, BTC, DOGE
+# feature flags: ENABLE_CHAIN_XRP / ENABLE_CHAIN_TRX / ENABLE_CHAIN_BTC / ENABLE_CHAIN_DOGE must be enabled before non-default chain collectors run.
+# partial view: BTC and DOGE are UTXO chains, so the UI may show "부분 관측 · cluster 미적용" until cluster coverage lands.
 address,chain,category,label,source,confidence,enabled,added_at,notes
 0xF977814e90dA44bFA03b6295A0616a897441aceC,ETH,cex,Binance 8,arkham,high,true,2025-01-01,Binance cold wallet
 0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8,ETH,cex,Binance 7,arkham,high,true,2025-01-01,Binance cold wallet
@@ -79,3 +82,15 @@ address,chain,category,label,source,confidence,enabled,added_at,notes
 0xBA12222222228d8Ba445958a75a0704d566BF2C8,ETH,token_whale,Balancer Vault,public,high,true,2025-01-01,Balancer protocol vault
 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM,SOL,token_whale,SOL Whale 1,arkham,medium,true,2025-01-01,Large SOL holder
 5tzFkiKscXHK5B9MnkQkUqdRPaJe6oM8CUrSMJVsZkqm,SOL,token_whale,SOL Whale 2,arkham,medium,true,2025-01-01,Large SOL holder
+34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo,BTC,cex,Binance BTC Cold 1,public,high,true,2026-04-19,Top 10 Liquid Coins 2026.4 기준 대표 Binance cold address; UTXO partial-view seed
+3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6,BTC,cex,Binance BTC Cold 2,public,high,true,2026-04-19,Top 10 Liquid Coins 2026.4 기준 대표 Binance cold address; UTXO partial-view seed
+bc1ql49ydapnjafl5t2cp9zqpjwe6pdgmxy98859v2,BTC,cex,Robinhood BTC Cold,public,high,true,2026-04-19,Top 10 Liquid Coins 2026.4 기준 Robinhood cold address; UTXO partial-view seed
+bc1qgdjqv0av3q56jvd82tkdjpy7gdp9ut8tlqmgrpmv24sq90ecnvqqjwvw97,BTC,cex,Bitfinex BTC Cold,public,high,true,2026-04-19,Top 10 Liquid Coins 2026.4 기준 Bitfinex cold address; UTXO partial-view seed
+bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh,BTC,cex,Coinbase BTC Prime,public,high,true,2026-04-19,Top 10 Liquid Coins 2026.4 기준 Coinbase Prime or institutional custody address; UTXO partial-view seed
+rB3WNZc45gxzW31zxfXdkx8HusAhoqscPn,XRP,token_whale,Ripple Escrow 1,xrpscan,high,true,2026-04-19,Ripple escrow wallet from XRPSCAN and research note 2026-04-19-26
+r9UUEXn3cx2seufBkDa8F86usfjWM6HiYp,XRP,token_whale,Ripple Escrow 2,xrpscan,high,true,2026-04-19,Ripple escrow wallet from XRPSCAN and research note 2026-04-19-26
+TTm3QKKu7dcmm6g2J3Fvb7rGcmz9ACtCqU,TRX,smart_money,Justin Sun TRON,public,high,true,2026-04-19,Concrete Justin Sun TRON address from Obsidian 운영 문서
+TMuA6YqfCeX8EhbfYEg5y7S4DqzSJireY9,TRX,cex,Binance TRX Cold,public,high,true,2026-04-19,Concrete Binance TRX cold wallet from Obsidian 설계 문서
+DEgDVFa2DoW1533dxeDVdTxQFhMzs1pMke,DOGE,cex,Robinhood DOGE Cold,public,high,true,2026-04-19,Top 10 Liquid Coins 2026.4 기준 Robinhood DOGE cold; UTXO partial-view seed
+DE5opaXjFgDhFBqL6tBDxTAQ56zkX6EToX,DOGE,cex,Binance DOGE Cold,public,high,true,2026-04-19,Top 10 Liquid Coins 2026.4 기준 Binance DOGE cold; UTXO partial-view seed
+D8ZEVbgf4yPs3MK8dMJJ7PpSyBKsbd66TX,DOGE,cex,Upbit DOGE Cold,public,high,true,2026-04-19,Top 10 Liquid Coins 2026.4 기준 Upbit DOGE cold; UTXO partial-view seed

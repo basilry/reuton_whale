@@ -15,8 +15,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.config import load_config
-from src.storage.sheets_client import SheetsClient
 from src.utils.logger import get_logger
 
 logger = get_logger("import_watched")
@@ -24,12 +22,25 @@ logger = get_logger("import_watched")
 _DEFAULT_CSV = Path(__file__).resolve().parent.parent / "config" / "watched_addresses.csv"
 
 
-def load_csv(path: Path) -> list[dict]:
+def load_csv(path: Path) -> list[dict[str, str]]:
+    filtered_lines: list[str] = []
     with open(path, newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
+        for line in f:
+            stripped = line.lstrip()
+            if not stripped.strip() or stripped.startswith("#"):
+                continue
+            filtered_lines.append(line)
+
+    if not filtered_lines:
+        return []
+
+    return list(csv.DictReader(filtered_lines))
 
 
 def main():
+    from src.config import load_config
+    from src.storage.sheets_client import SheetsClient
+
     parser = argparse.ArgumentParser(description="Import watched addresses from CSV into Sheets")
     parser.add_argument("--csv", default=str(_DEFAULT_CSV), help="Path to CSV file")
     parser.add_argument("--dry-run", action="store_true", help="Print rows without writing")

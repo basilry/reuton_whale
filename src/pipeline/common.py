@@ -154,7 +154,10 @@ def load_pipeline_env(
         os.getenv("DOGE_INDEXER_BASE", "https://api.blockchair.com/dogecoin").strip()
         or "https://api.blockchair.com/dogecoin"
     )
-    doge_indexer_key = os.getenv("DOGE_INDEXER_KEY", "").strip()
+    doge_indexer_key = (
+        os.getenv("DOGE_INDEXER_KEY", "").strip()
+        or os.getenv("BLOCKCHAIR_API_KEY", "").strip()
+    )
     anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
     gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip()
     groq_api_key = os.getenv("GROQ_API_KEY", "").strip()

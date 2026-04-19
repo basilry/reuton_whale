@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from src.ingestion.base import ChainCollector
+from src.utils.chains import canonical_chain
 
 
 @dataclass(frozen=True)
@@ -19,10 +20,11 @@ class ChainCollectorRegistry:
 
     def register(self, collector: ChainCollector) -> None:
         for chain in collector.supported_chains:
-            existing = self._collectors_by_chain.get(chain)
+            canonical = canonical_chain(chain) or str(chain).strip().upper()
+            existing = self._collectors_by_chain.get(canonical)
             if existing is not None and existing is not collector:
-                raise ValueError(f"Collector already registered for chain {chain}")
-            self._collectors_by_chain[chain] = collector
+                raise ValueError(f"Collector already registered for chain {canonical}")
+            self._collectors_by_chain[canonical] = collector
         self._collectors.append(collector)
 
     @property
@@ -30,7 +32,7 @@ class ChainCollectorRegistry:
         return tuple(self._collectors_by_chain.keys())
 
     def collector_for(self, chain: str) -> ChainCollector | None:
-        return self._collectors_by_chain.get(chain)
+        return self._collectors_by_chain.get(canonical_chain(chain))
 
     def is_empty(self) -> bool:
         return not self._collectors_by_chain
@@ -41,9 +43,10 @@ class ChainCollectorRegistry:
         seen_per_chain: dict[str, set[str]] = defaultdict(set)
 
         for address, row in watched_index.items():
-            targets = self._expand_targets(row.get("chain"))
+            chain_value = self._row_chain_value(row)
+            targets = self._expand_targets(chain_value)
             if not targets:
-                unsupported_counts[self._display_chain(row.get("chain"))] += 1
+                unsupported_counts[self._display_chain(chain_value)] += 1
                 continue
             for chain in targets:
                 if address in seen_per_chain[chain]:
@@ -72,4 +75,11 @@ class ChainCollectorRegistry:
         value = str(raw_chain or "").strip()
         if not value:
             return "EVM"
-        return value.upper()
+        return canonical_chain(value) or value.upper()
+
+    @staticmethod
+    def _row_chain_value(row: dict) -> object:
+        raw = row.get("chain_raw")
+        if str(raw or "").strip():
+            return raw
+        return row.get("chain")

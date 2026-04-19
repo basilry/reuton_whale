@@ -1,0 +1,51 @@
+name: Chain Contract
+
+on:
+  workflow_dispatch:
+    inputs:
+      btc_indexer_base:
+        description: "Opt-in BTC base URL (example: https://mempool.space/api)"
+        required: false
+        type: string
+      xrpscan_api_base:
+        description: "Opt-in XRPSCAN base URL (example: https://api.xrpscan.com/api/v1)"
+        required: false
+        type: string
+      trongrid_api_base:
+        description: "Opt-in TronGrid base URL (example: https://api.trongrid.io)"
+        required: false
+        type: string
+      doge_indexer_base:
+        description: "Opt-in DOGE base URL (example: https://api.blockchair.com/dogecoin)"
+        required: false
+        type: string
+
+concurrency:
+  group: chain-contract
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run live chain contract tests
+        env:
+          BTC_INDEXER_BASE: ${{ inputs.btc_indexer_base }}
+          XRPSCAN_API_BASE: ${{ inputs.xrpscan_api_base }}
+          TRONGRID_API_BASE: ${{ inputs.trongrid_api_base }}
+          DOGE_INDEXER_BASE: ${{ inputs.doge_indexer_base }}
+          TRONGRID_API_KEY: ${{ secrets.TRONGRID_API_KEY }}
+        run: pytest -q -m contract tests/contract

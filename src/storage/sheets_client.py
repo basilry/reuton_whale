@@ -52,6 +52,7 @@ from src.storage.schema import (
     SERVICE_HEALTH_HEADERS,
 )
 from src.utils.errors import StorageError
+from src.utils.chains import canonical_chain, is_evm_chain
 from src.utils.logger import get_logger
 from src.utils.retry import retry
 
@@ -852,7 +853,7 @@ class SheetsClient:
         value = str(address or "").strip()
         if not value:
             return ""
-        if chain.lower() in self._EVM_CHAINS or value.startswith("0x"):
+        if is_evm_chain(chain) or value.startswith("0x"):
             return value.lower()
         return value
 
@@ -1078,8 +1079,6 @@ class SheetsClient:
             except gspread.exceptions.APIError as e:
                 raise StorageError(f"Failed to append missing watched addresses: {e}") from e
 
-    _EVM_CHAINS = {"eth", "ethereum", "arbitrum", "base", "bsc", "polygon"}
-
     @retry(max_retries=3, base_delay=2.0)
     def list_watched_addresses(self) -> dict[str, dict]:
         try:
@@ -1090,9 +1089,13 @@ class SheetsClient:
             result = {}
             for row in all_values[1:]:
                 d = row_to_dict(row, WATCHED_ADDRESSES_HEADERS)
-                addr = d.get("address", "")
-                chain = d.get("chain", "").lower()
-                key = addr.lower() if chain in self._EVM_CHAINS else addr
+                addr = str(d.get("address", "")).strip()
+                raw_chain = str(d.get("chain", "")).strip()
+                canonical = canonical_chain(raw_chain)
+                if raw_chain and canonical and raw_chain != canonical:
+                    d["chain_raw"] = raw_chain
+                d["chain"] = canonical if canonical else raw_chain
+                key = addr.lower() if is_evm_chain(d.get("chain")) else addr
                 result[key] = d
             return result
         except gspread.exceptions.APIError as e:

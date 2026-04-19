@@ -188,6 +188,9 @@ user_interests sheet --> per-subscriber personalize --> Telegram message variant
 | 라우팅 | `src/llm/router.py` | provider preferred/fallback 라우팅 |
 | 온체인 수집 | Etherscan API v2 | ETH, ARB, BASE, BSC, POLYGON |
 | 온체인 수집 | XRPSCAN-compatible API | XRP, feature flag(`ENABLE_CHAIN_XRP=true`)로 선택 활성화 |
+| 온체인 수집 | TronGrid | TRX native + TRC20(USDT), feature flag(`ENABLE_CHAIN_TRX=true`)로 선택 활성화 |
+| 온체인 수집 | mempool.space compatible indexer | BTC, feature flag(`ENABLE_CHAIN_BTC=true`)로 선택 활성화 |
+| 온체인 수집 | Blockchair-compatible Dogecoin indexer | DOGE, feature flag(`ENABLE_CHAIN_DOGE=true`)로 선택 활성화 |
 | 온체인 수집 | Solscan API v2 | Solana |
 | TG 수신 | Telethon | 공개 고래 알림 채널 수신 |
 | 시장 데이터 | CoinGecko API | 토큰 USD 가격 보강 |
@@ -345,6 +348,15 @@ LLM provider key는 아래 중 최소 1개가 필요합니다.
 | `SOLSCAN_API_KEY` | Solana 수집 키입니다. 없으면 SOL 수집을 건너뜁니다. |
 | `ENABLE_CHAIN_XRP` | XRP 수집 feature flag입니다. 기본값은 `false`이며, Phase 2a rollout 시에만 `true`로 켭니다. |
 | `XRPSCAN_API_BASE` | XRP 수집 API base URL입니다. 기본값은 `https://api.xrpscan.com/api/v1`이며, self-hosted mirror나 호환 endpoint가 있을 때만 바꿉니다. |
+| `ENABLE_CHAIN_TRX` | TRX 수집 feature flag입니다. 기본값은 `false`이며, TronGrid 연결을 준비한 뒤에만 켭니다. |
+| `TRONGRID_API_KEY` | TRX collector rate limit 완화용 API 키입니다. 공개 기본 한도로도 동작하지만 운영에서는 설정을 권장합니다. |
+| `TRONGRID_API_BASE` | TRX 수집 API base URL입니다. 기본값은 `https://api.trongrid.io`입니다. |
+| `ENABLE_CHAIN_BTC` | BTC 수집 feature flag입니다. 기본값은 `false`이며, BTC indexer 확인 후에만 켭니다. |
+| `BTC_INDEXER_BASE` | BTC indexer base URL입니다. 기본값은 `https://mempool.space/api`입니다. |
+| `BTC_INDEXER_KEY` | BTC 유료 indexer를 붙일 때 쓰는 선택 키입니다. mempool.space 공개 endpoint만 쓰면 비워둘 수 있습니다. |
+| `ENABLE_CHAIN_DOGE` | DOGE 수집 feature flag입니다. 기본값은 `false`이며, Blockchair 또는 호환 indexer 확인 후에만 켭니다. |
+| `DOGE_INDEXER_BASE` | DOGE indexer base URL입니다. 기본값은 `https://api.blockchair.com/dogecoin`입니다. |
+| `BLOCKCHAIR_API_KEY` | Dogecoin collector가 Blockchair 유료 티어를 사용할 때 쓰는 선택 키입니다. 기존 `DOGE_INDEXER_KEY`도 alias로 계속 지원합니다. |
 | `TELETHON_API_ID` | Telegram user API ID입니다. listener 실제 실행에 필요합니다. |
 | `TELETHON_API_HASH` | Telegram user API hash입니다. listener 실제 실행에 필요합니다. |
 | `TELETHON_SESSION` | Telethon session 이름입니다. 기본값은 `whalescope`입니다. |
@@ -410,6 +422,14 @@ SHEET_ID="$GOOGLE_SHEET_ID" python scripts/migrate_sheets.py
 
 기본 시드는 [config/watched_addresses.csv](config/watched_addresses.csv)에 있습니다.
 
+이 CSV는 이제 파일 상단에 `#` comment line을 둘 수 있습니다. 현재 기본 파일에는 아래 운영 메모가 포함되어 있습니다.
+
+- chain enum: `ETH`, `ARB`, `BASE`, `BSC`, `POLYGON`, `SOL`, `XRP`, `TRX`, `BTC`, `DOGE`
+- feature flag: `ENABLE_CHAIN_XRP`, `ENABLE_CHAIN_TRX`, `ENABLE_CHAIN_BTC`, `ENABLE_CHAIN_DOGE`
+- partial view: `BTC`, `DOGE`는 UTXO 체인이라 대표 주소 seed 기준으로만 먼저 추적되며 UI에 `부분 관측 · cluster 미적용` 배지가 붙을 수 있습니다.
+
+기본 seed에는 기존 ETH/SOL 외에 concrete BTC/XRP/TRX/DOGE 주소가 포함되어 있습니다. 단, 시트에 seed를 import해도 해당 체인의 collector가 자동 활성화되지는 않습니다. 새 체인은 아래 feature flag와 indexer env를 준비한 뒤 순차적으로 켜야 합니다.
+
 먼저 dry-run으로 확인합니다.
 
 ```bash
@@ -427,6 +447,13 @@ python scripts/import_watched_addresses.py
 ```bash
 python scripts/import_watched_addresses.py --csv path/to/watched_addresses.csv
 ```
+
+신규 체인 rollout 체크리스트:
+
+- XRP: `ENABLE_CHAIN_XRP=true`, 필요 시 `XRPSCAN_API_BASE`
+- TRX: `ENABLE_CHAIN_TRX=true`, `TRONGRID_API_KEY`, 필요 시 `TRONGRID_API_BASE`
+- BTC: `ENABLE_CHAIN_BTC=true`, `BTC_INDEXER_BASE`, 필요 시 `BTC_INDEXER_KEY`
+- DOGE: `ENABLE_CHAIN_DOGE=true`, `DOGE_INDEXER_BASE`, 필요 시 `BLOCKCHAIR_API_KEY` (`DOGE_INDEXER_KEY` alias 지원)
 
 ## 실행 방법
 
@@ -635,7 +662,7 @@ streamlit run streamlit_app.py
 | `whalescope-bot` | Background Worker | `python scripts/run_bot.py` | Telegram 사용자 명령 처리 |
 | `whalescope-listener` | Background Worker | `TG_CHANNEL=@whale_alert_io python scripts/run_listener.py` | 공개 Telegram 채널 이벤트 수신 |
 
-Render에는 worker 역할별로 env를 나눠 등록하는 편이 안전합니다. `whalescope-pipeline`은 `ETHERSCAN_API_KEY`, `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELEGRAM_BOT_TOKEN`, LLM provider key 중 1개가 필요합니다. XRP 수집을 켤 때만 여기에 `ENABLE_CHAIN_XRP=true`와 필요 시 `XRPSCAN_API_BASE=https://api.xrpscan.com/api/v1`를 추가합니다. 공개 채널 브로드캐스트를 켤 때만 여기에 `TELEGRAM_BROADCAST_ENABLED=true`, `TELEGRAM_BROADCAST_DRY_RUN=false`, `TELEGRAM_BROADCAST_CHAT=@whalescope_alertz`를 추가하고, 해당 bot을 채널 관리자에 올립니다. `whalescope-listener`는 `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELETHON_API_ID`, `TELETHON_API_HASH`, `TELETHON_SESSION`, `TELETHON_SESSION_STRING`, `TG_CHANNEL`이 최소값이며, LLM provider key는 선택 사항입니다. production cron 정의는 저장소 루트 `render.yaml`을 기준으로 관리합니다.
+Render에는 worker 역할별로 env를 나눠 등록하는 편이 안전합니다. `whalescope-pipeline`은 `ETHERSCAN_API_KEY`, `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELEGRAM_BOT_TOKEN`, LLM provider key 중 1개가 필요합니다. 추가 체인은 `render.yaml`에 정의된 feature flag를 기본값 `false`로 두고 canary로 켭니다: XRP는 `ENABLE_CHAIN_XRP=true`와 필요 시 `XRPSCAN_API_BASE=https://api.xrpscan.com/api/v1`, TRX는 `ENABLE_CHAIN_TRX=true`와 `TRONGRID_API_KEY` 및 필요 시 `TRONGRID_API_BASE=https://api.trongrid.io`, BTC는 `ENABLE_CHAIN_BTC=true`와 `BTC_INDEXER_BASE=https://mempool.space/api` 및 필요 시 `BTC_INDEXER_KEY`, DOGE는 `ENABLE_CHAIN_DOGE=true`와 `DOGE_INDEXER_BASE=https://api.blockchair.com/dogecoin` 및 필요 시 `BLOCKCHAIR_API_KEY`를 사용합니다. 코드 레벨에서는 기존 `DOGE_INDEXER_KEY`도 alias로 계속 읽습니다. BTC와 DOGE는 UTXO 체인이라 대표 주소 seed 기준 partial view로 먼저 시작한다는 점을 운영자가 알고 켜야 합니다. 공개 채널 브로드캐스트를 켤 때만 여기에 `TELEGRAM_BROADCAST_ENABLED=true`, `TELEGRAM_BROADCAST_DRY_RUN=false`, `TELEGRAM_BROADCAST_CHAT=@whalescope_alertz`를 추가하고, 해당 bot을 채널 관리자에 올립니다. `whalescope-listener`는 `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELETHON_API_ID`, `TELETHON_API_HASH`, `TELETHON_SESSION`, `TELETHON_SESSION_STRING`, `TG_CHANNEL`이 최소값이며, LLM provider key는 선택 사항입니다. production cron 정의는 저장소 루트 `render.yaml`을 기준으로 관리합니다.
 
 ### Vercel dashboard
 
@@ -680,6 +707,15 @@ Settings -> Secrets and variables -> Actions에 등록합니다.
 | `SOLSCAN_API_KEY` | 선택 | Solana 수집 |
 | `ENABLE_CHAIN_XRP` | 선택 | XRP 수집 feature flag. 기본값 `false` |
 | `XRPSCAN_API_BASE` | 선택 | XRP 수집 API base override |
+| `ENABLE_CHAIN_TRX` | 선택 | TRX 수집 feature flag. 기본값 `false` |
+| `TRONGRID_API_KEY` | 선택 | TronGrid API key |
+| `TRONGRID_API_BASE` | 선택 | TronGrid API base override |
+| `ENABLE_CHAIN_BTC` | 선택 | BTC 수집 feature flag. 기본값 `false` |
+| `BTC_INDEXER_BASE` | 선택 | BTC indexer base override. 기본값 `https://mempool.space/api` |
+| `BTC_INDEXER_KEY` | 선택 | BTC 유료 indexer key |
+| `ENABLE_CHAIN_DOGE` | 선택 | DOGE 수집 feature flag. 기본값 `false` |
+| `DOGE_INDEXER_BASE` | 선택 | DOGE indexer base override. 기본값 `https://api.blockchair.com/dogecoin` |
+| `BLOCKCHAIR_API_KEY` | 선택 | Dogecoin Blockchair API key (`DOGE_INDEXER_KEY` alias 지원) |
 | `GOOGLE_SHEET_ID` | 필수 | Spreadsheet ID |
 | `GOOGLE_CREDENTIALS_JSON` | 필수 | 서비스 계정 JSON 전체 |
 | `TELEGRAM_BOT_TOKEN` | 필수 | Telegram bot token |
@@ -737,7 +773,7 @@ src/
 config/
 ├── llm_routing.yaml           # 태스크별 preferred/fallback 모델
 ├── signals.yaml               # 시그널 룰 임계값
-└── watched_addresses.csv      # 80개 감시 주소 시드
+└── watched_addresses.csv      # 감시 주소 시드 + chain/feature-flag/partial-view 안내 주석
 
 prompts/
 ├── daily_brief.system.txt

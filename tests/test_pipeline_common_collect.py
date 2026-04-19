@@ -9,7 +9,12 @@ from src.ingestion.etherscan import EtherscanCollector
 from src.ingestion.solscan import SolscanCollector
 from src.ingestion.tron import TronCollector
 from src.ingestion.xrpl import XrplCollector
-from src.pipeline.common import PipelineEnv, build_optional_collectors, collect_recent_events
+from src.pipeline.common import (
+    PipelineEnv,
+    build_optional_collectors,
+    collect_recent_events,
+    load_pipeline_env,
+)
 from src.signals.models import Event
 
 
@@ -111,3 +116,16 @@ def test_build_optional_collectors_enables_all_supported_optional_chains() -> No
         BitcoinCollector,
         DogecoinCollector,
     ]
+
+
+def test_load_pipeline_env_accepts_blockchair_api_key_alias(monkeypatch) -> None:
+    monkeypatch.setenv("GOOGLE_SHEET_ID", "sheet")
+    monkeypatch.setenv("GOOGLE_CREDENTIALS_JSON", "{}")
+    monkeypatch.setenv("ETHERSCAN_API_KEY", "etherscan")
+    monkeypatch.setenv("ENABLE_CHAIN_DOGE", "true")
+    monkeypatch.delenv("DOGE_INDEXER_KEY", raising=False)
+    monkeypatch.setenv("BLOCKCHAIR_API_KEY", "blockchair-key")
+
+    env = load_pipeline_env(require_chain_api=True)
+
+    assert env.doge_indexer_key == "blockchair-key"

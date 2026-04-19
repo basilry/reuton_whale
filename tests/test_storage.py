@@ -897,18 +897,28 @@ class TestStorageProtocolNewMethods:
         mock_ws = MagicMock()
         mock_ss.worksheet.return_value = mock_ws
         evm_row = self._make_addr_row("0xDEADBEEF", "ethereum")
+        evm_alias_row = self._make_addr_row("0xEVM0001", "evm")
         sol_row = self._make_addr_row("FooBarSolanaAddr1111", "sol")
+        doge_row = self._make_addr_row("DDogeAddr1111", "dogecoin")
         disabled_row = self._make_addr_row("0xDisabledAddr", "base", enabled="false")
         mock_ws.get_all_values.return_value = [
-            WATCHED_ADDRESSES_HEADERS, evm_row, sol_row, disabled_row
+            WATCHED_ADDRESSES_HEADERS, evm_row, evm_alias_row, sol_row, doge_row, disabled_row
         ]
 
         result = client.list_watched_addresses()
 
         assert "0xdeadbeef" in result
+        assert "0xevm0001" in result
         assert "FooBarSolanaAddr1111" in result
+        assert "DDogeAddr1111" in result
         assert "0xdisabledaddr" in result
-        assert len(result) == 3
+        assert result["0xdeadbeef"]["chain"] == "ETH"
+        assert result["0xevm0001"]["chain"] == "ETH"
+        assert result["0xevm0001"]["chain_raw"] == "evm"
+        assert result["FooBarSolanaAddr1111"]["chain"] == "SOL"
+        assert result["DDogeAddr1111"]["chain"] == "DOGE"
+        assert result["0xdisabledaddr"]["chain"] == "BASE"
+        assert len(result) == 5
 
     def test_list_user_interests_all(self):
         client, mock_ss = self._make_client()

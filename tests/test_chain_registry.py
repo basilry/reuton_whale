@@ -35,6 +35,31 @@ def test_registry_groups_evm_and_sol_addresses_and_surfaces_unsupported() -> Non
     assert grouped.unsupported_counts == {"BTC": 1}
 
 
+def test_registry_groups_long_form_aliases_and_preserves_evm_expansion() -> None:
+    registry = ChainCollectorRegistry()
+    registry.register(EtherscanCollector(api_key="test"))
+    registry.register(BitcoinCollector())
+    registry.register(DogecoinCollector())
+
+    grouped = registry.group_addresses(
+        {
+            "0xeth-long": {"chain": "ethereum"},
+            "0xevm": {"chain": "ETH", "chain_raw": "evm"},
+            "bc1watch": {"chain": "bitcoin"},
+            "DdogeWatch": {"chain": "dogecoin"},
+        }
+    )
+
+    assert grouped.supported["ETH"] == ["0xeth-long", "0xevm"]
+    assert grouped.supported["ARB"] == ["0xevm"]
+    assert grouped.supported["BASE"] == ["0xevm"]
+    assert grouped.supported["BSC"] == ["0xevm"]
+    assert grouped.supported["POLYGON"] == ["0xevm"]
+    assert grouped.supported["BTC"] == ["bc1watch"]
+    assert grouped.supported["DOGE"] == ["DdogeWatch"]
+    assert grouped.unsupported_counts == {}
+
+
 def test_registry_supported_chains_include_expanded_chain_coverage() -> None:
     registry = ChainCollectorRegistry()
     registry.register(EtherscanCollector(api_key="test"))

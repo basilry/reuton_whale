@@ -18,6 +18,24 @@ services:
         sync: false
       - key: XRPSCAN_API_BASE
         sync: false
+      - key: ENABLE_CHAIN_TRX
+        value: "false"
+      - key: TRONGRID_API_KEY
+        sync: false
+      - key: TRONGRID_API_BASE
+        value: "https://api.trongrid.io"
+      - key: ENABLE_CHAIN_BTC
+        value: "false"
+      - key: BTC_INDEXER_BASE
+        value: "https://mempool.space/api"
+      - key: BTC_INDEXER_KEY
+        sync: false
+      - key: ENABLE_CHAIN_DOGE
+        value: "false"
+      - key: DOGE_INDEXER_BASE
+        value: "https://api.blockchair.com/dogecoin"
+      - key: BLOCKCHAIR_API_KEY
+        sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: GEMINI_API_KEY

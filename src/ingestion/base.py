@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from src.signals.models import Event
+from src.utils.chains import canonical_chain
 
 
 class ChainCollector(ABC):
@@ -18,6 +19,16 @@ class ChainCollector(ABC):
         canonical = self.chain_aliases.get(raw) or self.chain_aliases.get(raw.lower())
         if canonical:
             return canonical
+        global_canonical = canonical_chain(raw)
+        if global_canonical:
+            canonical = (
+                self.chain_aliases.get(global_canonical)
+                or self.chain_aliases.get(global_canonical.lower())
+            )
+            if canonical:
+                return canonical
+            if global_canonical in self.supported_chains:
+                return global_canonical
         upper = raw.upper()
         if upper in self.supported_chains:
             return upper
