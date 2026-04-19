@@ -6,13 +6,15 @@ from unittest.mock import patch
 from unittest.mock import call
 
 import src.pipeline.run_all as run_all_module
+from src.utils.errors import StorageError
 
 _KST = ZoneInfo("Asia/Seoul")
 
 
 class FakeSheets:
-    def __init__(self, *, duplicates: set[str] | None = None) -> None:
+    def __init__(self, *, duplicates: set[str] | None = None, duplicate_error: bool = False) -> None:
         self.duplicates = duplicates or set()
+        self.duplicate_error = duplicate_error
         self.service_health_entries: list[dict] = []
         self.checked_jobs: list[str] = []
 
@@ -25,6 +27,8 @@ class FakeSheets:
         statuses,
     ) -> bool:
         self.checked_jobs.append(run_type)
+        if self.duplicate_error:
+            raise StorageError("quota exceeded")
         return run_type in self.duplicates
 
     def append_service_health(self, entry: dict) -> None:
@@ -213,6 +217,45 @@ def test_run_all_skips_duplicate_jobs_for_same_slot():
     brief.assert_not_called()
     weekly.assert_not_called()
     assert sheets.service_health_entries[-1]["status"] == "degraded"
+
+
+def test_run_all_continues_when_duplicate_guard_read_fails():
+    calls: list[str] = []
+    sheets = FakeSheets(duplicate_error=True)
+
+    def _record(name: str):
+        def _runner():
+            calls.append(name)
+            return {"status": "completed", "details": f"runner={name}"}
+
+        return _runner
+
+    with patch.object(run_all_module, "run_signals_pipeline", side_effect=_record("signals")), patch.object(
+        run_all_module, "run_curated_balance_refresh", side_effect=_record("curated_balance")
+    ), patch.object(
+        run_all_module, "run_news_rss_refresh", side_effect=_record("news_rss")
+    ), patch.object(
+        run_all_module, "run_broadcast_periodic", side_effect=_record("broadcast_periodic")
+    ), patch.object(
+        run_all_module, "run_brief_pipeline", side_effect=_record("brief")
+    ), patch.object(
+        run_all_module, "run_broadcast_daily", side_effect=_record("broadcast_daily")
+    ):
+        summary = run_all_module.run_all(
+            now=_kst_datetime(2026, 4, 20, 9, 5),
+            sheets=sheets,
+        )
+
+    assert summary["status"] == "completed"
+    assert summary["failed_jobs"] == {}
+    assert calls == [
+        "signals",
+        "curated_balance",
+        "news_rss",
+        "broadcast_periodic",
+        "brief",
+        "broadcast_daily",
+    ]
 
 
 def test_run_all_publishes_success_for_news_and_watchlist_only():

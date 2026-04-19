@@ -10,6 +10,7 @@ from src.observability.service_health import append_service_heartbeat
 from src.pipeline.common import build_sheets_client, init_run_result, load_pipeline_env, safe_float
 from src.storage.queries import now_iso
 from src.utils.logger import get_logger
+from src.utils.errors import StorageError
 
 logger = get_logger("pipeline.broadcast_periodic")
 _KST = ZoneInfo("Asia/Seoul")
@@ -249,12 +250,18 @@ def run_broadcast_periodic() -> dict[str, object]:
     now = datetime.now(timezone.utc)
     window_start, window_end, slot_start_kst = _slot_window(now)
 
-    if sheets.has_logged_run_in_window(
-        run_type="broadcast_periodic",
-        window_start=window_start,
-        window_end=window_end,
-        statuses=_TERMINAL_RUN_STATUSES,
-    ):
+    duplicate_in_window = False
+    try:
+        duplicate_in_window = sheets.has_logged_run_in_window(
+            run_type="broadcast_periodic",
+            window_start=window_start,
+            window_end=window_end,
+            statuses=_TERMINAL_RUN_STATUSES,
+        )
+    except StorageError as exc:
+        logger.warning("Periodic duplicate guard read failed: %s", exc)
+
+    if duplicate_in_window:
         result.update(
             status="skipped_duplicate",
             finished_at=now_iso(),

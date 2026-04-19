@@ -22,6 +22,7 @@ from src.pipeline.common import build_sheets_client, load_pipeline_env
 from src.pipeline.signals import run_signals_pipeline
 from src.pipeline.stories import run_stories_pipeline
 from src.utils.logger import get_logger
+from src.utils.errors import StorageError
 
 logger = get_logger("pipeline.run_all")
 _KST = ZoneInfo("Asia/Seoul")
@@ -152,12 +153,21 @@ def _ensure_sheets_client(sheets=None):
 
 
 def _should_skip_duplicate_job(sheets, job_name: str, slot: DispatchSlot) -> bool:
-    return sheets.has_logged_run_in_window(
-        run_type=job_name,
-        window_start=slot.slot_start_utc,
-        window_end=slot.slot_end_utc,
-        statuses=_TERMINAL_RUN_STATUSES,
-    )
+    try:
+        return sheets.has_logged_run_in_window(
+            run_type=job_name,
+            window_start=slot.slot_start_utc,
+            window_end=slot.slot_end_utc,
+            statuses=_TERMINAL_RUN_STATUSES,
+        )
+    except StorageError as exc:
+        logger.warning(
+            "Duplicate guard read failed job=%s slot=%s: %s. Continuing without skip.",
+            job_name,
+            slot.heartbeat_key,
+            exc,
+        )
+        return False
 
 
 def _processed_count(outcome: object) -> int | None:

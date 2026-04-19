@@ -175,6 +175,15 @@ class TestSheetsClient:
         client, mock_ss = self._make_client()
         assert client._spreadsheet == mock_ss
 
+    def test_worksheet_cache_reuses_spreadsheet_lookup(self):
+        client, mock_ss = self._make_client()
+
+        first = client._worksheet(TAB_TRANSACTIONS)
+        second = client._worksheet(TAB_TRANSACTIONS)
+
+        assert first == second
+        mock_ss.worksheet.assert_called_once_with(TAB_TRANSACTIONS)
+
     def test_append_transactions_deduplicates(self):
         client, mock_ss = self._make_client()
         mock_ws = MagicMock()
@@ -306,6 +315,18 @@ class TestSheetsClient:
         assert row[SERVICE_HEALTH_HEADERS.index("unsupported_chain_count")] == ""
         assert row[SERVICE_HEALTH_HEADERS.index("unsupported_chain_names")] == ""
         assert row[SERVICE_HEALTH_HEADERS.index("per_chain_event_count")] == ""
+
+    def test_append_service_health_verifies_schema_only_once_per_client(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ws.col_count = len(SERVICE_HEALTH_HEADERS)
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [SERVICE_HEALTH_HEADERS]
+
+        client.append_service_health({"service": "pipeline.signals", "component": "pipeline", "status": "ok"})
+        client.append_service_health({"service": "pipeline.signals", "component": "pipeline", "status": "ok"})
+
+        assert mock_ws.get_all_values.call_count == 1
 
     def test_append_and_list_brief_cost_ledger(self):
         client, mock_ss = self._make_client()
@@ -694,6 +715,74 @@ class TestSheetsClient:
         details = json.loads(row_written[SYSTEM_LOG_HEADERS.index("details")])
         assert details["category"] == "price_service"
         assert details["payload"] == payload
+
+    def test_has_logged_run_in_window_reuses_system_log_cache(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [
+            SYSTEM_LOG_HEADERS,
+            dict_to_row(
+                {
+                    "run_type": "signals",
+                    "status": "completed",
+                    "started_at": "2026-04-19T13:30:00+00:00",
+                    "finished_at": "2026-04-19T13:32:00+00:00",
+                },
+                SYSTEM_LOG_HEADERS,
+            ),
+        ]
+
+        window_start = datetime.fromisoformat("2026-04-19T13:30:00+00:00")
+        window_end = datetime.fromisoformat("2026-04-19T13:45:00+00:00")
+
+        assert client.has_logged_run_in_window(
+            run_type="signals",
+            window_start=window_start,
+            window_end=window_end,
+            statuses={"completed"},
+        )
+        assert client.has_logged_run_in_window(
+            run_type="signals",
+            window_start=window_start,
+            window_end=window_end,
+            statuses={"completed"},
+        )
+
+        assert mock_ws.get_all_values.call_count == 1
+
+    def test_log_run_updates_system_log_cache_without_extra_read(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [SYSTEM_LOG_HEADERS]
+
+        window_start = datetime.fromisoformat("2026-04-19T13:30:00+00:00")
+        window_end = datetime.fromisoformat("2026-04-19T13:45:00+00:00")
+
+        assert not client.has_logged_run_in_window(
+            run_type="signals",
+            window_start=window_start,
+            window_end=window_end,
+            statuses={"completed"},
+        )
+
+        client.log_run(
+            {
+                "run_type": "signals",
+                "status": "completed",
+                "started_at": "2026-04-19T13:30:00+00:00",
+                "finished_at": "2026-04-19T13:32:00+00:00",
+            }
+        )
+
+        assert client.has_logged_run_in_window(
+            run_type="signals",
+            window_start=window_start,
+            window_end=window_end,
+            statuses={"completed"},
+        )
+        assert mock_ws.get_all_values.call_count == 1
 
     def test_ensure_worksheets_creates_missing(self):
         with patch("src.storage.sheets_client.gspread") as mock_gspread, \

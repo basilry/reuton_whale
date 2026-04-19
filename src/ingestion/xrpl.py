@@ -180,12 +180,16 @@ class XRPLCollector(ChainCollector):
 
     def __init__(
         self,
-        api_base: str = _DEFAULT_API_BASE,
+        api_base: str | None = None,
         *,
+        base_url: str | None = None,
         page_size: int = 50,
         max_pages: int = 2,
     ) -> None:
-        self._api_base = api_base.rstrip("/")
+        # Keep `base_url` as a compatibility alias because older pipeline
+        # entrypoints still pass that keyword.
+        resolved_api_base = base_url or api_base or _DEFAULT_API_BASE
+        self._api_base = resolved_api_base.rstrip("/")
         self._page_size = page_size
         self._max_pages = max_pages
 

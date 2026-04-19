@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from src.utils.errors import StorageError
+
 
 class _FakeSheets:
     def __init__(
@@ -13,15 +15,19 @@ class _FakeSheets:
         transaction_rows: list[dict] | None = None,
         broadcast_rows: list[dict] | None = None,
         duplicate_in_window: bool = False,
+        duplicate_error: bool = False,
     ) -> None:
         self.signal_rows = list(signal_rows or [])
         self.transaction_rows = list(transaction_rows or [])
         self.broadcast_rows = list(broadcast_rows or [])
         self.duplicate_in_window = duplicate_in_window
+        self.duplicate_error = duplicate_error
         self.run_logs: list[dict] = []
         self.service_health: list[dict] = []
 
     def has_logged_run_in_window(self, **kwargs) -> bool:
+        if self.duplicate_error:
+            raise StorageError("quota exceeded")
         return self.duplicate_in_window
 
     def list_signals(self, since=None, limit=None) -> list[dict]:
@@ -204,3 +210,24 @@ def test_run_broadcast_periodic_logs_skipped_empty_into_broadcast_log():
     assert sheets.broadcast_rows[-1]["status"] == "skipped_empty"
     assert sheets.broadcast_rows[-1]["delivery_mode"] == "skipped"
     assert sheets.broadcast_rows[-1]["message_length"] == 0
+
+
+def test_run_broadcast_periodic_continues_when_duplicate_guard_read_fails():
+    from src.pipeline.broadcast_periodic import run_broadcast_periodic
+
+    fixed_now = datetime(2026, 4, 19, 1, 15, tzinfo=timezone.utc)
+    sheets = _FakeSheets(
+        signal_rows=[_signal_row()],
+        transaction_rows=[_transaction_row(amount_usd="1500000")],
+        duplicate_error=True,
+    )
+
+    with patch("src.pipeline.broadcast_periodic.load_pipeline_env", return_value=_fake_env()), patch(
+        "src.pipeline.broadcast_periodic.build_sheets_client", return_value=sheets
+    ), patch("src.pipeline.broadcast_periodic.datetime") as mock_datetime:
+        mock_datetime.now.return_value = fixed_now
+        mock_datetime.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+        result = run_broadcast_periodic()
+
+    assert result["status"] == "completed"
+    assert sheets.broadcast_rows[-1]["delivery_mode"] == "dry_run"

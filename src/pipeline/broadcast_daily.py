@@ -17,6 +17,7 @@ from src.pipeline.common import (
 )
 from src.storage.queries import now_iso
 from src.utils.logger import get_logger
+from src.utils.errors import StorageError
 
 logger = get_logger("pipeline.broadcast_daily")
 _KST = ZoneInfo("Asia/Seoul")
@@ -111,12 +112,18 @@ def run_broadcast_daily(*, force: bool = False) -> dict[str, object]:
         return result
 
     window_start, window_end = _broadcast_window(now)
-    if sheets.has_logged_run_in_window(
-        run_type="broadcast_daily",
-        window_start=window_start,
-        window_end=window_end,
-        statuses=_TERMINAL_RUN_STATUSES,
-    ):
+    duplicate_in_window = False
+    try:
+        duplicate_in_window = sheets.has_logged_run_in_window(
+            run_type="broadcast_daily",
+            window_start=window_start,
+            window_end=window_end,
+            statuses=_TERMINAL_RUN_STATUSES,
+        )
+    except StorageError as exc:
+        logger.warning("Broadcast daily duplicate guard read failed: %s", exc)
+
+    if duplicate_in_window:
         result.update(
             status="skipped_duplicate",
             finished_at=now_iso(),

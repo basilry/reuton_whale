@@ -154,23 +154,60 @@ class SheetsClient:
             self._spreadsheet = self._gc.open_by_key(sheet_id)
         except Exception as e:
             raise StorageError(f"Failed to initialize SheetsClient: {e}") from e
+        self._worksheet_cache: dict[str, gspread.Worksheet] = {}
+        self._append_only_schema_verified: set[str] = set()
+        self._system_log_cache: list[dict] | None = None
         self._ensure_worksheets()
         # Serializes gspread mutations across threads (async callers via
         # asyncio.to_thread may schedule multiple writes concurrently).
         self._write_lock = threading.Lock()
 
     def _ensure_worksheets(self) -> None:
-        existing = {ws.title for ws in self._spreadsheet.worksheets()}
+        worksheets = self._spreadsheet.worksheets()
+        existing = {ws.title for ws in worksheets}
         for tab_name in ALL_TABS:
             if tab_name not in existing:
                 ws = self._spreadsheet.add_worksheet(
                     title=tab_name, rows=1000, cols=len(TAB_HEADERS[tab_name])
                 )
                 ws.append_row(TAB_HEADERS[tab_name])
+                self._worksheet_cache[tab_name] = ws
                 logger.info("Created worksheet: %s", tab_name)
 
     def _worksheet(self, tab_name: str) -> gspread.Worksheet:
-        return self._spreadsheet.worksheet(tab_name)
+        cached = self._worksheet_cache.get(tab_name)
+        if cached is not None:
+            return cached
+        ws = self._spreadsheet.worksheet(tab_name)
+        self._worksheet_cache[tab_name] = ws
+        return ws
+
+    def _ensure_append_only_schema_once(
+        self,
+        ws: "gspread.Worksheet",
+        expected_headers: list[str],
+        *,
+        tab_name: str,
+    ) -> None:
+        if tab_name in self._append_only_schema_verified:
+            return
+        all_values = ws.get_all_values()
+        self._ensure_append_only_header_schema(
+            ws,
+            all_values,
+            expected_headers,
+            tab_name=tab_name,
+        )
+        self._append_only_schema_verified.add(tab_name)
+
+    @staticmethod
+    def _normalize_entry(entry: dict, headers: list[str]) -> dict:
+        return row_to_dict(dict_to_row(entry, headers), headers)
+
+    def _append_system_log_cache_entry(self, entry: dict) -> None:
+        if self._system_log_cache is None:
+            return
+        self._system_log_cache.append(self._normalize_entry(entry, SYSTEM_LOG_HEADERS))
 
     # --- transactions ---
 
@@ -629,15 +666,17 @@ class SheetsClient:
 
     @retry(max_retries=3, base_delay=2.0)
     def log_run(self, run_data: dict) -> None:
-        try:
-            ws = self._worksheet(TAB_SYSTEM_LOG)
-            ws.append_row(
-                dict_to_row(run_data, SYSTEM_LOG_HEADERS),
-                value_input_option="RAW",
-            )
-            logger.info("Logged run: %s", run_data.get("run_id", "?"))
-        except gspread.exceptions.APIError as e:
-            raise StorageError(f"Failed to log run: {e}") from e
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_SYSTEM_LOG)
+                ws.append_row(
+                    dict_to_row(run_data, SYSTEM_LOG_HEADERS),
+                    value_input_option="RAW",
+                )
+                self._append_system_log_cache_entry(run_data)
+                logger.info("Logged run: %s", run_data.get("run_id", "?"))
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to log run: {e}") from e
 
     @retry(max_retries=3, base_delay=2.0)
     def append_system_log(self, level: str, category: str, payload: dict) -> None:
@@ -649,6 +688,7 @@ class SheetsClient:
                     dict_to_row(entry, SYSTEM_LOG_HEADERS),
                     value_input_option="RAW",
                 )
+                self._append_system_log_cache_entry(entry)
                 logger.info("Appended system log level=%s category=%s", level, category)
             except gspread.exceptions.APIError as e:
                 raise StorageError(f"Failed to append system log: {e}") from e
@@ -662,12 +702,17 @@ class SheetsClient:
         limit: int | None = None,
     ) -> list[dict]:
         try:
-            ws = self._worksheet(TAB_SYSTEM_LOG)
-            all_values = ws.get_all_values()
-            if len(all_values) <= 1:
-                return []
+            if self._system_log_cache is None:
+                ws = self._worksheet(TAB_SYSTEM_LOG)
+                all_values = ws.get_all_values()
+                if len(all_values) <= 1:
+                    self._system_log_cache = []
+                else:
+                    self._system_log_cache = [
+                        row_to_dict(row, SYSTEM_LOG_HEADERS) for row in all_values[1:]
+                    ]
 
-            rows = [row_to_dict(row, SYSTEM_LOG_HEADERS) for row in all_values[1:]]
+            rows = list(self._system_log_cache)
             if run_type:
                 rows = [row for row in rows if str(row.get("run_type", "")).strip() == run_type]
 
@@ -713,10 +758,8 @@ class SheetsClient:
         with self._write_lock:
             try:
                 ws = self._worksheet(TAB_BROADCAST_LOG)
-                all_values = ws.get_all_values()
-                self._ensure_append_only_header_schema(
+                self._ensure_append_only_schema_once(
                     ws,
-                    all_values,
                     BROADCAST_LOG_HEADERS,
                     tab_name=TAB_BROADCAST_LOG,
                 )
@@ -1636,10 +1679,8 @@ class SheetsClient:
         with self._write_lock:
             try:
                 ws = self._worksheet(TAB_BRIEF_COST_LEDGER)
-                all_values = ws.get_all_values()
-                self._ensure_append_only_header_schema(
+                self._ensure_append_only_schema_once(
                     ws,
-                    all_values,
                     BRIEF_COST_LEDGER_HEADERS,
                     tab_name=TAB_BRIEF_COST_LEDGER,
                 )
@@ -1753,10 +1794,8 @@ class SheetsClient:
         with self._write_lock:
             try:
                 ws = self._worksheet(TAB_SERVICE_HEALTH)
-                all_values = ws.get_all_values()
-                self._ensure_append_only_header_schema(
+                self._ensure_append_only_schema_once(
                     ws,
-                    all_values,
                     SERVICE_HEALTH_HEADERS,
                     tab_name=TAB_SERVICE_HEALTH,
                 )

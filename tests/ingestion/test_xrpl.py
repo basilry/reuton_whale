@@ -78,3 +78,9 @@ def test_fetch_surfaces_http_500_after_backoff_exhaustion(mock_get, mock_sleep) 
 
     assert mock_get.call_count == 5
     assert mock_sleep.call_count == 5
+
+
+def test_collector_accepts_base_url_alias() -> None:
+    collector = XRPLCollector(base_url="https://example.test/api/v1")
+
+    assert collector._api_base == "https://example.test/api/v1"

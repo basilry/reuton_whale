@@ -9,6 +9,7 @@ from src.observability.service_health import append_service_heartbeat, pipeline_
 from src.pipeline.common import build_sheets_client, init_run_result, load_pipeline_env
 from src.storage.queries import now_iso
 from src.utils.logger import get_logger
+from src.utils.errors import StorageError
 
 logger = get_logger("pipeline.channel_health")
 _TELEGRAM_API_BASE = "https://api.telegram.org"
@@ -83,12 +84,18 @@ def run_channel_health() -> dict[str, object]:
     errors: list[str] = []
 
     window_start, window_end = _channel_health_window(now)
-    if sheets.has_logged_run_in_window(
-        run_type="channel_health",
-        window_start=window_start,
-        window_end=window_end,
-        statuses=_TERMINAL_RUN_STATUSES,
-    ):
+    duplicate_in_window = False
+    try:
+        duplicate_in_window = sheets.has_logged_run_in_window(
+            run_type="channel_health",
+            window_start=window_start,
+            window_end=window_end,
+            statuses=_TERMINAL_RUN_STATUSES,
+        )
+    except StorageError as exc:
+        logger.warning("Channel health duplicate guard read failed: %s", exc)
+
+    if duplicate_in_window:
         result.update(
             status="skipped_duplicate",
             finished_at=now_iso(),
