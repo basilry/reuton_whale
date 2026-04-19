@@ -25,7 +25,7 @@ type FearGreedGaugeCopy = {
 };
 
 type FearGreedGaugeProps = {
-  data: FearGreedData | null;
+  data: FearGreedData;
   fallback: ReactNode;
   language: "ko" | "en";
   copy: FearGreedGaugeCopy;
@@ -43,6 +43,14 @@ const SEGMENTS = [
   end: number;
   tone: FearGreedClassification;
 }>;
+
+type FearGreedStatusCopy = {
+  latestReadingLabel: string;
+  lastCheckedLabel: string;
+  updatePending: string;
+  fallbackMessage: string;
+  sourceSummary: string;
+};
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
@@ -108,6 +116,45 @@ function buildComparisonValue(
   };
 }
 
+function buildStatusCopy(language: "ko" | "en"): FearGreedStatusCopy {
+  if (language === "ko") {
+    return {
+      latestReadingLabel: "최근 지수 시각",
+      lastCheckedLabel: "마지막 확인",
+      updatePending: "업데이트 대기",
+      fallbackMessage:
+        "Alternative.me 지수 응답을 아직 받지 못해, 고래 시그널 기반 시장 분위기 설명만 우선 보여주고 있습니다.",
+      sourceSummary: "외부 시장 심리 지수",
+    };
+  }
+
+  return {
+    latestReadingLabel: "Latest index reading",
+    lastCheckedLabel: "Last checked",
+    updatePending: "Awaiting update",
+    fallbackMessage:
+      "Alternative.me is currently unavailable, so WhaleScope is showing the market mood summary without the index gauge.",
+    sourceSummary: "External market sentiment index",
+  };
+}
+
+function formatAbsoluteTimestamp(value: string | undefined, language: "ko" | "en", fallback: string) {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return fallback;
+  }
+
+  return new Intl.DateTimeFormat(language === "ko" ? "ko-KR" : "en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Seoul",
+  }).format(parsed);
+}
+
 export function FearGreedGauge({ data, fallback, language, copy }: FearGreedGaugeProps) {
   const { dictionary, language: currentLanguage } = useDashboardI18n(language);
   const runtimeCopy = useMemo<FearGreedGaugeCopy>(
@@ -137,15 +184,56 @@ export function FearGreedGauge({ data, fallback, language, copy }: FearGreedGaug
     [dictionary],
   );
   const activeCopy = runtimeCopy ?? copy;
+  const statusCopy = useMemo(() => buildStatusCopy(currentLanguage), [currentLanguage]);
+  const latestReadingValue = formatAbsoluteTimestamp(
+    data?.current?.timestamp,
+    currentLanguage,
+    statusCopy.updatePending,
+  );
+  const lastCheckedValue = formatAbsoluteTimestamp(
+    data?.fetchedAt,
+    currentLanguage,
+    statusCopy.updatePending,
+  );
+  const sourceLabel = `${data?.sourceName ?? "Alternative.me"} · ${statusCopy.sourceSummary}`;
 
-  if (!data) {
+  if (data.status !== "ready" || !data.current) {
     return (
       <section className={styles.card}>
         <header className={styles.header}>
           <p className={styles.eyebrow}>{activeCopy.title}</p>
           <p className={styles.subtitle}>{activeCopy.subtitle}</p>
         </header>
-        <div className={styles.fallback}>{fallback}</div>
+        <div className={styles.gaugeFrame}>
+          <div className={styles.fallback}>{fallback}</div>
+          <div className={styles.meta}>
+            <div className={styles.metaRow}>
+              <span className={styles.metaLabel}>{activeCopy.sourceLabel}</span>
+              <a
+                className={styles.sourceLink}
+                href={data.sourceUrl}
+                rel="noreferrer noopener"
+                target="_blank"
+              >
+                {sourceLabel}
+              </a>
+            </div>
+            <div className={styles.metaRow}>
+              <span className={styles.metaLabel}>{statusCopy.latestReadingLabel}</span>
+              <span className={styles.metaValue}>{latestReadingValue}</span>
+            </div>
+            <div className={styles.metaRow}>
+              <span className={styles.metaLabel}>{statusCopy.lastCheckedLabel}</span>
+              <span className={styles.metaValue}>{lastCheckedValue}</span>
+            </div>
+            <div className={styles.metaRow}>
+              <span className={styles.metaLabel}>{activeCopy.nextUpdateLabel}</span>
+              <span className={styles.metaValue}>{activeCopy.nextUpdateUnavailable}</span>
+            </div>
+          </div>
+          <div className={styles.warning}>{statusCopy.fallbackMessage}</div>
+          <p className={styles.disclaimer}>{activeCopy.disclaimer}</p>
+        </div>
       </section>
     );
   }
@@ -239,6 +327,14 @@ export function FearGreedGauge({ data, fallback, language, copy }: FearGreedGaug
             <span className={styles.metaValue}>{nextUpdateLabel}</span>
           </div>
           <div className={styles.metaRow}>
+            <span className={styles.metaLabel}>{statusCopy.latestReadingLabel}</span>
+            <span className={styles.metaValue}>{latestReadingValue}</span>
+          </div>
+          <div className={styles.metaRow}>
+            <span className={styles.metaLabel}>{statusCopy.lastCheckedLabel}</span>
+            <span className={styles.metaValue}>{lastCheckedValue}</span>
+          </div>
+          <div className={styles.metaRow}>
             <span className={styles.metaLabel}>{activeCopy.sourceLabel}</span>
             <a
               className={styles.sourceLink}
@@ -246,7 +342,7 @@ export function FearGreedGauge({ data, fallback, language, copy }: FearGreedGaug
               rel="noreferrer noopener"
               target="_blank"
             >
-              Alternative.me
+              {sourceLabel}
             </a>
           </div>
         </div>

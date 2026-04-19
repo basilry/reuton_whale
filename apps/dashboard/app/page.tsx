@@ -526,6 +526,7 @@ export default async function InsightsPage() {
       })
     : data?.latestBrief?.date ?? dictionary.home.briefDateFallback;
   const nextBriefLabel = buildNextBriefLabel(language);
+  const hasFearGreedReading = fearGreed.status === "ready" && Boolean(fearGreed.current);
   const fearGreedCopy: FearGreedCopy = {
     title: dictionary.home.fearGreedTitle,
     subtitle: dictionary.home.fearGreedSubtitle,
@@ -665,7 +666,7 @@ export default async function InsightsPage() {
                 fallback={legacyMoodFallback}
                 language={language}
               />
-              {fearGreed ? (
+              {hasFearGreedReading ? (
                 <div className={styles.moodSummary}>
                   <p className={styles.moodSummaryEyebrow}>{mood.label}</p>
                   <h4 className={styles.moodTitle}>{mood.copy}</h4>

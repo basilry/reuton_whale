@@ -131,7 +131,7 @@ const curatedWalletSeed: CuratedWalletEntry[] = [
     category: "celebrity",
     grade: "A",
     priority: 1,
-    displayPriority: 100,
+    displayPriority: 120,
     enabled: true,
     entityId: "donald-trump",
     isRepresentative: true,
@@ -147,8 +147,8 @@ const curatedWalletSeed: CuratedWalletEntry[] = [
     label: "Vitalik Buterin",
     category: "founder",
     grade: "A",
-    priority: 2,
-    displayPriority: 96,
+    priority: 3,
+    displayPriority: 112,
     enabled: true,
     entityId: "vitalik-buterin",
     isRepresentative: true,
@@ -164,8 +164,8 @@ const curatedWalletSeed: CuratedWalletEntry[] = [
     label: "Vitalik Buterin (vitalik.eth)",
     category: "founder",
     grade: "B",
-    priority: 3,
-    displayPriority: 95,
+    priority: 5,
+    displayPriority: 104,
     enabled: true,
     entityId: "vitalik-buterin",
     isRepresentative: false,
@@ -175,6 +175,23 @@ const curatedWalletSeed: CuratedWalletEntry[] = [
     focusSymbols: ["ETH"],
   },
   {
+    id: "vitalik-donation-eth",
+    address: "0x1Db3439a222C519ab44bb1144fC28167b4Fa6EE6",
+    chain: "ethereum",
+    label: "Vitalik Buterin (Donation Wallet)",
+    category: "founder",
+    grade: "B",
+    priority: 6,
+    displayPriority: 102,
+    enabled: true,
+    entityId: "vitalik-buterin",
+    isRepresentative: false,
+    aliases: ["vitalik donation", "vitalik 3", "vitalik grants"],
+    narrativeTags: ["founder", "ethereum", "grants", "philanthropy"],
+    note: "Vitalik 연관 기부·지원금 집행 주소로, 대표 주소와 분리된 자금 목적성을 읽는 데 유용합니다.",
+    focusSymbols: ["ETH", "USDC"],
+  },
+  {
     id: "justin-sun-eth",
     address: "0x176F3DAb24a159341c0509bB36B833E7fdd0a132",
     chain: "ethereum",
@@ -182,7 +199,7 @@ const curatedWalletSeed: CuratedWalletEntry[] = [
     category: "founder",
     grade: "A",
     priority: 4,
-    displayPriority: 92,
+    displayPriority: 108,
     enabled: true,
     entityId: "justin-sun",
     isRepresentative: true,
@@ -198,8 +215,8 @@ const curatedWalletSeed: CuratedWalletEntry[] = [
     label: "Justin Sun (Tron HD Wallet)",
     category: "founder",
     grade: "A",
-    priority: 5,
-    displayPriority: 91,
+    priority: 7,
+    displayPriority: 100,
     enabled: true,
     entityId: "justin-sun",
     isRepresentative: false,
@@ -215,8 +232,8 @@ const curatedWalletSeed: CuratedWalletEntry[] = [
     label: "World Liberty Financial (Treasury Multisig)",
     category: "protocol_treasury",
     grade: "A",
-    priority: 6,
-    displayPriority: 88,
+    priority: 2,
+    displayPriority: 116,
     enabled: true,
     entityId: "world-liberty-financial",
     isRepresentative: true,
@@ -232,13 +249,100 @@ const curatedWalletSeed: CuratedWalletEntry[] = [
     label: "Binance 14",
     category: "exchange",
     grade: "A",
-    priority: 20,
-    displayPriority: 40,
+    priority: 8,
+    displayPriority: 88,
     enabled: true,
+    entityId: "binance",
+    isRepresentative: true,
     aliases: ["binance", "binance 14", "binance hot wallet"],
     narrativeTags: ["exchange-liquidity", "cex"],
     note: "거래소 유동성 이동을 비교하는 기준 주소로 남겨 둔 핵심 CEX 지갑입니다.",
     focusSymbols: ["ETH", "BTC", "USDT"],
+  },
+  {
+    id: "binance-7-eth",
+    address: "0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8",
+    chain: "ethereum",
+    label: "Binance 7",
+    category: "exchange",
+    grade: "A",
+    priority: 9,
+    displayPriority: 86,
+    enabled: true,
+    entityId: "binance",
+    isRepresentative: false,
+    aliases: ["binance 7", "binance cold", "binance reserve"],
+    narrativeTags: ["exchange-liquidity", "cex", "reserve"],
+    note: "거래소 보관 성격이 강한 대형 Binance 주소로, 입출금 압력과 준비금 이동을 함께 읽는 용도입니다.",
+    focusSymbols: ["ETH", "BTC", "USDT"],
+  },
+  {
+    id: "coinbase-prime-eth",
+    address: "0xa9D1e08C7793af67e9d92fe308d5697FB81d3E43",
+    chain: "ethereum",
+    label: "Coinbase Prime",
+    category: "custody",
+    grade: "A",
+    priority: 10,
+    displayPriority: 84,
+    enabled: true,
+    entityId: "coinbase",
+    isRepresentative: true,
+    aliases: ["coinbase", "coinbase prime", "coinbase 1"],
+    narrativeTags: ["custody", "cex", "prime-brokerage"],
+    note: "기관 수탁 성격이 강한 Coinbase Prime 주소로, ETF·기관 자금 재배치를 읽는 기준점 역할을 합니다.",
+    focusSymbols: ["BTC", "ETH", "USDC"],
+  },
+  {
+    id: "coinbase-2-eth",
+    address: "0x503828976D22510aad0201ac7EC88293211D23Da",
+    chain: "ethereum",
+    label: "Coinbase 2",
+    category: "exchange",
+    grade: "A",
+    priority: 11,
+    displayPriority: 82,
+    enabled: true,
+    entityId: "coinbase",
+    isRepresentative: false,
+    aliases: ["coinbase 2", "coinbase hot wallet"],
+    narrativeTags: ["exchange-liquidity", "cex"],
+    note: "보다 실무적인 입출금 흐름이 자주 잡히는 Coinbase 측 주소로, Prime 주소와 함께 봐야 맥락이 완성됩니다.",
+    focusSymbols: ["BTC", "ETH", "USDC"],
+  },
+  {
+    id: "robinhood-1-eth",
+    address: "0x22d491Bde2303f2f43325b2108D26f1eAbA1e32b",
+    chain: "ethereum",
+    label: "Robinhood 1",
+    category: "custody",
+    grade: "B",
+    priority: 12,
+    displayPriority: 78,
+    enabled: true,
+    entityId: "robinhood",
+    isRepresentative: true,
+    aliases: ["robinhood", "robinhood 1", "robinhood wallet"],
+    narrativeTags: ["retail-flow", "custody", "cex"],
+    note: "리테일 유동성 흐름을 읽는 기준 주소로, 개인 투자자 심리와 거래소 흐름을 연결해 보기 좋습니다.",
+    focusSymbols: ["BTC", "ETH", "DOGE"],
+  },
+  {
+    id: "kraken-1-eth",
+    address: "0x2910543Af39abA0Cd09dBb2D50200b3E800A63D2",
+    chain: "ethereum",
+    label: "Kraken 1",
+    category: "exchange",
+    grade: "A",
+    priority: 13,
+    displayPriority: 76,
+    enabled: true,
+    entityId: "kraken",
+    isRepresentative: true,
+    aliases: ["kraken", "kraken 1", "kraken exchange"],
+    narrativeTags: ["exchange-liquidity", "cex"],
+    note: "달러권 거래소 유동성 비교에 자주 쓰이는 Kraken 대표 주소로, Binance·Coinbase와 교차 비교하기 좋습니다.",
+    focusSymbols: ["BTC", "ETH", "USDT"],
   },
   {
     id: "bitfinex-cold-btc",
@@ -247,13 +351,117 @@ const curatedWalletSeed: CuratedWalletEntry[] = [
     label: "Bitfinex cold wallet",
     category: "custody",
     grade: "A",
-    priority: 21,
-    displayPriority: 35,
+    priority: 14,
+    displayPriority: 74,
     enabled: true,
+    entityId: "bitfinex",
+    isRepresentative: true,
     aliases: ["bitfinex", "bitfinex cold wallet", "cold wallet"],
     narrativeTags: ["custody", "btc-reserve"],
     note: "장기 보관 성격이 강해 대규모 출금이나 재배치 신호를 읽을 때 비교 기준으로 쓰기 좋습니다.",
     focusSymbols: ["BTC"],
+  },
+  {
+    id: "bitfinex-cold-eth",
+    address: "0x742d35Cc6634C0532925a3b8D4C9C8b97Bb3a4BF",
+    chain: "ethereum",
+    label: "Bitfinex cold wallet (ETH)",
+    category: "custody",
+    grade: "A",
+    priority: 15,
+    displayPriority: 72,
+    enabled: true,
+    entityId: "bitfinex",
+    isRepresentative: false,
+    aliases: ["bitfinex eth", "bitfinex 2", "bitfinex cold eth"],
+    narrativeTags: ["custody", "eth-reserve", "cex"],
+    note: "이더리움 쪽 준비금 흐름을 읽는 Bitfinex 보조 기준 주소로, BTC cold wallet과 함께 보면 자산별 리밸런싱이 드러납니다.",
+    focusSymbols: ["ETH", "USDT"],
+  },
+  {
+    id: "wintermute-eth",
+    address: "0xFE674a9682F6D9B5D0D5e62613aB22D3C50f3af3",
+    chain: "ethereum",
+    label: "Wintermute",
+    category: "market_maker",
+    grade: "A",
+    priority: 16,
+    displayPriority: 70,
+    enabled: true,
+    entityId: "wintermute",
+    isRepresentative: true,
+    aliases: ["wintermute", "wintermute trading", "wintermute market maker"],
+    narrativeTags: ["market-maker", "liquidity", "otc"],
+    note: "메이커 유동성 공급 재배치를 읽는 대표 주소로, 거래소 입출금과 함께 보면 체결 압력의 배경 설명이 좋아집니다.",
+    focusSymbols: ["ETH", "USDC", "WBTC"],
+  },
+  {
+    id: "jump-crypto-eth",
+    address: "0x4862733B5FdDFd35f35ea8CCf08F5045e57388B3",
+    chain: "ethereum",
+    label: "Jump Crypto",
+    category: "market_maker",
+    grade: "A",
+    priority: 17,
+    displayPriority: 68,
+    enabled: true,
+    entityId: "jump-crypto",
+    isRepresentative: true,
+    aliases: ["jump", "jump crypto", "jump trading"],
+    narrativeTags: ["market-maker", "trading-firm", "liquidity"],
+    note: "대형 트레이딩 하우스 계열 주소로, 시장 급변 시 유동성 방어 또는 회수의 흔적을 포착하는 데 유효합니다.",
+    focusSymbols: ["ETH", "BTC", "USDC"],
+  },
+  {
+    id: "arbitrum-bridge-eth",
+    address: "0x8315177aB297bA92A06054cE80a67Ed4DBd7ed3a",
+    chain: "ethereum",
+    label: "Arbitrum Bridge",
+    category: "bridge",
+    grade: "A",
+    priority: 18,
+    displayPriority: 64,
+    enabled: true,
+    entityId: "arbitrum-bridge",
+    isRepresentative: true,
+    aliases: ["arbitrum bridge", "arbitrum l1 bridge"],
+    narrativeTags: ["bridge", "layer2", "cross-chain"],
+    note: "Arbitrum 쪽 체인 이동을 읽는 대표 브리지 주소로, L1-L2 자금 이동이 커질 때 가장 먼저 확인할 대상입니다.",
+    focusSymbols: ["ETH", "ARB"],
+  },
+  {
+    id: "base-portal-eth",
+    address: "0x49048044D57e1C92A77f79988d21Fa8fAF74E97e",
+    chain: "ethereum",
+    label: "Base Portal",
+    category: "bridge",
+    grade: "A",
+    priority: 19,
+    displayPriority: 62,
+    enabled: true,
+    entityId: "base-portal",
+    isRepresentative: true,
+    aliases: ["base portal", "base bridge", "base optimism portal"],
+    narrativeTags: ["bridge", "layer2", "cross-chain", "coinbase-ecosystem"],
+    note: "Base 생태계 유입·유출을 읽는 핵심 포털 주소로, Coinbase 흐름과 묶어서 보면 해석력이 높아집니다.",
+    focusSymbols: ["ETH", "USDC"],
+  },
+  {
+    id: "optimism-portal-eth",
+    address: "0xbEb5Fc579115071764c7423A4f12eDde41f106Ed",
+    chain: "ethereum",
+    label: "Optimism Portal",
+    category: "bridge",
+    grade: "A",
+    priority: 20,
+    displayPriority: 60,
+    enabled: true,
+    entityId: "optimism-bridge",
+    isRepresentative: true,
+    aliases: ["optimism portal", "optimism bridge", "op portal"],
+    narrativeTags: ["bridge", "layer2", "cross-chain", "optimism"],
+    note: "Optimism 네트워크로 이동하는 자금 흐름을 읽는 대표 포털 주소로, 브리지 수요와 리스크 전이를 함께 관찰합니다.",
+    focusSymbols: ["ETH", "OP"],
   },
 ];
 
@@ -954,17 +1162,46 @@ function selectCuratedNote(
 
 function walletNarrativeLead(wallet: CuratedWalletEntry): string {
   const tags = new Set((wallet.narrativeTags ?? []).map((item) => normalizeText(item)));
-  if (wallet.category === "celebrity" || tags.has("public-figure")) {
-    return "뉴스 사이클과 투자 심리가 직접 얽히는 공인 지갑입니다.";
+  const entityId = normalizeText(wallet.entityId);
+
+  if (entityId === "donald-trump" || wallet.category === "celebrity" || tags.has("public-figure")) {
+    return wallet.isRepresentative === false
+      ? "Trump 관련 보조 주소로, 대표 개인 지갑과 묶어서 봐야 정치 뉴스와 시장 반응의 맥락이 선명해집니다."
+      : "정치 뉴스, 밈코인 심리, WLFI 담론이 함께 반응하는 대표 공인 지갑입니다.";
   }
-  if (wallet.category === "protocol_treasury" || tags.has("wlfi") || tags.has("treasury")) {
-    return "프로젝트 금고 흐름을 읽는 기준 지갑으로, 개인 지갑과 분리해서 봐야 합니다.";
+  if (
+    entityId === "world-liberty-financial" ||
+    wallet.category === "protocol_treasury" ||
+    tags.has("wlfi") ||
+    tags.has("treasury")
+  ) {
+    return wallet.isRepresentative === false
+      ? "WLFI 관련 보조 금고 주소로, 대표 트레저리와 함께 보면 자금 집행과 리밸런싱의 역할 분담이 드러납니다."
+      : "프로젝트 금고 흐름을 읽는 대표 지갑으로, 개인 지갑과 분리해서 봐야 하는 WLFI 자금 축입니다.";
   }
-  if (wallet.category === "founder" && tags.has("ethereum")) {
-    return "이더리움 핵심 인물의 자금 흐름을 읽는 대표 기준 지갑입니다.";
+  if (entityId === "vitalik-buterin" || (wallet.category === "founder" && tags.has("ethereum"))) {
+    return wallet.isRepresentative === false
+      ? "Vitalik 관련 보조 주소로, 대표 주소와 함께 보면 기부·생태계 지원·개인 자금의 쓰임새가 구분됩니다."
+      : "이더리움 핵심 인물의 자금 흐름을 읽는 대표 기준 지갑입니다.";
   }
-  if (wallet.category === "founder" && tags.has("tron")) {
-    return "TRON 및 멀티체인 자금 재배치를 읽는 핵심 인물 지갑입니다.";
+  if (entityId === "justin-sun" || (wallet.category === "founder" && tags.has("tron"))) {
+    return wallet.isRepresentative === false
+      ? "Justin Sun 연관 보조 주소로, 대표 주소와 묶어 보면 멀티체인 자금 재배치의 실제 실행 경로가 더 잘 보입니다."
+      : "TRON 및 멀티체인 자금 재배치를 읽는 핵심 인물 지갑입니다.";
+  }
+  if (wallet.category === "market_maker" || tags.has("market-maker")) {
+    return "시장 유동성 공급자의 재배치를 읽는 핵심 메이커 지갑으로, 거래소 흐름과 함께 봐야 의미가 커집니다.";
+  }
+  if (wallet.category === "bridge" || tags.has("bridge")) {
+    return "체인 간 자금 이동과 유동성 전이를 읽는 브리지 기준 지갑입니다.";
+  }
+  if (wallet.category === "exchange" || wallet.category === "custody") {
+    return wallet.isRepresentative === false
+      ? "대표 거래소 주소를 보조하는 운영 지갑으로, 준비금과 실거래 유동성 흐름을 나눠 읽는 데 도움이 됩니다."
+      : "거래소·수탁 측 유동성 재배치를 읽는 대표 기준 지갑입니다.";
+  }
+  if (wallet.entityId && wallet.isRepresentative === false) {
+    return "대표 주소를 보조하는 연관 지갑으로, 같은 주체의 역할 분담을 읽을 때 함께 확인할 가치가 있습니다.";
   }
   return wallet.note ?? `${categoryLabel(wallet.category)} 흐름을 읽는 기준 지갑입니다.`;
 }

@@ -169,6 +169,28 @@ function formatCapFlag(value: boolean | null): string {
   return value ? "초과" : "정상";
 }
 
+function formatDurationSeconds(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0초";
+  }
+  if (value % 1000 === 0) {
+    return `${Math.round(value / 1000)}초`;
+  }
+  return `${(value / 1000).toFixed(1)}초`;
+}
+
+function humanizeLiveUpdateReason(
+  reason: AdminObservabilitySummary["liveUpdates"]["reason"],
+): string {
+  if (reason === "feature_disabled") {
+    return "기능 비활성화";
+  }
+  if (reason === "not_configured") {
+    return "Redis 미구성";
+  }
+  return "정상";
+}
+
 function buildObservabilityCards(summary: AdminObservabilitySummary | null) {
   if (!summary) {
     return [];
@@ -223,6 +245,28 @@ function buildObservabilityCards(summary: AdminObservabilitySummary | null) {
         "broadcast_log 우선, 없으면 system_log의 message_len을 사용합니다.",
       ],
       hint: "운영 중에는 1500자 초과가 나오면 Track A 파이프라인 로그와 메시지 clipping 경로를 확인합니다.",
+    },
+    {
+      key: "live-updates",
+      title: "SSE live updates",
+      tone:
+        summary.liveUpdates.state === "enabled"
+          ? "good"
+          : summary.liveUpdates.reason === "feature_disabled"
+            ? "neutral"
+            : "warn",
+      lines: [
+        `상태 ${summary.liveUpdates.state === "enabled" ? "활성" : "비활성"} · 사유 ${humanizeLiveUpdateReason(summary.liveUpdates.reason)}`,
+        `poll ${formatDurationSeconds(summary.liveUpdates.pollIntervalMs)} · heartbeat ${formatDurationSeconds(summary.liveUpdates.heartbeatIntervalMs)}`,
+        summary.liveUpdates.sections
+          .map((section) => {
+            const ageLabel =
+              section.ageMinutes == null ? "기록 없음" : `${section.ageMinutes.toLocaleString("ko-KR")}분 전`;
+            return `${section.section} ${ageLabel}`;
+          })
+          .join(" · "),
+      ],
+      hint: `최근 이벤트 기준: ${formatObservedTime(summary.liveUpdates.latestActivityAt)}`,
     },
   ];
 }
@@ -399,7 +443,7 @@ export default async function DashboardPage() {
               <div className={styles.emptyState}>
                 <p className={styles.emptyStateTitle}>운영 관측 데이터가 아직 없습니다.</p>
                 <p className={styles.emptyStateBody}>
-                  brief_cost_ledger 또는 확장 broadcast_log가 채워지면 이 섹션이 자동으로 요약됩니다.
+                  brief_cost_ledger, 확장 broadcast_log, service_health가 채워지면 이 섹션이 자동으로 요약됩니다.
                 </p>
               </div>
             )}

@@ -26,7 +26,8 @@ import {
   persistCuratedWalletEnabled,
   toLegacyWatchlistEntries,
 } from "./curated-wallets";
-import { getDashboardEnv, SHEETS_SCOPES } from "./env";
+import { getDashboardEnv, getLiveUpdatesEnv, SHEETS_SCOPES } from "./env";
+import { getLiveUpdateStatus } from "./live-updates";
 import {
   readDashboardSnapshot,
   readSheetRows,
@@ -34,6 +35,7 @@ import {
 import { buildWhaleStories, buildWhaleStoryCards } from "./whale-stories";
 import type {
   AdminObservabilitySummary,
+  AdminLiveUpdateSectionObservability,
   BriefMarketMood,
   CuratedWalletEntry,
   CuratedWatchlistItem,
@@ -1260,6 +1262,7 @@ function buildOperatorChecks(args: {
   const llmConfigured = Boolean(
     envText("ANTHROPIC_API_KEY") || envText("GEMINI_API_KEY") || envText("GROQ_API_KEY"),
   );
+  const liveUpdatesEnv = getLiveUpdatesEnv();
 
   checks.push({
     key: "google_sheets",
@@ -1313,6 +1316,20 @@ function buildOperatorChecks(args: {
         : envText("DASHBOARD_PASSWORD")
           ? "로컬에서도 admin 보호 비밀번호를 사용 중입니다."
           : "개발 모드에서는 비밀번호 없이도 접근할 수 있습니다.",
+  });
+  checks.push({
+    key: "live_updates",
+    label: "SSE live updates",
+    status: liveUpdatesEnv.enabled
+      ? liveUpdatesEnv.configured
+        ? "ok"
+        : "missing"
+      : "warn",
+    detail: liveUpdatesEnv.enabled
+      ? liveUpdatesEnv.configured
+        ? "WHALESCOPE_SSE_ENABLED와 Redis REST 구성이 모두 감지되었습니다."
+        : "WHALESCOPE_SSE_ENABLED는 켜져 있지만 Redis REST URL/TOKEN이 없어 /api/stream이 disabled 상태가 됩니다."
+      : "실시간 자동 새로고침이 비활성화되어 있어 배포 검증은 수동 새로고침 기준으로만 가능합니다.",
   });
   checks.push({
     key: "telegram_bot",
@@ -1516,6 +1533,85 @@ function latestGeneratedBriefAt(
   );
 }
 
+function buildLiveUpdateSections(args: {
+  latestBrief: DashboardBrief | null;
+  latestNewsRssLog: SystemLogRow | null;
+  serviceHealthRows: OptionalSheetRow[];
+}): AdminLiveUpdateSectionObservability[] {
+  const latestStoriesHeartbeat = findServiceHealthOverride(args.serviceHealthRows, [
+    "pipeline.stories",
+    "stories",
+  ]);
+  const latestWatchlistHeartbeat = findServiceHealthOverride(args.serviceHealthRows, [
+    "pipeline.curated_balance",
+    "curated_balance",
+    "watchlist",
+  ]);
+  const latestBriefHeartbeat = findServiceHealthOverride(args.serviceHealthRows, [
+    "pipeline.brief",
+    "brief",
+  ]);
+
+  const sections: Array<{
+    section: AdminLiveUpdateSectionObservability["section"];
+    source: string;
+    lastUpdatedAt?: string;
+  }> = [
+    {
+      section: "brief",
+      source: args.latestBrief?.generatedAt ? "daily_brief" : "service_health",
+      lastUpdatedAt: latestTimestamp(
+        args.latestBrief?.generatedAt,
+        rowValue(latestBriefHeartbeat, ["ts", "updated_at", "created_at"]),
+      ),
+    },
+    {
+      section: "news",
+      source: args.latestNewsRssLog ? "system_log" : "service_health",
+      lastUpdatedAt: latestTimestamp(
+        args.latestNewsRssLog?.finished_at,
+        args.latestNewsRssLog?.started_at,
+      ),
+    },
+    {
+      section: "watchlist",
+      source: "service_health",
+      lastUpdatedAt: rowValue(latestWatchlistHeartbeat, ["ts", "updated_at", "created_at"]) || undefined,
+    },
+    {
+      section: "stories",
+      source: "service_health",
+      lastUpdatedAt: rowValue(latestStoriesHeartbeat, ["ts", "updated_at", "created_at"]) || undefined,
+    },
+  ];
+
+  return sections.map((section) => ({
+    ...section,
+    ageMinutes: minutesSince(section.lastUpdatedAt),
+  }));
+}
+
+function buildLiveUpdatesObservability(args: {
+  latestBrief: DashboardBrief | null;
+  latestNewsRssLog: SystemLogRow | null;
+  serviceHealthRows: OptionalSheetRow[];
+}) {
+  const env = getLiveUpdatesEnv();
+  const status = getLiveUpdateStatus(env);
+  const sections = buildLiveUpdateSections(args);
+
+  return {
+    enabled: env.enabled,
+    configured: env.configured,
+    state: status.state,
+    reason: status.reason,
+    pollIntervalMs: status.pollIntervalMs,
+    heartbeatIntervalMs: status.heartbeatIntervalMs,
+    latestActivityAt: latestTimestamp(...sections.map((section) => section.lastUpdatedAt)),
+    sections,
+  };
+}
+
 function matchesPeriodicBroadcast(row: OptionalSheetRow): boolean {
   const kind = rowValue(row, ["kind", "run_type", "pipeline"]).toLowerCase();
   const dedupKey = rowValue(row, ["dedup_key", "slot_key"]).toLowerCase();
@@ -1577,6 +1673,8 @@ function buildAdminObservabilitySummary(args: {
   broadcastRows: OptionalSheetRow[];
   systemLogRows: SystemLogRow[];
   latestBrief: DashboardBrief | null;
+  latestNewsRssLog: SystemLogRow | null;
+  serviceHealthRows: OptionalSheetRow[];
 }): AdminObservabilitySummary {
   const sinceMs = Date.now() - ADMIN_OBSERVABILITY_WINDOW_MS;
   const briefRows24h = rowsWithinWindow(args.briefLedgerRows, ["ts", "created_at", "updated_at"], sinceMs);
@@ -1628,6 +1726,11 @@ function buildAdminObservabilitySummary(args: {
   const latestMessageExceededCap =
     rowBoolean(latestPeriodicBroadcastRow, ["over_cap", "is_over_cap", "truncated"]) ??
     (latestMessageLength != null ? latestMessageLength > TELEGRAM_MESSAGE_HARD_CAP : null);
+  const liveUpdates = buildLiveUpdatesObservability({
+    latestBrief: args.latestBrief,
+    latestNewsRssLog: args.latestNewsRssLog,
+    serviceHealthRows: args.serviceHealthRows,
+  });
 
   return {
     brief: {
@@ -1652,6 +1755,7 @@ function buildAdminObservabilitySummary(args: {
       latestMessageExceededCap,
       latestPeriodicSendAt: latestPeriodicSendAt(periodicBroadcastRows, periodicRuns24h),
     },
+    liveUpdates,
   };
 }
 
@@ -1718,6 +1822,8 @@ export async function getDashboardData(options?: {
     broadcastRows: broadcastLogRows,
     systemLogRows: snapshot.system_log,
     latestBrief: normalizedBrief,
+    latestNewsRssLog,
+    serviceHealthRows,
   });
   const latestRunErrorCount = errorCountForRun(currentLatestRunRow);
   const latestRunStatus = currentLatestRun?.status ?? "unknown";

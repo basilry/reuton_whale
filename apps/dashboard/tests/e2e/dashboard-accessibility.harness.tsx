@@ -1,8 +1,12 @@
 import "../../app/globals.css";
 
 import type { CuratedWalletDetailPayload } from "@/components/curated-wallet-detail-modal";
-import type { FearGreedData } from "@/lib/fear-greed";
-import { FEAR_GREED_SOURCE_URL } from "@/lib/fear-greed";
+import type {
+  FearGreedClassification,
+  FearGreedData,
+  FearGreedSnapshot,
+} from "@/lib/fear-greed";
+import { FEAR_GREED_SOURCE_NAME, FEAR_GREED_SOURCE_URL } from "@/lib/fear-greed";
 import { koDictionary } from "@/lib/i18n/dictionaries/ko";
 import type { CuratedWatchlistItem, WhaleStory } from "@/lib/types";
 
@@ -20,36 +24,104 @@ export async function applyDashboardTestDocument(language = "ko") {
   document.cookie = `dashboard_lang=${language}; path=/`;
 }
 
-export function buildFearGreedFixture(): FearGreedData {
+type FearGreedFixtureOverrides = {
+  current?: Partial<FearGreedSnapshot>;
+  yesterday?: Partial<FearGreedSnapshot>;
+  weekAgo?: Partial<FearGreedSnapshot>;
+  monthAgo?: Partial<FearGreedSnapshot>;
+  nextUpdateInSeconds?: number | null;
+  fetchedAt?: string;
+  isStale?: boolean;
+};
+
+function mergeSnapshot(
+  base: FearGreedSnapshot,
+  override?: Partial<FearGreedSnapshot>,
+): FearGreedSnapshot {
   return {
+    ...base,
+    ...override,
+  };
+}
+
+export function buildFearGreedFixture(overrides: FearGreedFixtureOverrides = {}): FearGreedData {
+  const baseCurrent: FearGreedSnapshot = {
+    value: 72,
+    classification: "greed",
+    timestamp: "2026-04-19T00:00:00.000Z",
+    rawClassification: "Greed",
+  };
+  const baseYesterday: FearGreedSnapshot = {
+    value: 65,
+    classification: "greed",
+    timestamp: "2026-04-18T00:00:00.000Z",
+    rawClassification: "Greed",
+  };
+  const baseWeekAgo: FearGreedSnapshot = {
+    value: 54,
+    classification: "greed",
+    timestamp: "2026-04-12T00:00:00.000Z",
+    rawClassification: "Greed",
+  };
+  const baseMonthAgo: FearGreedSnapshot = {
+    value: 48,
+    classification: "neutral",
+    timestamp: "2026-03-20T00:00:00.000Z",
+    rawClassification: "Neutral",
+  };
+
+  return {
+    status: "ready",
+    current: mergeSnapshot(baseCurrent, overrides.current),
+    yesterday: mergeSnapshot(baseYesterday, overrides.yesterday),
+    weekAgo: mergeSnapshot(baseWeekAgo, overrides.weekAgo),
+    monthAgo: mergeSnapshot(baseMonthAgo, overrides.monthAgo),
+    nextUpdateInSeconds: overrides.nextUpdateInSeconds ?? 3_600,
+    fetchedAt: overrides.fetchedAt ?? "2026-04-19T00:05:00.000Z",
+    isStale: overrides.isStale ?? false,
+    sourceName: FEAR_GREED_SOURCE_NAME,
+    sourceUrl: FEAR_GREED_SOURCE_URL,
+    unavailableReason: null,
+  };
+}
+
+export function buildFearGreedBoundaryFixture(
+  value: number,
+  classification: FearGreedClassification,
+): FearGreedData {
+  return buildFearGreedFixture({
     current: {
-      value: 72,
-      classification: "greed",
-      timestamp: "2026-04-19T00:00:00.000Z",
-      rawClassification: "Greed",
+      value,
+      classification,
+      rawClassification: classification,
     },
     yesterday: {
-      value: 65,
-      classification: "greed",
-      timestamp: "2026-04-18T00:00:00.000Z",
-      rawClassification: "Greed",
+      value,
+      classification,
+      rawClassification: classification,
     },
     weekAgo: {
-      value: 54,
-      classification: "greed",
-      timestamp: "2026-04-12T00:00:00.000Z",
-      rawClassification: "Greed",
+      value,
+      classification,
+      rawClassification: classification,
     },
     monthAgo: {
-      value: 48,
-      classification: "neutral",
-      timestamp: "2026-03-20T00:00:00.000Z",
-      rawClassification: "Neutral",
+      value,
+      classification,
+      rawClassification: classification,
     },
-    nextUpdateInSeconds: 3_600,
-    fetchedAt: "2026-04-19T00:05:00.000Z",
+  });
+}
+
+export function buildFearGreedUnavailableFixture(): FearGreedData {
+  return {
+    status: "unavailable",
+    nextUpdateInSeconds: null,
+    fetchedAt: "2026-04-19T00:07:00.000Z",
     isStale: false,
+    sourceName: FEAR_GREED_SOURCE_NAME,
     sourceUrl: FEAR_GREED_SOURCE_URL,
+    unavailableReason: "network_error",
   };
 }
 

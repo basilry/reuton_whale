@@ -37,9 +37,30 @@ export type AdminBroadcastObservability = {
   latestPeriodicSendAt?: string;
 };
 
+export type AdminLiveUpdateSection = "brief" | "news" | "watchlist" | "stories";
+
+export type AdminLiveUpdateSectionObservability = {
+  section: AdminLiveUpdateSection;
+  source: string;
+  lastUpdatedAt?: string;
+  ageMinutes: number | null;
+};
+
+export type AdminLiveUpdatesObservability = {
+  enabled: boolean;
+  configured: boolean;
+  state: "enabled" | "disabled";
+  reason?: "feature_disabled" | "not_configured";
+  pollIntervalMs: number;
+  heartbeatIntervalMs: number;
+  latestActivityAt?: string;
+  sections: AdminLiveUpdateSectionObservability[];
+};
+
 export type AdminObservabilitySummary = {
   brief: AdminBriefObservability;
   periodic: AdminBroadcastObservability;
+  liveUpdates: AdminLiveUpdatesObservability;
 };
 
 export type SourceFailureKind =

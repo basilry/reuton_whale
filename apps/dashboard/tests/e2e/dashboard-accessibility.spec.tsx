@@ -9,9 +9,11 @@ import { WhaleStoryPanel } from "@/components/whale-story-panel";
 
 import {
   applyDashboardTestDocument,
+  buildFearGreedBoundaryFixture,
   buildCuratedWatchlistItem,
   buildFearGreedCopy,
   buildFearGreedFixture,
+  buildFearGreedUnavailableFixture,
   buildWalletDetailPayload,
   buildWhaleStory,
   TEST_SURFACE_STYLE,
@@ -182,4 +184,65 @@ test("fear and greed gauge exposes aria labels and updates copy after ko/en swit
     /Current market fear and greed index 72, Greed\./,
   );
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
+});
+
+test("fear and greed gauge renders source and freshness metadata when the feed is unavailable", async ({
+  mount,
+  page,
+}) => {
+  await page.evaluate(applyDashboardTestDocument, "ko");
+
+  const component = await mount(
+    <div style={{ ...TEST_SURFACE_STYLE, display: "grid", gap: "16px", maxWidth: "420px" }}>
+      <FearGreedGauge
+        copy={buildFearGreedCopy()}
+        data={buildFearGreedUnavailableFixture()}
+        fallback={<p>Fallback summary</p>}
+        language="ko"
+      />
+    </div>,
+  );
+
+  await expect(component.getByText("Fallback summary")).toBeVisible();
+  await expect(component.getByText("Alternative.me · 외부 시장 심리 지수")).toBeVisible();
+  await expect(component.getByText("최근 지수 시각")).toBeVisible();
+  await expect(component.getByText("업데이트 대기")).toBeVisible();
+  await expect(component.getByText("마지막 확인")).toBeVisible();
+  await expect(component.getByText(/고래 시그널 기반 시장 분위기 설명만 우선 보여주고 있습니다/)).toBeVisible();
+  await expect(component.getByRole("img")).toHaveCount(0);
+});
+
+test("fear and greed gauge keeps boundary values readable at 0 and 100", async ({
+  mount,
+  page,
+}) => {
+  await page.evaluate(applyDashboardTestDocument, "ko");
+
+  const component = await mount(
+    <div style={{ ...TEST_SURFACE_STYLE, display: "grid", gap: "16px", maxWidth: "420px" }}>
+      <FearGreedGauge
+        copy={buildFearGreedCopy()}
+        data={buildFearGreedBoundaryFixture(0, "extreme_fear")}
+        fallback={<p>Fallback</p>}
+        language="ko"
+      />
+      <FearGreedGauge
+        copy={buildFearGreedCopy()}
+        data={buildFearGreedBoundaryFixture(100, "extreme_greed")}
+        fallback={<p>Fallback</p>}
+        language="ko"
+      />
+    </div>,
+  );
+
+  const gauges = component.getByRole("img");
+
+  await expect(gauges.nth(0)).toHaveAttribute(
+    "aria-label",
+    /현재 시장 공포탐욕지수 0, .*공포 구간/,
+  );
+  await expect(gauges.nth(1)).toHaveAttribute(
+    "aria-label",
+    /현재 시장 공포탐욕지수 100, .*탐욕 구간/,
+  );
 });

@@ -350,6 +350,7 @@ TG_CHANNEL=@whale_alert_io python scripts/run_listener.py
 | skipped_empty / skipped_duplicate_content 비율 | `broadcast_log.status`, `delivery_mode` 집계와 일치 |
 | 최근 메시지 길이 | `broadcast_log.message_length` 최신 row와 일치 |
 | 최근 brief 생성 시각 / 최근 periodic 발송 시각 | 각 원장 최신 row 시각과 일치 |
+| SSE live updates 상태 | `WHALESCOPE_SSE_ENABLED`, Redis REST 구성, `service_health` 최근 시각과 정합 |
 
 운영자가 시트 raw row를 뒤지지 않고 `/admin`에서 바로 판정 가능해야 한다.
 
@@ -361,6 +362,7 @@ TG_CHANNEL=@whale_alert_io python scripts/run_listener.py
 |---|---|---|
 | SSE 연결 | 브라우저 DevTools Network에서 `/api/stream` 확인 | `content-type: text/event-stream` 유지 |
 | UI 갱신 지연 | 파이프라인 수동 실행 후 10초 내 `/` 또는 `/admin` 갱신 | 최근 상태/카드가 10초 내 반영 |
+| `/admin` live updates 카드 | 상태/사유/poll/heartbeat/섹션별 최근 시각 확인 | 배포 환경 설정과 실제 최근 갱신 시각이 모순 없이 표시 |
 | Alternative.me 실값 | 공개 지수 페이지와 비교 | 숫자/분류가 동일 |
 | Bitflyer / Kraken 값 | 시장 티커와 fallback 문구 확인 | 지연 시 stale/fallback 설명이 정합 |
 | Telegram shadow/live | `TELEGRAM_BROADCAST_DRY_RUN=true`로 24h 관측 후 live 전환 | shadow 기간 실패 없음, live 전환 후 단일 채널 도착 확인 |
