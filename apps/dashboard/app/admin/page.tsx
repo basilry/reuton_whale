@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import { TopNavbar } from "@/components/top-navbar";
 import { AdminSessionPanel } from "@/components/admin-session-panel";
 import {
@@ -1444,6 +1446,39 @@ function buildCorrelationSection(args: {
   };
 }
 
+async function AdminOperationsBody() {
+  const rawData = await loadDashboardData();
+  const data = normalizeDashboardData(rawData);
+  const renderSection = buildRenderSection(rawData);
+  const hero = buildHero(data, rawData, renderSection);
+  const dataSection = buildDataSection(data, rawData);
+  const workerSection = buildWorkerSection(data, rawData);
+  const correlationSection = buildCorrelationSection({
+    data,
+    rawData,
+    workerSection,
+    renderSection,
+  });
+
+  return (
+    <AdminOperationsOverview
+      hero={hero}
+      dataSection={dataSection}
+      workerSection={workerSection}
+      renderSection={renderSection}
+      correlationSection={correlationSection}
+    />
+  );
+}
+
+function AdminOperationsFallback() {
+  return (
+    <section className={styles.colSpan12} aria-busy="true">
+      <p style={{ margin: 0, color: "var(--on-surface-variant)" }}>운영 스냅샷을 불러오는 중…</p>
+    </section>
+  );
+}
+
 export default async function AdminPage() {
   const language = await getCurrentDashboardLanguage();
   const cookieStore = await cookies();
@@ -1479,19 +1514,6 @@ export default async function AdminPage() {
     );
   }
 
-  const rawData = await loadDashboardData();
-  const data = normalizeDashboardData(rawData);
-  const renderSection = buildRenderSection(rawData);
-  const hero = buildHero(data, rawData, renderSection);
-  const dataSection = buildDataSection(data, rawData);
-  const workerSection = buildWorkerSection(data, rawData);
-  const correlationSection = buildCorrelationSection({
-    data,
-    rawData,
-    workerSection,
-    renderSection,
-  });
-
   return (
     <>
       <TopNavbar initialLanguage={language} />
@@ -1506,13 +1528,9 @@ export default async function AdminPage() {
           </section>
         ) : null}
 
-        <AdminOperationsOverview
-          hero={hero}
-          dataSection={dataSection}
-          workerSection={workerSection}
-          renderSection={renderSection}
-          correlationSection={correlationSection}
-        />
+        <Suspense fallback={<AdminOperationsFallback />}>
+          <AdminOperationsBody />
+        </Suspense>
       </main>
     </>
   );
