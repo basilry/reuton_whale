@@ -135,7 +135,7 @@
   background: var(--surface);
   color: inherit;
   text-decoration: none;
-  transition: var(--transition-bg), var(--transition-color), var(--transition-shadow);
+  transition: background 160ms ease-out, box-shadow 160ms ease-out, border-color 160ms ease-out;
 }
 
 .item:hover {

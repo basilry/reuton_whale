@@ -138,7 +138,7 @@ export function SignalSection({ initialLanguage, signals }: SignalSectionProps) 
               return (
                 <article key={signalId} className={styles.signalCard} data-tone={tone}>
                   <div className={styles.signalCardTop}>
-                    <span className={styles.materialIcon} style={{ fontVariationSettings: "'FILL' 1" }}>
+                    <span className={styles.materialIcon} style={{ fontVariationSettings: "'FILL' 1" }} aria-hidden="true">
                       {signalIcons[tone]}
                     </span>
                     <span className={styles.signalToneBadge}>{toneLabel(tone, dictionary)}</span>

@@ -450,19 +450,6 @@ function buildPipelineSummary(data: DashboardData | null, dictionary: DashboardD
   });
 }
 
-function buildConnectionTone(data: DashboardData | null): "good" | "warn" | "bad" | "neutral" {
-  if (!data?.sourceHealth) {
-    return "neutral";
-  }
-  if (!data.sourceHealth.connected) {
-    return data.sourceHealth.failureKind === "config" ? "bad" : "warn";
-  }
-  if ((data.sourceHealth.staleMinutes ?? 0) > 30) {
-    return "warn";
-  }
-  return "good";
-}
-
 async function loadInsightState(): Promise<InsightState> {
   try {
     const data = await getDashboardData({
@@ -501,16 +488,6 @@ export default async function InsightsPage() {
   const watchlist = data?.watchlist ?? [];
   const stories = data?.whaleStories ?? [];
   const recentSignals = ((data?.recentSignals ?? []) as HomeSignal[]).slice(0, 3);
-  const connectionTone = buildConnectionTone(data);
-  const connectedLabel = !data?.sourceHealth
-    ? dictionary.home.sourceWaiting
-    : !data.sourceHealth.connected
-      ? data.sourceHealth.mode === "fallback"
-        ? dictionary.home.sourceFallback
-        : dictionary.home.sourceWaiting
-      : (data.sourceHealth.staleMinutes ?? 0) > 30
-        ? dictionary.home.sourceStale
-        : dictionary.home.sourceConnected;
   const connectionMeta = data?.sourceHealth?.failureKind
     ? `${dictionary.home.sourceFailurePrefix}: ${
         language === "ko" ? humanizeSourceFailureKind(data.sourceHealth.failureKind) : data.sourceHealth.failureKind
@@ -596,10 +573,6 @@ export default async function InsightsPage() {
               <p className={styles.pageSubtitle}>{dictionary.home.subtitle}</p>
               <div className={styles.connectionBlock}>
                 <div className={styles.connectionRow}>
-                  <div className={styles.connectionChip} data-tone={connectionTone}>
-                    <span className={styles.connectionDot} data-tone={connectionTone} />
-                    {connectedLabel}
-                  </div>
                   <LiveUpdatesController
                     chipClassName={styles.connectionChip}
                     dotClassName={styles.connectionDot}

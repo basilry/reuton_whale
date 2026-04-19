@@ -21,7 +21,7 @@
   gap: var(--space-lg);
   max-width: 1520px;
   margin: 0 auto;
-  padding: calc(var(--inset-navbar) + var(--space-md)) var(--space-sm) var(--space-4xl);
+  padding: calc(var(--inset-navbar) + var(--space-xs)) var(--space-sm) var(--space-4xl);
   align-items: stretch;
 }
 
@@ -110,13 +110,14 @@
   padding: var(--space-xl);
   box-shadow: var(--elev-3);
   scroll-margin-top: var(--inset-navbar);
+  cursor: default;
 }
 
 .heroCardGlow {
   position: absolute;
   top: -80px;
   right: -80px;
-  width: 256px;
+  width: min(100%, 256px);
   height: 256px;
   border-radius: var(--radius-full);
   background: var(--accent-softer);
@@ -408,6 +409,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
+  cursor: default;
 }
 
 .signalCard:hover {
@@ -440,6 +442,7 @@
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: var(--space-2xs);
+  transition: color 160ms ease-out;
 }
 
 .signalCardTop .materialIcon {
@@ -498,6 +501,7 @@
   font-weight: var(--weight-bold);
   color: var(--on-surface);
   line-height: var(--leading-snug);
+  transition: color 160ms ease-out;
 }
 
 .signalCardDesc {
@@ -506,13 +510,15 @@
   color: var(--on-surface-variant);
   line-height: var(--leading-relaxed);
   flex: 1;
+  transition: color 160ms ease-out;
 }
 
 .signalCardLink {
   appearance: none;
   background: transparent;
   border: none;
-  padding: 0;
+  padding: var(--space-2xs) var(--space-xs);
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   gap: var(--space-3xs);
@@ -523,6 +529,8 @@
   color: var(--accent);
   text-decoration: none;
   margin-top: auto;
+  margin-left: calc(var(--space-xs) * -1);
+  transition: color 160ms ease-out;
 }
 
 .signalCardLink:hover {
@@ -1369,7 +1377,7 @@
 /* ── Responsive: tablet and above ────────────────────────────────────────── */
 @media (min-width: 768px) {
   .layoutShell {
-    padding: calc(var(--inset-navbar) + var(--space-lg)) var(--space-xl) var(--space-4xl);
+    padding: calc(var(--inset-navbar) + var(--space-sm)) var(--space-xl) var(--space-4xl);
   }
 
   .bentoGrid {
@@ -1492,7 +1500,7 @@
 @media (max-width: 767px) {
   .layoutShell {
     gap: var(--space-md);
-    padding: var(--inset-navbar) var(--space-sm) var(--space-2xl);
+    padding: calc(var(--inset-navbar) + var(--space-xs)) var(--space-sm) var(--space-2xl);
   }
 
   .content {

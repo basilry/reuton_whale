@@ -84,6 +84,22 @@ function formatTime(language: "ko" | "en", value: number): string {
   }).format(new Date(value));
 }
 
+function formatRelativeTime(lastUpdatedMs: number, nowMs: number, language: "ko" | "en"): string {
+  const diffSec = Math.max(0, Math.floor((nowMs - lastUpdatedMs) / 1000));
+  if (language === "ko") {
+    if (diffSec < 5) return "방금 전";
+    if (diffSec < 60) return `${diffSec}초 전`;
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}분 전`;
+    return `${Math.floor(diffMin / 60)}시간 전`;
+  }
+  if (diffSec < 5) return "just now";
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  return `${Math.floor(diffMin / 60)}h ago`;
+}
+
 function getCopy(language: "ko" | "en") {
   if (language === "ko") {
     return {
@@ -208,6 +224,7 @@ export function LiveUpdatesController({
   const [connection, setConnection] = useState<LiveUpdatesConnectionState>(() =>
     initialConnectionState(copy),
   );
+  const [now, setNow] = useState(() => Date.now());
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
@@ -216,6 +233,11 @@ export function LiveUpdatesController({
   const lastRefreshAtRef = useRef(0);
   const visibleRef = useRef(true);
   const onlineRef = useRef(true);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setNow(Date.now()), 5000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     const effectCopy = getCopy(language);
@@ -506,13 +528,22 @@ export function LiveUpdatesController({
         : "bad";
   const label = copy.labels[connection.status];
 
+  const displayDetail =
+    connection.receivedAt != null && connection.status === "connected"
+      ? `${connection.detail} · ${
+          language === "ko"
+            ? `${formatRelativeTime(connection.receivedAt, now, language)} 업데이트`
+            : `Updated ${formatRelativeTime(connection.receivedAt, now, language)}`
+        }`
+      : connection.detail;
+
   return (
     <LiveUpdatesStatus
       ariaLabel={copy.ariaLabel}
       chipClassName={chipClassName}
       dotClassName={dotClassName}
       label={label}
-      title={connection.detail}
+      title={displayDetail}
       tone={tone}
     />
   );

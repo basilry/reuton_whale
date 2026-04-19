@@ -41,6 +41,16 @@
     0 0 0 4px color-mix(in srgb, var(--accent) 36%, transparent);
 }
 
+.chip:hover {
+  background: var(--surface-container);
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+
+.chip:active {
+  transform: scale(0.985);
+}
+
 .dot {
   width: 8px;
   height: 8px;
@@ -81,7 +91,7 @@
   top: calc(100% + var(--space-xs));
   left: 50%;
   transform: translateX(-50%);
-  z-index: 10;
+  z-index: var(--z-tooltip);
   width: min(320px, calc(100vw - 32px));
   max-width: 320px;
   padding: var(--space-sm) var(--space-md);

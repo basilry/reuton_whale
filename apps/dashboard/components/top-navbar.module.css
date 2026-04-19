@@ -149,6 +149,11 @@
   background: transparent;
 }
 
+.tabLink:active {
+  transform: scale(0.985);
+  transition: transform 80ms ease-out;
+}
+
 /* ── Right controls ── */
 .right {
   display: flex;
@@ -200,10 +205,29 @@
   .tabLink {
     padding: var(--space-2xs) var(--space-xs);
     font-size: var(--text-xs);
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .themeBtn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .brand {
+    min-height: 44px;
   }
 
   .brandSubtitle {
     display: none;
+  }
+}
+
+/* ── Tablet: ensure tab group stays centered ── */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .tabNav {
+    justify-content: center;
+    margin: 0 auto;
   }
 }
 

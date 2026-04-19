@@ -118,3 +118,52 @@
   font-size: 18px;
   color: var(--accent);
 }
+
+/* ── triggerCode: short locale code (e.g. KO) shown on desktop ── */
+.triggerCode {
+  display: none;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--on-surface);
+}
+
+/* Desktop (>=769px): show icon + code only, hide full text */
+@media (min-width: 769px) {
+  .text {
+    display: none;
+  }
+
+  .currentValue {
+    display: none;
+  }
+
+  .triggerCode {
+    display: inline;
+  }
+}
+
+/* Mobile (<=640px): show icon only, hide code + text + currentValue */
+@media (max-width: 640px) {
+  .text {
+    display: none;
+  }
+
+  .currentValue {
+    display: none;
+  }
+
+  .triggerCode {
+    display: none;
+  }
+
+  .trigger {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0 var(--space-xs);
+    justify-content: center;
+  }
+
+  .caret {
+    display: none;
+  }
+}

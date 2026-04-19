@@ -153,12 +153,30 @@ export function InsightsSidebar({
             <span className="material-symbols-outlined" aria-hidden="true">
               {item.icon}
             </span>
-            {labels?.[item.href] ?? item.label}
+            <span>{labels?.[item.href] ?? item.label}</span>
           </a>
         ))}
       </nav>
 
       {children ? <div className={styles.footerSlot}>{children}</div> : null}
+
+      <div className={styles.helpBlock} aria-label="키보드 단축키">
+        <span className={styles.helpTitle}>키보드 단축키</span>
+        <dl className={styles.helpList}>
+          <div className={styles.helpRow}>
+            <dt><kbd className={styles.kbd}>?</kbd></dt>
+            <dd>전체 단축키</dd>
+          </div>
+          <div className={styles.helpRow}>
+            <dt><kbd className={styles.kbd}>/</kbd></dt>
+            <dd>검색 포커스</dd>
+          </div>
+          <div className={styles.helpRow}>
+            <dt><kbd className={styles.kbd}>Esc</kbd></dt>
+            <dd>모달 닫기</dd>
+          </div>
+        </dl>
+      </div>
     </aside>
   );
 }

@@ -214,6 +214,9 @@ export function LanguageSelector({ currentLang = "ko" }: LanguageSelectorProps) 
         <span className={styles.currentValue}>
           {dictionary.languageSelector.options[language]}
         </span>
+        <span className={styles.triggerCode} aria-hidden="true">
+          {language.toUpperCase()}
+        </span>
         <span className={`${styles.caret} material-symbols-outlined`} aria-hidden="true">
           expand_more
         </span>

@@ -44,6 +44,7 @@ export function TopNavbar({ initialLanguage }: TopNavbarProps) {
           />
           <span className={styles.brandTextBlock}>
             <span className={styles.brandTitle}>WhaleScope</span>
+            {' '}
             <span className={styles.brandSubtitle}>{dictionary.navbar.brandSubtitle}</span>
           </span>
         </Link>
