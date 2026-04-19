@@ -81,11 +81,11 @@ LLM provider는 아래 중 최소 1개가 필요하다.
 | `TRONGRID_API_KEY` | TronGrid rate limit 완화용. contract/live 검증에서 권장 |
 | `TRONGRID_API_BASE` | TRX contract/live 수집 base. 기본값 `https://api.trongrid.io` |
 | `ENABLE_CHAIN_BTC` | BTC collector canary flag. 기본값 `false` |
-| `BTC_INDEXER_BASE` | BTC contract/live 수집 base. 기본값 `https://mempool.space/api` |
-| `BTC_INDEXER_KEY` | BTC 유료 indexer를 붙일 때만 사용 |
+| `BTC_INDEXER_BASE` | BTC primary contract/live 수집 base. 기본값 `https://mempool.space/api`이며, primary 실패 시 Blockchair secondary를 자동 fallback으로 사용 |
+| `BTC_INDEXER_KEY` | BTC primary indexer에 별도 키가 필요할 때만 사용 |
 | `ENABLE_CHAIN_DOGE` | DOGE collector canary flag. 기본값 `false` |
 | `DOGE_INDEXER_BASE` | DOGE contract/live 수집 base. 기본값 `https://api.blockchair.com/dogecoin` |
-| `BLOCKCHAIR_API_KEY` | DOGE Blockchair key. 현재 코드에서는 `DOGE_INDEXER_KEY` alias도 함께 읽음 |
+| `BLOCKCHAIR_API_KEY` | Blockchair key. 현재 코드는 DOGE에 사용하고 `DOGE_INDEXER_KEY` alias도 함께 읽는다 |
 | `TELETHON_API_ID` | Telegram channel listener 운영 시 필요 |
 | `TELETHON_API_HASH` | Telegram channel listener 운영 시 필요 |
 | `TELETHON_SESSION` | 기본값 `whalescope` |
@@ -151,7 +151,7 @@ DOGE_INDEXER_BASE="${DOGE_INDEXER_BASE:-https://api.blockchair.com/dogecoin}" \
 pytest -q -m contract tests/contract
 ```
 
-체인별로 하나씩 볼 때는 대상 base env만 켜고 같은 명령을 재사용하면 된다. TRX는 필요 시 `TRONGRID_API_KEY`, DOGE는 필요 시 `BLOCKCHAIR_API_KEY` 또는 기존 alias `DOGE_INDEXER_KEY`를 함께 넣는다.
+체인별로 하나씩 볼 때는 대상 base env만 켜고 같은 명령을 재사용하면 된다. TRX는 필요 시 `TRONGRID_API_KEY`, DOGE는 필요 시 `BLOCKCHAIR_API_KEY` 또는 기존 alias `DOGE_INDEXER_KEY`를 함께 넣는다. BTC는 `BTC_INDEXER_BASE`를 mempool primary로 유지하고, primary 오류나 rate limit 상황에서는 collector가 Blockchair secondary를 자동 fallback으로 시도한다.
 
 GitHub Actions 수동 경로:
 
@@ -179,7 +179,7 @@ GitHub Actions 수동 경로:
 |---|---|---|---|---|---|
 | 1 | XRP | `ENABLE_CHAIN_XRP=true` | `XRPSCAN_API_BASE` | 기본 CSV dry-run 후 import | `transactions` 또는 `address_activity`에 `chain=XRP`가 쌓이거나, 최소한 contract test pass + `/admin`에서 XRP가 unsupported로 남지 않는다. |
 | 2 | TRX | `ENABLE_CHAIN_TRX=true` | `TRONGRID_API_KEY`, `TRONGRID_API_BASE` | 기본 CSV dry-run 후 import | `chain=TRX` 이벤트가 들어오고, TRC20 활동이 있으면 `token=USDT`까지 확인한다. |
-| 3 | BTC | `ENABLE_CHAIN_BTC=true` | `BTC_INDEXER_BASE`, `BTC_INDEXER_KEY` | 기본 CSV dry-run 후 import | `/admin` 또는 사용자 카드에서 BTC partial-view 문구가 기대대로 보이고, BTC가 unsupported로 남지 않는다. |
+| 3 | BTC | `ENABLE_CHAIN_BTC=true` | `BTC_INDEXER_BASE`, 필요 시 `BTC_INDEXER_KEY` | 기본 CSV dry-run 후 import | `/admin` 또는 사용자 카드에서 BTC partial-view 문구가 기대대로 보이고, BTC가 unsupported로 남지 않는다. primary가 실패해도 fallback으로 전체 수집이 중단되지 않는다. |
 | 4 | DOGE | `ENABLE_CHAIN_DOGE=true` | `DOGE_INDEXER_BASE`, `BLOCKCHAIR_API_KEY` 또는 `DOGE_INDEXER_KEY` alias | 기본 CSV dry-run 후 import | DOGE partial-view가 기대대로 보이고, DOGE가 unsupported로 남지 않는다. |
 
 권장 canary 절차:

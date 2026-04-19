@@ -355,11 +355,11 @@ LLM provider key는 아래 중 최소 1개가 필요합니다.
 | `TRONGRID_API_KEY` | TRX collector rate limit 완화용 API 키입니다. 공개 기본 한도로도 동작하지만 운영에서는 설정을 권장합니다. |
 | `TRONGRID_API_BASE` | TRX 수집 API base URL입니다. 기본값은 `https://api.trongrid.io`입니다. |
 | `ENABLE_CHAIN_BTC` | BTC 수집 feature flag입니다. 기본값은 `false`이며, BTC indexer 확인 후에만 켭니다. |
-| `BTC_INDEXER_BASE` | BTC indexer base URL입니다. 기본값은 `https://mempool.space/api`입니다. |
-| `BTC_INDEXER_KEY` | BTC 유료 indexer를 붙일 때 쓰는 선택 키입니다. mempool.space 공개 endpoint만 쓰면 비워둘 수 있습니다. |
+| `BTC_INDEXER_BASE` | BTC primary indexer base URL입니다. 기본값은 `https://mempool.space/api`이며, primary 실패 시 collector가 Blockchair secondary를 자동 fallback으로 사용합니다. |
+| `BTC_INDEXER_KEY` | BTC primary indexer에 별도 키가 필요할 때 쓰는 선택 값입니다. mempool.space 공개 endpoint만 쓰면 비워둘 수 있습니다. |
 | `ENABLE_CHAIN_DOGE` | DOGE 수집 feature flag입니다. 기본값은 `false`이며, Blockchair 또는 호환 indexer 확인 후에만 켭니다. |
 | `DOGE_INDEXER_BASE` | DOGE indexer base URL입니다. 기본값은 `https://api.blockchair.com/dogecoin`입니다. |
-| `BLOCKCHAIR_API_KEY` | Dogecoin collector가 Blockchair 유료 티어를 사용할 때 쓰는 선택 키입니다. 기존 `DOGE_INDEXER_KEY`도 alias로 계속 지원합니다. |
+| `BLOCKCHAIR_API_KEY` | Blockchair 유료 티어를 사용할 때 쓰는 선택 키입니다. 현재 코드에서는 DOGE에 적용됩니다. 기존 `DOGE_INDEXER_KEY`도 alias로 계속 지원합니다. |
 | `TELETHON_API_ID` | Telegram user API ID입니다. listener 실제 실행에 필요합니다. |
 | `TELETHON_API_HASH` | Telegram user API hash입니다. listener 실제 실행에 필요합니다. |
 | `TELETHON_SESSION` | Telethon session 이름입니다. 기본값은 `whalescope`입니다. |
@@ -455,7 +455,7 @@ python scripts/import_watched_addresses.py --csv path/to/watched_addresses.csv
 
 - XRP: `ENABLE_CHAIN_XRP=true`, 필요 시 `XRPSCAN_API_BASE`
 - TRX: `ENABLE_CHAIN_TRX=true`, `TRONGRID_API_KEY`, 필요 시 `TRONGRID_API_BASE`
-- BTC: `ENABLE_CHAIN_BTC=true`, `BTC_INDEXER_BASE`, 필요 시 `BTC_INDEXER_KEY`
+- BTC: `ENABLE_CHAIN_BTC=true`, `BTC_INDEXER_BASE`(primary mempool), 필요 시 `BTC_INDEXER_KEY`. collector는 primary 실패 시 Blockchair secondary를 자동 fallback으로 시도한다.
 - DOGE: `ENABLE_CHAIN_DOGE=true`, `DOGE_INDEXER_BASE`, 필요 시 `BLOCKCHAIR_API_KEY` (`DOGE_INDEXER_KEY` alias 지원)
 
 상세 절차와 검증 포인트는 [docs/operational-run-verification.md](docs/operational-run-verification.md)의 canary rollout 섹션을 따릅니다. 운영자가 가장 자주 쓰는 사전 검증 경로는 아래 두 가지입니다.
@@ -670,7 +670,7 @@ streamlit run streamlit_app.py
 | `whalescope-bot` | Background Worker | `python scripts/run_bot.py` | Telegram 사용자 명령 처리 |
 | `whalescope-listener` | Background Worker | `TG_CHANNEL=@whale_alert_io python scripts/run_listener.py` | 공개 Telegram 채널 이벤트 수신 |
 
-Render에는 worker 역할별로 env를 나눠 등록하는 편이 안전합니다. `whalescope-pipeline`은 `ETHERSCAN_API_KEY`, `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELEGRAM_BOT_TOKEN`, LLM provider key 중 1개가 필요합니다. 추가 체인은 `render.yaml`에 정의된 feature flag를 기본값 `false`로 두고 canary로 켭니다: XRP는 `ENABLE_CHAIN_XRP=true`와 필요 시 `XRPSCAN_API_BASE=https://api.xrpscan.com/api/v1`, TRX는 `ENABLE_CHAIN_TRX=true`와 `TRONGRID_API_KEY` 및 필요 시 `TRONGRID_API_BASE=https://api.trongrid.io`, BTC는 `ENABLE_CHAIN_BTC=true`와 `BTC_INDEXER_BASE=https://mempool.space/api` 및 필요 시 `BTC_INDEXER_KEY`, DOGE는 `ENABLE_CHAIN_DOGE=true`와 `DOGE_INDEXER_BASE=https://api.blockchair.com/dogecoin` 및 필요 시 `BLOCKCHAIR_API_KEY`를 사용합니다. 코드 레벨에서는 기존 `DOGE_INDEXER_KEY`도 alias로 계속 읽습니다. BTC와 DOGE는 UTXO 체인이라 대표 주소 seed 기준 partial view로 먼저 시작한다는 점을 운영자가 알고 켜야 합니다. 공개 채널 브로드캐스트를 켤 때만 여기에 `TELEGRAM_BROADCAST_ENABLED=true`, `TELEGRAM_BROADCAST_DRY_RUN=false`, `TELEGRAM_BROADCAST_CHAT=@whalescope_alertz`를 추가하고, 해당 bot을 채널 관리자에 올립니다. `whalescope-listener`는 `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELETHON_API_ID`, `TELETHON_API_HASH`, `TELETHON_SESSION`, `TELETHON_SESSION_STRING`, `TG_CHANNEL`이 최소값이며, LLM provider key는 선택 사항입니다. production cron 정의는 저장소 루트 `render.yaml`을 기준으로 관리합니다.
+Render에는 worker 역할별로 env를 나눠 등록하는 편이 안전합니다. `whalescope-pipeline`은 `ETHERSCAN_API_KEY`, `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELEGRAM_BOT_TOKEN`, LLM provider key 중 1개가 필요합니다. 추가 체인은 `render.yaml`에 정의된 feature flag를 기본값 `false`로 두고 canary로 켭니다: XRP는 `ENABLE_CHAIN_XRP=true`와 필요 시 `XRPSCAN_API_BASE=https://api.xrpscan.com/api/v1`, TRX는 `ENABLE_CHAIN_TRX=true`와 `TRONGRID_API_KEY` 및 필요 시 `TRONGRID_API_BASE=https://api.trongrid.io`, BTC는 `ENABLE_CHAIN_BTC=true`와 `BTC_INDEXER_BASE=https://mempool.space/api` 및 필요 시 `BTC_INDEXER_KEY`를 사용합니다. BTC collector는 primary 오류나 rate limit 상황에서 Blockchair secondary를 자동 fallback으로 시도합니다. DOGE는 `ENABLE_CHAIN_DOGE=true`와 `DOGE_INDEXER_BASE=https://api.blockchair.com/dogecoin` 및 필요 시 `BLOCKCHAIR_API_KEY`를 사용합니다. 코드 레벨에서는 기존 `DOGE_INDEXER_KEY`도 alias로 계속 읽습니다. BTC와 DOGE는 UTXO 체인이라 대표 주소 seed 기준 partial view로 먼저 시작한다는 점을 운영자가 알고 켜야 합니다. 공개 채널 브로드캐스트를 켤 때만 여기에 `TELEGRAM_BROADCAST_ENABLED=true`, `TELEGRAM_BROADCAST_DRY_RUN=false`, `TELEGRAM_BROADCAST_CHAT=@whalescope_alertz`를 추가하고, 해당 bot을 채널 관리자에 올립니다. `whalescope-listener`는 `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELETHON_API_ID`, `TELETHON_API_HASH`, `TELETHON_SESSION`, `TELETHON_SESSION_STRING`, `TG_CHANNEL`이 최소값이며, LLM provider key는 선택 사항입니다. production cron 정의는 저장소 루트 `render.yaml`을 기준으로 관리합니다.
 
 ### Vercel dashboard
 
