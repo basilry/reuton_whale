@@ -125,7 +125,8 @@ ADDRESS_ACTIVITY_HEADERS = [
 TG_WHALE_EVENTS_HEADERS = [
     "tg_msg_id", "tg_date", "blockchain", "symbol", "amount",
     "amount_usd", "from_owner_type", "from_owner", "to_owner_type",
-    "to_owner", "raw_text", "parsed_confidence", "collected_at",
+    "to_owner", "raw_text", "parsed_confidence", "external_channel",
+    "external_display_name", "external_confidence", "collected_at",
 ]
 
 SIGNALS_HEADERS = [

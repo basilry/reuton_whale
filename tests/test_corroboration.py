@@ -117,11 +117,20 @@ class TestCorroborationTxHashPath:
             source="tg", tx_hash=shared_hash, direction="in",
             amount_usd=4_000_000, block_time=bt,
         )
+        tg_ev = Event(
+            **{
+                **tg_ev.__dict__,
+                "observation_source": "tg_mirror",
+                "external_channel": "Whale Alert",
+                "external_confidence": "high",
+            }
+        )
         signals = engine.run([chain_ev, tg_ev], NOW)
         # corroborated_move rule should produce a "both" signal
-        both_sigs = [s for s in signals if s.source == "both"]
-        assert len(both_sigs) >= 1
-        assert shared_hash in both_sigs[0].evidence_tx_hashes
+        corr_sigs = [s for s in signals if s.rule == "corroborated_move"]
+        assert len(corr_sigs) >= 1
+        assert shared_hash in corr_sigs[0].evidence_tx_hashes
+        assert corr_sigs[0].extra["cross_checked_by"] == "Whale Alert"
 
     def test_no_tg_event_signal_stays_chain(self):
         """Without a TG counterpart, signal source remains 'chain'."""

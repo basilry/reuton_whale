@@ -41,6 +41,17 @@ def _score_from_z(z: float, sigma: float) -> float:
     return min(10.0, 5.0 + (z - sigma))
 
 
+def _external_channel_label(event: Event) -> str:
+    return event.external_channel or event.external_channel_handle or "Telegram"
+
+
+def _external_confidence(event: Event) -> str:
+    confidence = str(event.external_confidence or "medium").strip().lower()
+    if confidence in {"low", "medium", "high"}:
+        return confidence
+    return "medium"
+
+
 # ---------------------------------------------------------------------------
 # Rule 1: CEX outflow spike
 # ---------------------------------------------------------------------------
@@ -289,7 +300,65 @@ def _make_tg_cex_inflow_burst(cfg: dict) -> Callable:
 
 
 # ---------------------------------------------------------------------------
-# Rule 7: Corroborated move
+# Rule 7: External-only observation
+# ---------------------------------------------------------------------------
+def _make_external_only_observation(cfg: dict) -> Callable:
+    min_usd = cfg["min_usd"]
+    severity_base = cfg["severity_base"]
+    allowed_chains = {str(chain).strip().upper() for chain in cfg.get("chains_allowed", [])}
+
+    def rule(events: list[Event], ctx: RuleContext) -> list[Signal]:
+        signals = []
+        for event in events:
+            if event.source != "tg" or event.observation_source != "tg_mirror":
+                continue
+            if allowed_chains and event.chain.upper() not in allowed_chains:
+                continue
+            if event.amount_usd < min_usd:
+                continue
+
+            confidence = _external_confidence(event)
+            if confidence == "low":
+                continue
+
+            severity = severity_base
+            if severity == "low" and confidence == "high" and event.amount_usd >= (min_usd * 2):
+                severity = "medium"
+
+            channel = _external_channel_label(event)
+            score = min(10.0, 5.0 + math.log10(max(event.amount_usd / min_usd, 1.0)) * 1.5)
+            signals.append(Signal(
+                signal_id=_new_id(),
+                rule="external_only_observation",
+                severity=severity,
+                score=round(score, 2),
+                confidence=confidence,  # type: ignore[arg-type]
+                source="tg",
+                evidence_tx_hashes=[event.tx_hash] if event.tx_hash else [],
+                window_start=event.block_time,
+                window_end=event.block_time,
+                summary=(
+                    f"External observation: {channel} reported "
+                    f"${event.amount_usd:,.0f} on {event.chain}"
+                ),
+                extra={
+                    "observation_source": "tg_mirror",
+                    "external_channel": event.external_channel,
+                    "external_channel_handle": event.external_channel_handle,
+                    "external_confidence": confidence,
+                    "chain": event.chain,
+                    "token": event.token,
+                    "amount_usd": event.amount_usd,
+                    "direction": event.direction,
+                },
+            ))
+        return signals
+
+    return rule
+
+
+# ---------------------------------------------------------------------------
+# Rule 8: Corroborated move
 # ---------------------------------------------------------------------------
 def _make_corroborated_move(cfg: dict) -> Callable:
     match_window_min = cfg["match_window_minutes"]
@@ -325,6 +394,7 @@ def _make_corroborated_move(cfg: dict) -> Callable:
             used_chain_ids.add(id(matched))
             tx_hashes = list({h for h in [te.tx_hash, matched.tx_hash] if h})
             severity = _bump_severity("medium", severity_boost)
+            channel = _external_channel_label(te)
             signals.append(Signal(
                 signal_id=_new_id(),
                 rule="corroborated_move",
@@ -335,7 +405,21 @@ def _make_corroborated_move(cfg: dict) -> Callable:
                 evidence_tx_hashes=tx_hashes,
                 window_start=min(te.block_time, matched.block_time),
                 window_end=max(te.block_time, matched.block_time),
-                summary=f"Corroborated move: TG + chain both report ${te.amount_usd:,.0f}",
+                summary=(
+                    f"Corroborated move: direct chain + {channel} both report "
+                    f"${te.amount_usd:,.0f}"
+                ),
+                extra={
+                    "observation_source": "direct_chain",
+                    "cross_checked_by": channel,
+                    "external_channel": te.external_channel,
+                    "external_channel_handle": te.external_channel_handle,
+                    "external_confidence": _external_confidence(te),
+                    "chain": matched.chain,
+                    "token": matched.token,
+                    "amount_usd": matched.amount_usd or te.amount_usd,
+                    "direction": matched.direction,
+                },
             ))
         return signals
 
@@ -343,7 +427,7 @@ def _make_corroborated_move(cfg: dict) -> Callable:
 
 
 # ---------------------------------------------------------------------------
-# Rule 8: Weekly net accumulation
+# Rule 9: Weekly net accumulation
 # ---------------------------------------------------------------------------
 def _make_weekly_net_accumulation(cfg: dict) -> Callable:
     lookback_weeks = cfg["lookback_weeks"]
@@ -398,6 +482,7 @@ _MAKERS = {
     "smart_money_accumulation": _make_smart_money_accumulation,
     "token_whale_concentration_shift": _make_token_whale_concentration_shift,
     "tg_cex_inflow_burst": _make_tg_cex_inflow_burst,
+    "external_only_observation": _make_external_only_observation,
     "corroborated_move": _make_corroborated_move,
     "weekly_net_accumulation": _make_weekly_net_accumulation,
 }

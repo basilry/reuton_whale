@@ -36,6 +36,11 @@ rules:
     window_minutes: 10
     min_events: 3
     severity_base: medium
+  - name: external_only_observation
+    source: tg_mirror
+    min_usd: 5000000
+    severity_base: low
+    chains_allowed: [BTC, XRP, DOGE, TRX, BSC, TON]
   - name: corroborated_move
     match_window_minutes: 3
     usd_tolerance_pct: 5.0

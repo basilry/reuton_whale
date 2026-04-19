@@ -21,6 +21,10 @@ class Event:
     counterparty_category: Optional[str]
     block_time: datetime
     collected_at: datetime
+    observation_source: Literal["direct_chain", "tg_mirror"] = "direct_chain"
+    external_channel: Optional[str] = None
+    external_channel_handle: Optional[str] = None
+    external_confidence: Optional[Literal["low", "medium", "high"]] = None
 
 
 @dataclass(frozen=True)

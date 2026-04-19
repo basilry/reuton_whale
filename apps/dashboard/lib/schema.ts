@@ -90,6 +90,9 @@ export const TG_WHALE_EVENTS_HEADERS = [
   "to_owner",
   "raw_text",
   "parsed_confidence",
+  "external_channel",
+  "external_display_name",
+  "external_confidence",
   "collected_at",
 ] as const;
 
@@ -260,6 +263,9 @@ export interface TgWhaleEventRow {
   to_owner: string;
   raw_text: string;
   parsed_confidence: string;
+  external_channel: string;
+  external_display_name: string;
+  external_confidence: string;
   collected_at: string;
 }
 

@@ -7,6 +7,7 @@ import os
 import re
 from datetime import datetime, timezone
 
+from src.ingestion.tg_normalizer import get_tg_channel_profile, normalize_tg_channel_handle
 from src.observability.service_health import append_service_heartbeat, build_heartbeat_key
 from src.utils.logger import get_logger
 
@@ -103,6 +104,7 @@ class TelethonListener:
         self._channel = channel
         self._phone = phone
         self._session_string = session_string
+        self._channel_profile = get_tg_channel_profile(channel)
         self._last_message_at: datetime | None = None
         self._last_heartbeat_at: datetime | None = None
         self._message_count: int = 0
@@ -243,6 +245,12 @@ class TelethonListener:
             return
 
         tg_date = msg_date.isoformat() if hasattr(msg_date, "isoformat") else str(msg_date)
+        external_channel_handle = (
+            normalize_tg_channel_handle(self._channel)
+            or str(self._channel_profile.get("handle") or "").strip()
+        )
+        external_display_name = str(self._channel_profile.get("display_name") or "").strip()
+        external_confidence = str(self._channel_profile.get("confidence") or "medium").strip().lower()
         event_row = {
             "tg_msg_id": str(msg_id),
             "tg_date": tg_date,
@@ -256,6 +264,9 @@ class TelethonListener:
             "to_owner": parsed.get("to_owner", "unknown"),
             "raw_text": text,
             "parsed_confidence": confidence,
+            "external_channel": external_channel_handle,
+            "external_display_name": external_display_name,
+            "external_confidence": external_confidence,
             "collected_at": datetime.now(timezone.utc).isoformat(),
         }
 

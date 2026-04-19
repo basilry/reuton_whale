@@ -1170,6 +1170,11 @@ class SheetsClient:
         with self._write_lock:
             try:
                 ws = self._worksheet(TAB_TG_WHALE_EVENTS)
+                self._ensure_append_only_schema_once(
+                    ws,
+                    list(TG_WHALE_EVENTS_HEADERS),
+                    tab_name=TAB_TG_WHALE_EVENTS,
+                )
                 all_values = ws.get_all_values()
                 msg_col = TG_WHALE_EVENTS_HEADERS.index("tg_msg_id")
                 target = str(event.get("tg_msg_id", ""))
@@ -1444,6 +1449,11 @@ class SheetsClient:
         """
         try:
             ws = self._worksheet(TAB_TG_WHALE_EVENTS)
+            self._ensure_append_only_schema_once(
+                ws,
+                list(TG_WHALE_EVENTS_HEADERS),
+                tab_name=TAB_TG_WHALE_EVENTS,
+            )
             all_values = ws.get_all_values()
             if len(all_values) <= 1:
                 return []

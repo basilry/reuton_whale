@@ -3,6 +3,11 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from functools import lru_cache
+from pathlib import Path
+from typing import Literal
+
+import yaml
 
 from src.signals.models import Event
 from src.utils.datetime_utils import parse_dt
@@ -10,6 +15,8 @@ from src.utils.logger import get_logger
 from src.utils.number_utils import safe_float
 
 logger = get_logger("tg_normalizer")
+_TG_CHANNELS_CONFIG = Path(__file__).resolve().parents[2] / "config" / "tg_channels.yaml"
+ChannelConfidence = Literal["low", "medium", "high"]
 
 TG_CHAIN_MAP = {
     "bitcoin": "BTC",
@@ -35,6 +42,59 @@ def normalize_tg_chain(value: object) -> str:
     if raw == "unknown":
         return "unknown"
     return TG_CHAIN_MAP.get(raw, raw.upper())
+
+
+def normalize_tg_channel_handle(value: object) -> str:
+    raw = str(value or "").strip()
+    if raw.startswith("@"):
+        raw = raw[1:]
+    return raw.lower()
+
+
+@lru_cache(maxsize=1)
+def _load_tg_channel_profiles() -> dict[str, dict[str, object]]:
+    if not _TG_CHANNELS_CONFIG.exists():
+        return {}
+
+    try:
+        raw = yaml.safe_load(_TG_CHANNELS_CONFIG.read_text(encoding="utf-8")) or {}
+    except Exception as exc:  # pragma: no cover - defensive config path
+        logger.warning("Failed to load tg_channels config: %s", exc)
+        return {}
+
+    profiles: dict[str, dict[str, object]] = {}
+    for item in raw.get("channels", []) if isinstance(raw, dict) else []:
+        if not isinstance(item, dict):
+            continue
+        handle = normalize_tg_channel_handle(item.get("handle"))
+        if not handle:
+            continue
+        confidence = str(item.get("confidence") or "medium").strip().lower()
+        if confidence not in {"low", "medium", "high"}:
+            confidence = "medium"
+        profiles[handle] = {
+            "handle": handle,
+            "display_name": str(item.get("display_name") or handle).strip() or handle,
+            "confidence": confidence,
+            "weight": item.get("weight", 1.0),
+        }
+    return profiles
+
+
+def get_tg_channel_profile(value: object) -> dict[str, object]:
+    handle = normalize_tg_channel_handle(value)
+    config = _load_tg_channel_profiles()
+    profile = config.get(handle, {})
+    confidence = str(profile.get("confidence") or "medium").strip().lower()
+    if confidence not in {"low", "medium", "high"}:
+        confidence = "medium"
+    display_name = str(profile.get("display_name") or handle or "Telegram").strip()
+    return {
+        "handle": handle,
+        "display_name": display_name or "Telegram",
+        "confidence": confidence,
+        "weight": profile.get("weight", 1.0),
+    }
 
 
 def tg_owner_label(value: object, fallback: str = "unknown") -> str:
@@ -75,6 +135,21 @@ def tg_row_to_event(row: dict) -> Event:
     from_owner_type = str(row.get("from_owner_type") or "unknown").strip().lower() or "unknown"
     to_owner_type = str(row.get("to_owner_type") or "unknown").strip().lower() or "unknown"
     direction, counterparty_category = tg_direction(from_owner_type, to_owner_type)
+    profile = get_tg_channel_profile(row.get("external_channel") or row.get("channel"))
+    external_display_name = (
+        str(row.get("external_display_name") or profile.get("display_name") or "").strip()
+        or None
+    )
+    external_handle = (
+        normalize_tg_channel_handle(row.get("external_channel") or row.get("channel"))
+        or str(profile.get("handle") or "").strip()
+        or None
+    )
+    external_confidence = str(
+        row.get("external_confidence") or profile.get("confidence") or "medium"
+    ).strip().lower()
+    if external_confidence not in {"low", "medium", "high"}:
+        external_confidence = "medium"
 
     return Event(
         source="tg",
@@ -102,4 +177,8 @@ def tg_row_to_event(row: dict) -> Event:
         counterparty_category=counterparty_category,
         block_time=block_time,
         collected_at=collected_at,
+        observation_source="tg_mirror",
+        external_channel=external_display_name,
+        external_channel_handle=external_handle,
+        external_confidence=external_confidence,  # type: ignore[arg-type]
     )

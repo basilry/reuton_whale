@@ -106,6 +106,23 @@ function participantBadges(participant: WhaleStoryParticipant): string[] {
   return badges;
 }
 
+function observationConfidenceLabel(value?: string): string | null {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === "high") {
+    return "채널 신뢰도 높음";
+  }
+  if (normalized === "medium") {
+    return "채널 신뢰도 중간";
+  }
+  if (normalized === "low") {
+    return "채널 신뢰도 낮음";
+  }
+  return `채널 신뢰도 ${value}`;
+}
+
 function buildSegmentedWidth(value: number, thresholds: number[]): number {
   if (!Number.isFinite(value) || value <= 0 || thresholds.length === 0) {
     return 0;
@@ -288,6 +305,8 @@ export function WhaleStoryDetailModal({
     story.symbol ? `자산 ${story.symbol}` : "",
     story.amountToken ? `수량 ${formatTokenAmount(story.amountToken, story.symbol)}` : "",
     story.amountUsd ? `USD 기준 ${formatUsd(story.amountUsd)}` : "",
+    story.observationLabel ? `관측 레인 ${story.observationLabel}` : "",
+    observationConfidenceLabel(story.externalConfidence) ?? "",
     story.counterpartyNote ?? "",
   ].filter(Boolean);
 
@@ -306,6 +325,11 @@ export function WhaleStoryDetailModal({
         <div className={styles.header}>
           <div className={styles.headerCopy}>
             <p className={styles.eyebrow}>Whale Story Detail</p>
+            {story.observationLabel ? (
+              <div className={styles.observationBadgeRow}>
+                <span className={styles.observationBadge}>{story.observationLabel}</span>
+              </div>
+            ) : null}
             <h3 id={titleId} className={styles.title}>
               {story.title}
             </h3>
@@ -353,6 +377,12 @@ export function WhaleStoryDetailModal({
               {signalCount > 0 ? `${signalCount}건` : "없음"}
             </strong>
           </div>
+          {story.observationLabel ? (
+            <div className={styles.metaItem}>
+              <span className={styles.metaLabel}>관측 레인</span>
+              <strong className={styles.metaValue}>{story.observationLabel}</strong>
+            </div>
+          ) : null}
         </div>
 
         <div className={styles.body}>

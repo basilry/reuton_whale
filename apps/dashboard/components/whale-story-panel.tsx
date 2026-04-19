@@ -56,6 +56,11 @@ export function WhaleStoryPanel({
               <div className={styles.storyCard}>
                 <div className={styles.storyDot} data-tone={story.tone} />
                 <div className={styles.storyCopy}>
+                  {story.observationLabel ? (
+                    <div className={styles.observationBadgeRow}>
+                      <span className={styles.observationBadge}>{story.observationLabel}</span>
+                    </div>
+                  ) : null}
                   <h4 className={styles.storyTitle}>{story.title}</h4>
                   <p className={styles.storyBody}>{story.body}</p>
                   <div className={styles.storyMeta}>

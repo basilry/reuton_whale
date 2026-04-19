@@ -111,6 +111,13 @@ def _load(name: str, cfg_overrides: dict | None = None) -> object:
             "usd_tolerance_pct": 5.0,
             "severity_boost": 1,
         },
+        "external_only_observation": {
+            "name": "external_only_observation",
+            "source": "tg_mirror",
+            "min_usd": 5_000_000,
+            "severity_base": "low",
+            "chains_allowed": ["BTC", "XRP", "DOGE", "TRX", "BSC", "TON"],
+        },
         "weekly_net_accumulation": {
             "name": "weekly_net_accumulation",
             "lookback_weeks": 4,
@@ -357,7 +364,56 @@ class TestCorroboratedMove:
 
 
 # ---------------------------------------------------------------------------
-# Rule 8: weekly_net_accumulation
+# Rule 8: external_only_observation
+# ---------------------------------------------------------------------------
+class TestExternalOnlyObservation:
+    def test_supported_chain_and_threshold_generates_signal(self):
+        rule = _load("external_only_observation")
+        event = _evt(source="tg", chain="BTC", tx_hash=None, amount_usd=6_000_000)
+        event = Event(
+            **{
+                **event.__dict__,
+                "observation_source": "tg_mirror",
+                "external_channel": "Whale Alert",
+                "external_confidence": "high",
+            }
+        )
+        signals = rule([event], _ctx())
+        assert len(signals) == 1
+        sig = signals[0]
+        assert sig.rule == "external_only_observation"
+        assert sig.source == "tg"
+        assert sig.extra["external_channel"] == "Whale Alert"
+
+    def test_direct_chain_is_skipped_even_if_amount_is_large(self):
+        rule = _load("external_only_observation")
+        event = _evt(source="tg", chain="ETH", amount_usd=9_000_000)
+        event = Event(
+            **{
+                **event.__dict__,
+                "observation_source": "tg_mirror",
+                "external_channel": "Whale Alert",
+                "external_confidence": "high",
+            }
+        )
+        assert rule([event], _ctx()) == []
+
+    def test_low_confidence_channel_is_hidden(self):
+        rule = _load("external_only_observation")
+        event = _evt(source="tg", chain="BTC", amount_usd=7_000_000)
+        event = Event(
+            **{
+                **event.__dict__,
+                "observation_source": "tg_mirror",
+                "external_channel": "Scam Alerts",
+                "external_confidence": "low",
+            }
+        )
+        assert rule([event], _ctx()) == []
+
+
+# ---------------------------------------------------------------------------
+# Rule 9: weekly_net_accumulation
 # ---------------------------------------------------------------------------
 class TestWeeklyNetAccumulation:
     def test_no_recent_events_no_signal(self):

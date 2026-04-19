@@ -5,7 +5,9 @@ from datetime import datetime, timezone
 
 from src.ingestion.tg_normalizer import (
     TG_CHAIN_MAP,
+    get_tg_channel_profile,
     normalize_tg_chain,
+    normalize_tg_channel_handle,
     tg_direction,
     tg_owner_label,
     tg_row_to_event,
@@ -41,6 +43,18 @@ def test_tg_owner_label_uses_fallback_on_empty():
     assert tg_owner_label("   ", fallback="whale") == "whale"
 
 
+def test_normalize_tg_channel_handle_strips_at_prefix():
+    assert normalize_tg_channel_handle("@whale_alert_io") == "whale_alert_io"
+    assert normalize_tg_channel_handle("LookOnChain") == "lookonchain"
+
+
+def test_get_tg_channel_profile_uses_config_display_name():
+    profile = get_tg_channel_profile("@whale_alert_io")
+    assert profile["handle"] == "whale_alert_io"
+    assert profile["display_name"] == "Whale Alert"
+    assert profile["confidence"] == "high"
+
+
 def test_tg_direction_covers_all_branches():
     # Exchange-to-exchange -> out + cex_to_cex category (venue rebalance noise).
     assert tg_direction("exchange", "exchange") == ("out", "cex_to_cex")
@@ -64,6 +78,9 @@ def test_tg_row_to_event_happy_path():
         "symbol": "usdt",
         "amount": "1,000,000",
         "amount_usd": "1,000,500",
+        "external_channel": "whale_alert_io",
+        "external_display_name": "Whale Alert",
+        "external_confidence": "high",
     }
     event = tg_row_to_event(row)
     assert event.source == "tg"
@@ -77,6 +94,10 @@ def test_tg_row_to_event_happy_path():
     assert event.amount_token == 1_000_000.0
     assert event.amount_usd == 1_000_500.0
     assert event.block_time == datetime(2026, 4, 17, 12, 0, tzinfo=timezone.utc)
+    assert event.observation_source == "tg_mirror"
+    assert event.external_channel == "Whale Alert"
+    assert event.external_channel_handle == "whale_alert_io"
+    assert event.external_confidence == "high"
 
 
 def test_tg_row_to_event_defaults_on_missing_fields():
@@ -88,5 +109,6 @@ def test_tg_row_to_event_defaults_on_missing_fields():
     assert event.amount_usd == 0.0
     assert event.direction == "out"
     assert event.counterparty_category is None
+    assert event.observation_source == "tg_mirror"
     # Missing tg_date falls back to now(utc); just confirm timezone is set.
     assert event.block_time.tzinfo is not None

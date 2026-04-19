@@ -35,5 +35,9 @@ class XrplError(Exception):
     pass
 
 
+class TronError(Exception):
+    pass
+
+
 class SignalEngineError(Exception):
     pass

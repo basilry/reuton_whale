@@ -52,6 +52,9 @@ class PipelineEnv:
     solscan_api_key: str = ""
     enable_chain_xrp: bool = False
     xrpscan_api_base: str = "https://api.xrpscan.com/api/v1"
+    enable_chain_trx: bool = False
+    trongrid_api_key: str = ""
+    trongrid_api_base: str = "https://api.trongrid.io"
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
     groq_api_key: str = ""
@@ -128,15 +131,22 @@ def load_pipeline_env(
         os.getenv("XRPSCAN_API_BASE", "https://api.xrpscan.com/api/v1").strip()
         or "https://api.xrpscan.com/api/v1"
     )
+    enable_chain_trx = env_bool("ENABLE_CHAIN_TRX", default=False)
+    trongrid_api_key = os.getenv("TRONGRID_API_KEY", "").strip()
+    trongrid_api_base = (
+        os.getenv("TRONGRID_API_BASE", "https://api.trongrid.io").strip()
+        or "https://api.trongrid.io"
+    )
     anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
     gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip()
     groq_api_key = os.getenv("GROQ_API_KEY", "").strip()
     telegram_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 
-    if require_chain_api and not (etherscan_api_key or enable_chain_xrp):
+    if require_chain_api and not (etherscan_api_key or enable_chain_xrp or enable_chain_trx):
         raise ValueError(
             "Missing required chain collector configuration: set ETHERSCAN_API_KEY "
-            "or enable at least one optional collector such as ENABLE_CHAIN_XRP=true"
+            "or enable at least one optional collector such as ENABLE_CHAIN_XRP=true "
+            "or ENABLE_CHAIN_TRX=true"
         )
     if require_llm and not any((anthropic_api_key, gemini_api_key, groq_api_key)):
         raise ValueError(
@@ -153,6 +163,9 @@ def load_pipeline_env(
         solscan_api_key=solscan_api_key,
         enable_chain_xrp=enable_chain_xrp,
         xrpscan_api_base=xrpscan_api_base,
+        enable_chain_trx=enable_chain_trx,
+        trongrid_api_key=trongrid_api_key,
+        trongrid_api_base=trongrid_api_base,
         anthropic_api_key=anthropic_api_key,
         gemini_api_key=gemini_api_key,
         groq_api_key=groq_api_key,
@@ -224,6 +237,16 @@ def build_optional_collectors(env: PipelineEnv) -> tuple[ChainCollector, ...]:
                     "https://api.xrpscan.com/api/v1",
                 )
                 or "https://api.xrpscan.com/api/v1"
+            )
+        )
+    if getattr(env, "enable_chain_trx", False):
+        from src.ingestion.tron import TronCollector
+
+        collectors.append(
+            TronCollector(
+                api_key=getattr(env, "trongrid_api_key", "") or None,
+                base_url=getattr(env, "trongrid_api_base", "https://api.trongrid.io")
+                or "https://api.trongrid.io",
             )
         )
     return tuple(collectors)

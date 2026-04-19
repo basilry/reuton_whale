@@ -32,7 +32,14 @@ type TransactionLike = Pick<
 
 type SignalLike = Pick<
   SignalRow,
-  "signal_id" | "created_at" | "rule" | "severity" | "score" | "evidence_tx_hashes" | "summary"
+  | "signal_id"
+  | "created_at"
+  | "rule"
+  | "severity"
+  | "score"
+  | "evidence_tx_hashes"
+  | "summary"
+  | "extra_json"
 >;
 
 type BriefLike = {
@@ -41,6 +48,13 @@ type BriefLike = {
 };
 
 type StoryCard = Pick<WhaleStory, "title" | "body" | "meta" | "hash" | "tone" | "generatedAt">;
+
+type ObservationPresentation = {
+  label?: string;
+  source?: string;
+  confidence?: string;
+  sourceKind?: "direct_chain" | "tg_mirror" | "corroborated";
+};
 
 function normalizeText(value?: string): string {
   return compactString(value).toLowerCase();
@@ -58,6 +72,74 @@ function signalEvidenceHashes(value: string): string[] {
     .split(/[,|\s]+/)
     .map((item) => compactString(item).toLowerCase())
     .filter(Boolean);
+}
+
+function signalExtra(signal: SignalLike | null): Record<string, unknown> {
+  if (!signal) {
+    return {};
+  }
+  return parseJsonSafe<Record<string, unknown>>(signal.extra_json) ?? {};
+}
+
+function buildObservationPresentation(signal: SignalLike | null): ObservationPresentation {
+  const extra = signalExtra(signal);
+  const channel =
+    compactString(String(extra.external_channel ?? extra.cross_checked_by ?? "")) ||
+    compactString(String(extra.external_channel_handle ?? ""));
+  const confidence = compactString(String(extra.external_confidence ?? ""));
+  const observationSource = compactString(String(extra.observation_source ?? "")).toLowerCase();
+  const rule = normalizeText(signal?.rule);
+
+  if (rule === "corroborated_move" && channel) {
+    return {
+      label: `직접 관측 · ${channel} 교차확인`,
+      source: channel,
+      confidence,
+      sourceKind: "corroborated",
+    };
+  }
+
+  if ((rule === "external_only_observation" || observationSource === "tg_mirror") && channel) {
+    return {
+      label: `외부 관측 · ${channel}`,
+      source: channel,
+      confidence,
+      sourceKind: "tg_mirror",
+    };
+  }
+
+  if (rule === "external_only_observation" || observationSource === "tg_mirror") {
+    return {
+      label: "외부 관측",
+      confidence,
+      sourceKind: "tg_mirror",
+    };
+  }
+
+  return {};
+}
+
+function signalChain(signal: SignalLike | null): string | undefined {
+  const chain = compactString(String(signalExtra(signal).chain ?? ""));
+  return chain || undefined;
+}
+
+function signalSymbol(signal: SignalLike | null): string | undefined {
+  const extra = signalExtra(signal);
+  const symbol = compactString(
+    String(extra.asset ?? extra.symbol ?? extra.token ?? ""),
+  ).toUpperCase();
+  return symbol || undefined;
+}
+
+function signalAmountUsd(signal: SignalLike | null): number | undefined {
+  const extra = signalExtra(signal);
+  const value = parseFloatSafe(
+    compactString(
+      String(extra.amount_usd ?? extra.total_usd ?? extra.notional_usd ?? ""),
+    ),
+  );
+  return value && value > 0 ? value : undefined;
 }
 
 function formatCompactUsd(value: number): string {
@@ -198,6 +280,7 @@ function humanizeRule(rule: string): string {
     corroborated_move: "온체인과 채널에서 함께 확인된 이동",
     whale_cluster_move: "고래 군집 이동",
     tg_cex_inflow_burst: "텔레그램과 거래소 유입 동시 감지",
+    external_only_observation: "외부 채널 관측",
   };
 
   return labels[normalized] ?? compactString(rule).replace(/[_-]+/g, " ");
@@ -359,6 +442,7 @@ function buildTransactionStory(
     curatedWallets,
   );
   const signal = topSignal(relatedSignals);
+  const observation = buildObservationPresentation(signal);
   const curatedParticipants = [fromParticipant, toParticipant].filter(
     (item) => item.curatedWallet,
   );
@@ -397,6 +481,10 @@ function buildTransactionStory(
     body,
     meta: metaParts.join(" · "),
     tone: toneForTransaction(amountUsd, signal),
+    observationLabel: observation.label,
+    observationSource: observation.sourceKind,
+    externalChannel: observation.source,
+    externalConfidence: observation.confidence,
     hash: txHash,
     symbol,
     chain: compactString(transaction.blockchain) || undefined,
@@ -414,18 +502,46 @@ function buildTransactionStory(
 
 function buildSignalStory(signal: SignalLike): WhaleStory {
   const label = humanizeRule(signal.rule);
+  const observation = buildObservationPresentation(signal);
+  const chain = signalChain(signal);
+  const symbol = signalSymbol(signal);
+  const amountUsd = signalAmountUsd(signal);
+  const externalSource = observation.source;
+  const ruleName = normalizeText(signal.rule);
+  const title =
+    ruleName === "external_only_observation" && externalSource
+      ? `${externalSource} 외부 관측`
+      : `${label} 포착`;
+  const body =
+    ruleName === "external_only_observation"
+      ? `${externalSource || "외부 채널"}이(가) ${chainLabel(chain)}에서 ${
+          amountUsd ? `${formatCompactUsd(amountUsd)} 규모의 ` : ""
+        }${symbol ?? "대형"} 이동을 보고했습니다. 아직 직접 관측 교차 확인은 없습니다.`
+      : ruleName === "corroborated_move" && externalSource
+        ? `${chainLabel(chain)}에서 감지한 이동을 ${externalSource} 채널이 함께 보고해 교차 확인 상태로 분류했습니다.`
+        : compactString(signal.summary) ||
+          `${label} 신호가 감지되었습니다. 아직 연결된 거래 근거는 적지만 후속 움직임을 지켜볼 필요가 있습니다.`;
+  const metaParts = [
+    chain ? chainLabel(chain) : "",
+    formatDateTime(compactString(signal.created_at) || undefined),
+  ].filter(Boolean);
   return {
     id: compactString(signal.signal_id) || `${label}-${compactString(signal.created_at)}`,
     kind: "signal",
-    title: `${label} 포착`,
-    body:
-      compactString(signal.summary) ||
-      `${label} 신호가 감지되었습니다. 아직 연결된 거래 근거는 적지만 후속 움직임을 지켜볼 필요가 있습니다.`,
-    meta: formatDateTime(compactString(signal.created_at) || undefined),
+    title,
+    body,
+    meta: metaParts.join(" · "),
     tone: toneForSignal(signal),
+    observationLabel: observation.label,
+    observationSource: observation.sourceKind,
+    externalChannel: observation.source,
+    externalConfidence: observation.confidence,
+    symbol,
+    chain,
+    amountUsd,
     occurredAt: compactString(signal.created_at) || undefined,
     generatedAt: compactString(signal.created_at) || undefined,
-    priority: 5,
+    priority: ruleName === "external_only_observation" ? 9 : ruleName === "corroborated_move" ? 11 : 5,
     supportingSignalIds: [compactString(signal.signal_id)].filter(Boolean),
     participants: [],
   };
@@ -482,11 +598,31 @@ export function buildWhaleStories(options?: {
       curatedWallets,
     ),
   );
+  const transactionHashes = new Set(
+    transactionStories
+      .map((story) => normalizeText(story.hash))
+      .filter(Boolean),
+  );
+  const standaloneSignalStories = signals
+    .filter((signal) => {
+      const rule = normalizeText(signal.rule);
+      if (rule === "external_only_observation") {
+        return true;
+      }
+      const evidenceHashes = signalEvidenceHashes(signal.evidence_tx_hashes);
+      if (evidenceHashes.length === 0) {
+        return true;
+      }
+      return evidenceHashes.every((hash) => !transactionHashes.has(hash));
+    })
+    .map(buildSignalStory);
 
-  if (transactionStories.length > 0) {
-    return transactionStories
-      .sort((left, right) => right.priority - left.priority)
-      .slice(0, maxItems);
+  const mergedStories = [...transactionStories, ...standaloneSignalStories]
+    .sort((left, right) => right.priority - left.priority)
+    .slice(0, maxItems);
+
+  if (mergedStories.length > 0) {
+    return mergedStories;
   }
 
   if (signals.length > 0) {

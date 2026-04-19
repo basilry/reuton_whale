@@ -1,0 +1,17 @@
+channels:
+  - handle: "whale_alert_io"
+    display_name: "Whale Alert"
+    confidence: high
+    weight: 1.0
+  - handle: "whalemonitorgroup"
+    display_name: "Whale Monitor"
+    confidence: medium
+    weight: 0.7
+  - handle: "lookonchain"
+    display_name: "Lookonchain"
+    confidence: medium
+    weight: 0.7
+  - handle: "scam_alerts_xyz"
+    display_name: "Scam Alerts"
+    confidence: low
+    weight: 0.3

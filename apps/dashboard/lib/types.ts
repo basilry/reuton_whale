@@ -598,6 +598,10 @@ export type WhaleStory = {
   body: string;
   meta: string;
   tone: WhaleStoryTone;
+  observationLabel?: string;
+  observationSource?: "direct_chain" | "tg_mirror" | "corroborated";
+  externalChannel?: string;
+  externalConfidence?: string;
   hash?: string;
   symbol?: string;
   chain?: string;
