@@ -11,6 +11,8 @@ class Config:
     google_credentials: str
     telegram_token: str
     solscan_api_key: str = ""
+    enable_chain_xrp: bool = False
+    xrpscan_api_base: str = "https://api.xrpscan.com/api/v1"
     telegram_broadcast_enabled: bool = False
     telegram_broadcast_dry_run: bool = True
     telegram_broadcast_chat: str = "@whalescope_alertz"
@@ -54,6 +56,10 @@ def _get_bool(env_var: str, default: bool) -> bool:
 
 def _set_optional_values(values: dict) -> None:
     values["solscan_api_key"] = os.getenv("SOLSCAN_API_KEY", "")
+    values["enable_chain_xrp"] = _get_bool("ENABLE_CHAIN_XRP", default=False)
+    values["xrpscan_api_base"] = os.getenv(
+        "XRPSCAN_API_BASE", "https://api.xrpscan.com/api/v1"
+    ) or "https://api.xrpscan.com/api/v1"
     values["telegram_broadcast_enabled"] = _get_bool(
         "TELEGRAM_BROADCAST_ENABLED", default=False
     )
@@ -77,13 +83,19 @@ def _set_optional_values(values: dict) -> None:
 def load_config() -> Config:
     load_dotenv()
 
-    values: dict = {}
-    _set_required(values, "etherscan_api_key", "ETHERSCAN_API_KEY")
+    values: dict = {
+        "etherscan_api_key": os.getenv("ETHERSCAN_API_KEY", ""),
+    }
     _set_required(values, "sheet_id", "GOOGLE_SHEET_ID")
     _set_required(values, "google_credentials", "GOOGLE_CREDENTIALS_JSON")
     _set_required(values, "telegram_token", "TELEGRAM_BOT_TOKEN")
     _set_llm_values(values, require_one=True)
     _set_optional_values(values)
+    if not values["etherscan_api_key"] and not values["enable_chain_xrp"]:
+        raise ValueError(
+            "Missing required chain collector configuration: set ETHERSCAN_API_KEY "
+            "or enable ENABLE_CHAIN_XRP=true"
+        )
 
     return Config(**values)
 

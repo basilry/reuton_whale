@@ -9,6 +9,7 @@ from src.observability.service_health import (
     pipeline_status_to_health,
 )
 from src.pipeline.common import (
+    build_optional_collectors,
     build_price_services,
     build_sheets_client,
     collect_recent_events,
@@ -73,6 +74,7 @@ def run_signals_pipeline() -> dict[str, object]:
     env = load_pipeline_env(require_chain_api=True)
     sheets = build_sheets_client(env)
     price_service, eth_collector, sol_collector = build_price_services(env)
+    optional_collectors = build_optional_collectors(env)
     engine = SignalEngine(_load_signals_cfg(), storage=sheets)
 
     collected = collect_recent_events(
@@ -80,6 +82,7 @@ def run_signals_pipeline() -> dict[str, object]:
         price_service=price_service,
         eth_collector=eth_collector,
         sol_collector=sol_collector,
+        additional_collectors=optional_collectors,
         event_to_dict=_event_to_dict,
     )
     errors.extend(collected.errors)

@@ -94,3 +94,37 @@ class TestNormalizeChainTx:
         assert evt.from_addr == "src_addr"
         assert evt.to_addr == "dst_addr"
         assert evt.tx_hash == "sig2"
+
+    def test_xrp_native_payment_uses_drops(self):
+        raw = {
+            "_chain": "XRP",
+            "_watched_address": "rWatcherXrp",
+            "hash": "xrp_tx_1",
+            "date": "2026-04-19T01:02:03Z",
+            "Account": "rWatcherXrp",
+            "Destination": "rCounterpartyXrp",
+            "Amount": "2500000",
+        }
+        evt = normalize_chain_tx(raw, "XRP", {}, None)
+        assert evt.chain == "XRP"
+        assert evt.token == "XRP"
+        assert evt.direction == "out"
+        assert abs(evt.amount_token - 2.5) < 1e-9
+        assert evt.tx_hash == "xrp_tx_1"
+
+    def test_xrp_iou_amount_is_rejected(self):
+        raw = {
+            "_chain": "XRP",
+            "_watched_address": "rWatcherXrp",
+            "hash": "xrp_iou_1",
+            "date": "2026-04-19T01:02:03Z",
+            "Account": "rWatcherXrp",
+            "Destination": "rCounterpartyXrp",
+            "Amount": {"currency": "USD", "value": "12.5"},
+        }
+        try:
+            normalize_chain_tx(raw, "XRP", {}, None)
+        except ValueError as exc:
+            assert "Unsupported XRP IOU currency" in str(exc)
+        else:
+            raise AssertionError("XRP IOU should be rejected")

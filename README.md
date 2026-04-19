@@ -185,6 +185,7 @@ user_interests sheet --> per-subscriber personalize --> Telegram message variant
 | LLM | Anthropic, Gemini, Groq | 시그널 해석, 브리핑 생성, 파싱 fallback |
 | 라우팅 | `src/llm/router.py` | provider preferred/fallback 라우팅 |
 | 온체인 수집 | Etherscan API v2 | ETH, ARB, BASE, BSC, POLYGON |
+| 온체인 수집 | XRPSCAN-compatible API | XRP, feature flag(`ENABLE_CHAIN_XRP=true`)로 선택 활성화 |
 | 온체인 수집 | Solscan API v2 | Solana |
 | TG 수신 | Telethon | 공개 고래 알림 채널 수신 |
 | 시장 데이터 | CoinGecko API | 토큰 USD 가격 보강 |
@@ -340,6 +341,8 @@ LLM provider key는 아래 중 최소 1개가 필요합니다.
 | 변수 | 설명 |
 |---|---|
 | `SOLSCAN_API_KEY` | Solana 수집 키입니다. 없으면 SOL 수집을 건너뜁니다. |
+| `ENABLE_CHAIN_XRP` | XRP 수집 feature flag입니다. 기본값은 `false`이며, Phase 2a rollout 시에만 `true`로 켭니다. |
+| `XRPSCAN_API_BASE` | XRP 수집 API base URL입니다. 기본값은 `https://api.xrpscan.com/api/v1`이며, self-hosted mirror나 호환 endpoint가 있을 때만 바꿉니다. |
 | `TELETHON_API_ID` | Telegram user API ID입니다. listener 실제 실행에 필요합니다. |
 | `TELETHON_API_HASH` | Telegram user API hash입니다. listener 실제 실행에 필요합니다. |
 | `TELETHON_SESSION` | Telethon session 이름입니다. 기본값은 `whalescope`입니다. |
@@ -630,7 +633,7 @@ streamlit run streamlit_app.py
 | `whalescope-bot` | Background Worker | `python scripts/run_bot.py` | Telegram 사용자 명령 처리 |
 | `whalescope-listener` | Background Worker | `TG_CHANNEL=@whale_alert_io python scripts/run_listener.py` | 공개 Telegram 채널 이벤트 수신 |
 
-Render에는 worker 역할별로 env를 나눠 등록하는 편이 안전합니다. `whalescope-pipeline`은 `ETHERSCAN_API_KEY`, `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELEGRAM_BOT_TOKEN`, LLM provider key 중 1개가 필요합니다. 공개 채널 브로드캐스트를 켤 때만 여기에 `TELEGRAM_BROADCAST_ENABLED=true`, `TELEGRAM_BROADCAST_DRY_RUN=false`, `TELEGRAM_BROADCAST_CHAT=@whalescope_alertz`를 추가하고, 해당 bot을 채널 관리자에 올립니다. `whalescope-listener`는 `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELETHON_API_ID`, `TELETHON_API_HASH`, `TELETHON_SESSION`, `TELETHON_SESSION_STRING`, `TG_CHANNEL`이 최소값이며, LLM provider key는 선택 사항입니다. production cron 정의는 저장소 루트 `render.yaml`을 기준으로 관리합니다.
+Render에는 worker 역할별로 env를 나눠 등록하는 편이 안전합니다. `whalescope-pipeline`은 `ETHERSCAN_API_KEY`, `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELEGRAM_BOT_TOKEN`, LLM provider key 중 1개가 필요합니다. XRP 수집을 켤 때만 여기에 `ENABLE_CHAIN_XRP=true`와 필요 시 `XRPSCAN_API_BASE=https://api.xrpscan.com/api/v1`를 추가합니다. 공개 채널 브로드캐스트를 켤 때만 여기에 `TELEGRAM_BROADCAST_ENABLED=true`, `TELEGRAM_BROADCAST_DRY_RUN=false`, `TELEGRAM_BROADCAST_CHAT=@whalescope_alertz`를 추가하고, 해당 bot을 채널 관리자에 올립니다. `whalescope-listener`는 `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_JSON`, `TELETHON_API_ID`, `TELETHON_API_HASH`, `TELETHON_SESSION`, `TELETHON_SESSION_STRING`, `TG_CHANNEL`이 최소값이며, LLM provider key는 선택 사항입니다. production cron 정의는 저장소 루트 `render.yaml`을 기준으로 관리합니다.
 
 ### Vercel dashboard
 
@@ -673,6 +676,8 @@ Settings -> Secrets and variables -> Actions에 등록합니다.
 | `GROQ_API_KEY` | 조건부 | LLM provider. 아래 LLM 키 중 최소 1개 필요 |
 | `ETHERSCAN_API_KEY` | 필수 | EVM 체인 수집 |
 | `SOLSCAN_API_KEY` | 선택 | Solana 수집 |
+| `ENABLE_CHAIN_XRP` | 선택 | XRP 수집 feature flag. 기본값 `false` |
+| `XRPSCAN_API_BASE` | 선택 | XRP 수집 API base override |
 | `GOOGLE_SHEET_ID` | 필수 | Spreadsheet ID |
 | `GOOGLE_CREDENTIALS_JSON` | 필수 | 서비스 계정 JSON 전체 |
 | `TELEGRAM_BOT_TOKEN` | 필수 | Telegram bot token |

@@ -31,5 +31,9 @@ class SolscanError(Exception):
     pass
 
 
+class XrplError(Exception):
+    pass
+
+
 class SignalEngineError(Exception):
     pass

@@ -50,6 +50,8 @@ class PipelineEnv:
     google_credentials: str
     etherscan_api_key: str = ""
     solscan_api_key: str = ""
+    enable_chain_xrp: bool = False
+    xrpscan_api_base: str = "https://api.xrpscan.com/api/v1"
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
     groq_api_key: str = ""
@@ -121,13 +123,21 @@ def load_pipeline_env(
     google_credentials = require_env("GOOGLE_CREDENTIALS_JSON")
     etherscan_api_key = os.getenv("ETHERSCAN_API_KEY", "").strip()
     solscan_api_key = os.getenv("SOLSCAN_API_KEY", "").strip()
+    enable_chain_xrp = env_bool("ENABLE_CHAIN_XRP", default=False)
+    xrpscan_api_base = (
+        os.getenv("XRPSCAN_API_BASE", "https://api.xrpscan.com/api/v1").strip()
+        or "https://api.xrpscan.com/api/v1"
+    )
     anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
     gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip()
     groq_api_key = os.getenv("GROQ_API_KEY", "").strip()
     telegram_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 
-    if require_chain_api and not etherscan_api_key:
-        raise ValueError("Missing required environment variable: ETHERSCAN_API_KEY")
+    if require_chain_api and not (etherscan_api_key or enable_chain_xrp):
+        raise ValueError(
+            "Missing required chain collector configuration: set ETHERSCAN_API_KEY "
+            "or enable at least one optional collector such as ENABLE_CHAIN_XRP=true"
+        )
     if require_llm and not any((anthropic_api_key, gemini_api_key, groq_api_key)):
         raise ValueError(
             "Missing required LLM provider key: set at least one of "
@@ -141,6 +151,8 @@ def load_pipeline_env(
         google_credentials=google_credentials,
         etherscan_api_key=etherscan_api_key,
         solscan_api_key=solscan_api_key,
+        enable_chain_xrp=enable_chain_xrp,
+        xrpscan_api_base=xrpscan_api_base,
         anthropic_api_key=anthropic_api_key,
         gemini_api_key=gemini_api_key,
         groq_api_key=groq_api_key,
@@ -197,6 +209,24 @@ def build_collector_registry(*collectors: ChainCollector | None) -> ChainCollect
             continue
         registry.register(collector)
     return registry
+
+
+def build_optional_collectors(env: PipelineEnv) -> tuple[ChainCollector, ...]:
+    collectors: list[ChainCollector] = []
+    if getattr(env, "enable_chain_xrp", False):
+        from src.ingestion.xrpl import XrplCollector
+
+        collectors.append(
+            XrplCollector(
+                base_url=getattr(
+                    env,
+                    "xrpscan_api_base",
+                    "https://api.xrpscan.com/api/v1",
+                )
+                or "https://api.xrpscan.com/api/v1"
+            )
+        )
+    return tuple(collectors)
 
 
 def _format_chain_counts(counts: dict[str, int]) -> str:
@@ -304,6 +334,7 @@ def collect_recent_events(
     price_service: PriceService,
     eth_collector: EtherscanCollector | None,
     sol_collector: SolscanCollector | None,
+    additional_collectors: tuple[ChainCollector, ...] = (),
     event_to_dict,
     since: datetime | None = None,
 ) -> CollectedEvents:
@@ -315,7 +346,7 @@ def collect_recent_events(
 
     try:
         watched_index = sheets.list_watched_addresses()
-        registry = build_collector_registry(eth_collector, sol_collector)
+        registry = build_collector_registry(eth_collector, sol_collector, *additional_collectors)
         grouped = registry.group_addresses(watched_index)
 
         supported_chains = ",".join(registry.supported_chains)

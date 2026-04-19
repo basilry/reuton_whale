@@ -315,8 +315,22 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
     engine = SignalEngine(_load_signals_cfg(), storage=sheets)
     scorer = TransactionScorer()
     enricher = CoinGeckoEnricher()
-    eth_collector = EtherscanCollector(config.etherscan_api_key)
+    eth_collector = EtherscanCollector(config.etherscan_api_key) if config.etherscan_api_key else None
     sol_collector = SolscanCollector(config.solscan_api_key or None)
+    optional_collectors = ()
+    if getattr(config, "enable_chain_xrp", False):
+        from src.ingestion.xrpl import XrplCollector
+
+        optional_collectors = (
+            XrplCollector(
+                base_url=getattr(
+                    config,
+                    "xrpscan_api_base",
+                    "https://api.xrpscan.com/api/v1",
+                )
+                or "https://api.xrpscan.com/api/v1"
+            ),
+        )
     bot = WhaleScopeBot(config.telegram_token, sheets, personalize_fn=engine.personalize)
     bot.build()
     broadcaster = TelegramBroadcastAdapter(
@@ -357,6 +371,7 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
             price_service=price_svc,
             eth_collector=eth_collector,
             sol_collector=sol_collector,
+            additional_collectors=optional_collectors,
             event_to_dict=_event_to_dict,
             since=datetime.now(timezone.utc) - timedelta(hours=24),
         )

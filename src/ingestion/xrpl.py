@@ -8,6 +8,7 @@ import requests
 
 from src.ingestion.base import ChainCollector
 from src.signals.models import Event
+from src.utils.errors import XrplError
 from src.utils.http_backoff import get_with_backoff
 from src.utils.logger import get_logger
 
@@ -18,8 +19,7 @@ _XRP_DROPS = 1_000_000
 _RIPPLE_EPOCH = datetime(2000, 1, 1, tzinfo=timezone.utc)
 
 
-class XRPLError(Exception):
-    pass
+XRPLError = XrplError
 
 
 @dataclass(frozen=True)
@@ -271,3 +271,6 @@ class XRPLCollector(ChainCollector):
 
         marker_value = container.get("marker")
         return XRPLPage(rows=rows, marker=marker_value)
+
+
+XrplCollector = XRPLCollector
