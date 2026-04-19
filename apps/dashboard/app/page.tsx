@@ -1,5 +1,6 @@
 import type { ComponentProps } from "react";
 import type { Metadata } from "next";
+import { FearGreedGauge } from "@/components/fear-greed-gauge";
 import { TopNavbar } from "@/components/top-navbar";
 import { InsightsSidebar } from "@/components/insights-sidebar";
 import { MarketTickerStrip } from "@/components/market-ticker-strip";
@@ -13,6 +14,7 @@ import { getCurrentDashboardDictionary, getCurrentDashboardLanguage } from "@/li
 import { getDashboardData, type DashboardData } from "@/lib/metrics";
 import { getTelegramPublicConfig } from "@/lib/public-app-config";
 import { formatStoryTimestamp } from "@/lib/whale-stories";
+import { getFearGreedData } from "@/lib/fear-greed";
 import styles from "./insights/insights.module.css";
 
 export const runtime = "nodejs";
@@ -39,6 +41,7 @@ type BriefAnalysisItem = {
 
 type DashboardDictionary = Awaited<ReturnType<typeof getCurrentDashboardDictionary>>;
 type HomeSignal = ComponentProps<typeof SignalSection>["signals"][number];
+type FearGreedCopy = ComponentProps<typeof FearGreedGauge>["copy"];
 const BRIEF_SCHEDULE_HOURS_KST = [0, 8, 16] as const;
 const WATCHLIST_COLLAPSED_COUNT = 6;
 
@@ -625,7 +628,7 @@ async function loadInsightState(): Promise<InsightState> {
     if (error instanceof Error) {
       console.error("[insights/page]", error.message, error.stack);
     } else {
-      console.error("[insights/page]", error);
+      console.error("[insights/page]", String(error));
     }
     return {
       data: null,
@@ -638,6 +641,7 @@ export default async function InsightsPage() {
   const dictionary = await getCurrentDashboardDictionary();
   const language = await getCurrentDashboardLanguage();
   const state = await loadInsightState();
+  const fearGreed = await getFearGreedData();
   const data = state.data;
   const brief = buildBriefCopy(data, dictionary);
   const mood = buildMarketMood(data, dictionary, language);
@@ -677,6 +681,45 @@ export default async function InsightsPage() {
     language === "ko"
       ? `나머지 ${overflowWatchlist.length}개 더 보기`
       : `Show ${overflowWatchlist.length} more`;
+  const fearGreedCopy: FearGreedCopy = {
+    title: dictionary.home.fearGreedTitle,
+    subtitle: dictionary.home.fearGreedSubtitle,
+    classificationLabels: {
+      extreme_fear: dictionary.home.fearGreedClassificationExtremeFear,
+      fear: dictionary.home.fearGreedClassificationFear,
+      neutral: dictionary.home.fearGreedClassificationNeutral,
+      greed: dictionary.home.fearGreedClassificationGreed,
+      extreme_greed: dictionary.home.fearGreedClassificationExtremeGreed,
+    },
+    compareLabels: {
+      yesterday: dictionary.home.fearGreedCompareYesterday,
+      week: dictionary.home.fearGreedCompareWeek,
+      month: dictionary.home.fearGreedCompareMonth,
+    },
+    nextUpdateLabel: dictionary.home.fearGreedNextUpdateLabel,
+    nextUpdateValue: dictionary.home.fearGreedNextUpdateValue,
+    nextUpdateUnavailable: dictionary.home.fearGreedNextUpdateUnavailable,
+    sourceLabel: dictionary.home.fearGreedSourceLabel,
+    staleWarning: dictionary.home.fearGreedStaleWarning,
+    ariaLabel: dictionary.home.fearGreedAriaLabel,
+    disclaimer: dictionary.home.fearGreedDisclaimer,
+  };
+  const legacyMoodFallback = (
+    <div className={styles.moodFallbackStack}>
+      <span className={styles.moodFallbackLabel}>{mood.label}</span>
+      <h4 className={styles.moodTitle}>{mood.copy}</h4>
+      <p className={styles.moodDesc}>{mood.detail}</p>
+      {mood.drivers.length > 0 ? (
+        <div className={styles.moodDrivers}>
+          {mood.drivers.map((driver) => (
+            <span key={driver} className={styles.moodDriverChip}>
+              {driver}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 
   const briefAnalysisIcons = ["analytics", "diversity_3", "warning"];
 
@@ -764,26 +807,26 @@ export default async function InsightsPage() {
 
             {/* ── 2. Market Mood ── */}
             <div className={styles.moodCard}>
-              <h3 className={styles.moodLabel}>{mood.label}</h3>
-              <div className={styles.moodGauge}>
-                <svg viewBox="0 0 192 192">
-                  <circle className={styles.moodGaugeBg} cx="96" cy="96" r="80" />
-                  <circle className={styles.moodGaugeFill} cx="96" cy="96" r="80" />
-                </svg>
-                <div className={styles.moodGaugeCenter}>
-                  <span className={styles.materialIcon} style={{ fontVariationSettings: "'FILL' 1", fontSize: "2.25rem" }}>water_drop</span>
-                  <span className={styles.moodToneLabel}>{mood.label}</span>
-                </div>
-              </div>
-              <h4 className={styles.moodTitle}>{mood.copy}</h4>
-              <p className={styles.moodDesc}>{mood.detail}</p>
-              {mood.drivers.length > 0 ? (
-                <div className={styles.moodDrivers}>
-                  {mood.drivers.map((driver) => (
-                    <span key={driver} className={styles.moodDriverChip}>
-                      {driver}
-                    </span>
-                  ))}
+              <FearGreedGauge
+                copy={fearGreedCopy}
+                data={fearGreed}
+                fallback={legacyMoodFallback}
+                language={language}
+              />
+              {fearGreed ? (
+                <div className={styles.moodSummary}>
+                  <p className={styles.moodSummaryEyebrow}>{mood.label}</p>
+                  <h4 className={styles.moodTitle}>{mood.copy}</h4>
+                  <p className={styles.moodDesc}>{mood.detail}</p>
+                  {mood.drivers.length > 0 ? (
+                    <div className={styles.moodDrivers}>
+                      {mood.drivers.map((driver) => (
+                        <span key={driver} className={styles.moodDriverChip}>
+                          {driver}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>

@@ -13,6 +13,8 @@ export type MarketTickerDefinition = {
   label: string;
   binanceSymbol: string;
   upbitMarket: string;
+  bitflyerProductCode?: string;
+  krakenPair?: string;
   usdMarketLabel: string;
   krwMarketLabel: string;
   fallbackPriceUsd: number;
@@ -99,6 +101,33 @@ type UpbitTickerQuote = {
   updatedAt: number | null;
 };
 
+type BitflyerTickerResponse = {
+  product_code?: string;
+  ltp?: number;
+  timestamp?: string;
+};
+
+type BitflyerTickerQuote = {
+  priceJpy: number | null;
+  updatedAt: number | null;
+};
+
+type KrakenTickerRow = {
+  c?: [string, string] | string[];
+  o?: string;
+};
+
+type KrakenTickerResponse = {
+  error?: string[];
+  result?: Record<string, KrakenTickerRow>;
+};
+
+type KrakenTickerQuote = {
+  priceUsd: number | null;
+  change24hPct: number | null;
+  updatedAt: number | null;
+};
+
 type BinanceKlineRow = [
   number,
   string,
@@ -123,6 +152,7 @@ type UpbitCandle = {
 type MergeSnapshotOptions = {
   definitions?: MarketTickerDefinition[];
   binanceQuotes?: Map<string, BinanceTickerQuote>;
+  krakenQuotes?: Map<string, KrakenTickerQuote>;
   upbitQuotes?: Map<string, UpbitTickerQuote>;
   fxQuote?: UsdKrwFxQuote | null;
   source: MarketTickerSource;
@@ -190,6 +220,8 @@ export const DEFAULT_MARKET_TICKER_SYMBOLS: MarketTickerDefinition[] = [
     label: "Bitcoin",
     binanceSymbol: "BTCUSDT",
     upbitMarket: "KRW-BTC",
+    bitflyerProductCode: "BTC_JPY",
+    krakenPair: "XBTUSD",
     usdMarketLabel: "BINANCE · USDT",
     krwMarketLabel: "UPBIT · KRW",
     fallbackPriceUsd: 84620,
@@ -203,6 +235,8 @@ export const DEFAULT_MARKET_TICKER_SYMBOLS: MarketTickerDefinition[] = [
     label: "Ethereum",
     binanceSymbol: "ETHUSDT",
     upbitMarket: "KRW-ETH",
+    bitflyerProductCode: "ETH_JPY",
+    krakenPair: "ETHUSD",
     usdMarketLabel: "BINANCE · USDT",
     krwMarketLabel: "UPBIT · KRW",
     fallbackPriceUsd: 1625,
@@ -331,6 +365,49 @@ function parseUtcDateString(value: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseIsoTimestamp(value: string | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Date.parse(value);
+  if (Number.isFinite(parsed)) {
+    return parsed;
+  }
+
+  return parseUtcDateString(value);
+}
+
+function normalizeKrakenPairKey(value: string): string {
+  return value
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .replace(/^XXBT/, "XBT")
+    .replace(/^XETH/, "ETH")
+    .replace(/ZUSD$/, "USD")
+    .replace(/ZEUR$/, "EUR")
+    .replace(/ZJPY$/, "JPY");
+}
+
+function resolveKrakenTickerRow(
+  rows: Record<string, KrakenTickerRow>,
+  pair: string,
+): KrakenTickerRow | null {
+  const direct = rows[pair];
+  if (direct) {
+    return direct;
+  }
+
+  const normalizedPair = normalizeKrakenPairKey(pair);
+  for (const [key, row] of Object.entries(rows)) {
+    if (normalizeKrakenPairKey(key) === normalizedPair) {
+      return row;
+    }
+  }
+
+  return null;
+}
+
 function clampChartPoints(
   points: MarketTickerChartPoint[],
   pointCount: number,
@@ -421,6 +498,7 @@ function hydrateMarketTickerItem(
 function buildMergedMarketTickerItems({
   definitions = DEFAULT_MARKET_TICKER_SYMBOLS,
   binanceQuotes = new Map<string, BinanceTickerQuote>(),
+  krakenQuotes = new Map<string, KrakenTickerQuote>(),
   upbitQuotes = new Map<string, UpbitTickerQuote>(),
   fxQuote,
   source,
@@ -428,17 +506,20 @@ function buildMergedMarketTickerItems({
 }: MergeSnapshotOptions): MarketTickerItem[] {
   return definitions.map((definition) => {
     const binanceQuote = binanceQuotes.get(definition.id);
+    const krakenQuote = krakenQuotes.get(definition.id);
     const upbitQuote = upbitQuotes.get(definition.id);
 
     return hydrateMarketTickerItem(definition, {
       priceUsd:
         binanceQuote?.priceUsd ??
+        krakenQuote?.priceUsd ??
         (useFallbackValues ? definition.fallbackPriceUsd : null),
       priceKrw:
         upbitQuote?.priceKrw ??
         (useFallbackValues ? definition.fallbackPriceKrw : null),
       usdChange24hPct:
         binanceQuote?.change24hPct ??
+        krakenQuote?.change24hPct ??
         (useFallbackValues ? definition.fallbackUsdChange24hPct : null),
       krwChange24hPct:
         upbitQuote?.change24hPct ??
@@ -448,6 +529,7 @@ function buildMergedMarketTickerItems({
         (useFallbackValues ? createLocalUsdKrwFxQuote().usdKrw : null),
       lastUpdatedAt: maxTimestamp(
         binanceQuote?.updatedAt,
+        krakenQuote?.updatedAt,
         upbitQuote?.updatedAt,
         fxQuote?.updatedAt,
       ),
@@ -586,6 +668,127 @@ async function fetchUpbitTickerSnapshot(
   }
 }
 
+export async function fetchBitflyerTickerSnapshot(
+  definitions: MarketTickerDefinition[] = DEFAULT_MARKET_TICKER_SYMBOLS,
+  timeoutMs = 4500,
+): Promise<Map<string, BitflyerTickerQuote>> {
+  const supportedDefinitions = definitions.filter((item) => item.bitflyerProductCode);
+  if (supportedDefinitions.length === 0) {
+    return new Map();
+  }
+
+  const results = await Promise.allSettled(
+    supportedDefinitions.map(async (definition) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const response = await fetch(
+          `https://api.bitflyer.com/v1/ticker?product_code=${definition.bitflyerProductCode}`,
+          {
+            method: "GET",
+            cache: "no-store",
+            signal: controller.signal,
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error(`HTTP_${response.status}`);
+        }
+
+        const payload = (await response.json()) as BitflyerTickerResponse;
+        return [
+          definition.id,
+          {
+            priceJpy: parseNumber(payload.ltp),
+            updatedAt: parseIsoTimestamp(payload.timestamp) ?? Date.now(),
+          },
+        ] as const;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }),
+  );
+
+  const quotes = new Map<string, BitflyerTickerQuote>();
+  for (const result of results) {
+    if (result.status !== "fulfilled" || result.value == null) {
+      continue;
+    }
+    quotes.set(result.value[0], result.value[1]);
+  }
+
+  return quotes;
+}
+
+export async function fetchKrakenTickerSnapshot(
+  definitions: MarketTickerDefinition[] = DEFAULT_MARKET_TICKER_SYMBOLS,
+  timeoutMs = 4500,
+): Promise<Map<string, KrakenTickerQuote>> {
+  const supportedDefinitions = definitions.filter((item) => item.krakenPair);
+  if (supportedDefinitions.length === 0) {
+    return new Map();
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const pairs = supportedDefinitions
+      .map((item) => item.krakenPair)
+      .filter((value): value is string => typeof value === "string")
+      .join(",");
+
+    const response = await fetch(
+      `https://api.kraken.com/0/public/Ticker?pair=${encodeURIComponent(pairs)}`,
+      {
+        method: "GET",
+        cache: "no-store",
+        signal: controller.signal,
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`HTTP_${response.status}`);
+    }
+
+    const payload = (await response.json()) as KrakenTickerResponse;
+    if ((payload.error ?? []).length > 0) {
+      throw new Error(payload.error?.join(",") || "KRAKEN_API_ERROR");
+    }
+
+    const rows = payload.result ?? {};
+    const quotes = new Map<string, KrakenTickerQuote>();
+
+    for (const definition of supportedDefinitions) {
+      if (!definition.krakenPair) {
+        continue;
+      }
+
+      const row = resolveKrakenTickerRow(rows, definition.krakenPair);
+      if (!row) {
+        continue;
+      }
+
+      const priceUsd = parseNumber(row.c?.[0]);
+      const open = parseNumber(row.o);
+      if (priceUsd == null) {
+        continue;
+      }
+
+      quotes.set(definition.id, {
+        priceUsd,
+        change24hPct: percentFromOpenClose(open, priceUsd),
+        updatedAt: Date.now(),
+      });
+    }
+
+    return quotes;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function fetchMarketTickerSnapshot(
   definitions: MarketTickerDefinition[] = DEFAULT_MARKET_TICKER_SYMBOLS,
   timeoutMs = 4500,
@@ -594,8 +797,9 @@ export async function fetchMarketTickerSnapshot(
     return [];
   }
 
-  const [binanceResult, upbitResult, fxResult] = await Promise.allSettled([
+  const [binanceResult, krakenResult, upbitResult, fxResult] = await Promise.allSettled([
     fetchBinanceTickerSnapshot(definitions, timeoutMs),
+    fetchKrakenTickerSnapshot(definitions, timeoutMs),
     fetchUpbitTickerSnapshot(definitions, timeoutMs),
     fetchUsdKrwFx(timeoutMs),
   ]);
@@ -606,6 +810,10 @@ export async function fetchMarketTickerSnapshot(
       binanceResult.status === "fulfilled"
         ? binanceResult.value
         : new Map<string, BinanceTickerQuote>(),
+    krakenQuotes:
+      krakenResult.status === "fulfilled"
+        ? krakenResult.value
+        : new Map<string, KrakenTickerQuote>(),
     upbitQuotes:
       upbitResult.status === "fulfilled"
         ? upbitResult.value

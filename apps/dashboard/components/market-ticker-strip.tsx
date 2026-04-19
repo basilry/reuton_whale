@@ -11,6 +11,8 @@ import {
   createLocalMarketTickerChartPoints,
   createLocalMarketTickerItems,
   createPendingMarketTickerItems,
+  fetchBitflyerTickerSnapshot,
+  fetchKrakenTickerSnapshot,
   fetchMarketTickerMiniCharts,
   fetchMarketTickerSnapshot,
   formatKimchiPremium,
@@ -45,7 +47,13 @@ type MarketTickerStripProps = {
 };
 
 type Phase = "loading" | "ready" | "fallback";
-type TickerSourceKey = "binance" | "upbit" | "fx" | "snapshot";
+type TickerSourceKey =
+  | "binance"
+  | "upbit"
+  | "bitflyer"
+  | "kraken"
+  | "fx"
+  | "snapshot";
 
 type SourceHealth = {
   available: boolean;
@@ -57,7 +65,14 @@ type SourceHealth = {
 
 type SourceHealthState = Record<TickerSourceKey, SourceHealth>;
 
-type SourceProfile = "live" | "polling";
+type SourceProfileKind = "live" | "polling";
+
+type SourceProfile = {
+  kind: SourceProfileKind;
+  liveWindowMs: number;
+  downWindowMs: number;
+  expectedIntervalMs: number;
+};
 
 type SourceHealthPatch =
   | Partial<SourceHealth>
@@ -67,7 +82,52 @@ const LIVE_SOURCE_LIVE_WINDOW_MS = 15_000;
 const LIVE_SOURCE_DOWN_WINDOW_MS = 45_000;
 const POLLING_SOURCE_LIVE_WINDOW_MS = 6 * 60_000;
 const POLLING_SOURCE_DOWN_WINDOW_MS = 15 * 60_000;
+const BITFLYER_POLL_INTERVAL_MS = 120_000;
+const BITFLYER_SOURCE_LIVE_WINDOW_MS = 3 * 60_000;
+const BITFLYER_SOURCE_DOWN_WINDOW_MS = 8 * 60_000;
+const KRAKEN_POLL_INTERVAL_MS = 60_000;
+const KRAKEN_SOURCE_LIVE_WINDOW_MS = 90_000;
+const KRAKEN_SOURCE_DOWN_WINDOW_MS = 4 * 60_000;
 const SNAPSHOT_POLL_INTERVAL_MS = 5 * 60_000;
+
+const SOURCE_PROFILES: Record<TickerSourceKey, SourceProfile> = {
+  binance: {
+    kind: "live",
+    liveWindowMs: LIVE_SOURCE_LIVE_WINDOW_MS,
+    downWindowMs: LIVE_SOURCE_DOWN_WINDOW_MS,
+    expectedIntervalMs: LIVE_SOURCE_LIVE_WINDOW_MS,
+  },
+  upbit: {
+    kind: "live",
+    liveWindowMs: LIVE_SOURCE_LIVE_WINDOW_MS,
+    downWindowMs: LIVE_SOURCE_DOWN_WINDOW_MS,
+    expectedIntervalMs: LIVE_SOURCE_LIVE_WINDOW_MS,
+  },
+  bitflyer: {
+    kind: "polling",
+    liveWindowMs: BITFLYER_SOURCE_LIVE_WINDOW_MS,
+    downWindowMs: BITFLYER_SOURCE_DOWN_WINDOW_MS,
+    expectedIntervalMs: BITFLYER_POLL_INTERVAL_MS,
+  },
+  kraken: {
+    kind: "polling",
+    liveWindowMs: KRAKEN_SOURCE_LIVE_WINDOW_MS,
+    downWindowMs: KRAKEN_SOURCE_DOWN_WINDOW_MS,
+    expectedIntervalMs: KRAKEN_POLL_INTERVAL_MS,
+  },
+  fx: {
+    kind: "polling",
+    liveWindowMs: POLLING_SOURCE_LIVE_WINDOW_MS,
+    downWindowMs: POLLING_SOURCE_DOWN_WINDOW_MS,
+    expectedIntervalMs: SNAPSHOT_POLL_INTERVAL_MS,
+  },
+  snapshot: {
+    kind: "polling",
+    liveWindowMs: POLLING_SOURCE_LIVE_WINDOW_MS,
+    downWindowMs: POLLING_SOURCE_DOWN_WINDOW_MS,
+    expectedIntervalMs: SNAPSHOT_POLL_INTERVAL_MS,
+  },
+};
 
 function fallbackChartForDefinition(
   definition: MarketTickerDefinition,
@@ -129,6 +189,20 @@ function createInitialSourceHealth(): SourceHealthState {
       errorAt: null,
       closedAt: null,
     },
+    bitflyer: {
+      available: false,
+      lastSeenAt: null,
+      isConnecting: true,
+      errorAt: null,
+      closedAt: null,
+    },
+    kraken: {
+      available: false,
+      lastSeenAt: null,
+      isConnecting: true,
+      errorAt: null,
+      closedAt: null,
+    },
     fx: {
       available: false,
       lastSeenAt: null,
@@ -156,6 +230,20 @@ function createUnavailableSourceHealth(at: number): SourceHealthState {
       closedAt: null,
     },
     upbit: {
+      available: false,
+      lastSeenAt: null,
+      isConnecting: false,
+      errorAt: at,
+      closedAt: null,
+    },
+    bitflyer: {
+      available: false,
+      lastSeenAt: null,
+      isConnecting: false,
+      errorAt: at,
+      closedAt: null,
+    },
+    kraken: {
       available: false,
       lastSeenAt: null,
       isConnecting: false,
@@ -199,11 +287,11 @@ function sourceStatus(
   now: number,
   phase: Phase,
 ): MarketTickerChipStatus {
-  const profile: SourceProfile = key === "fx" || key === "snapshot" ? "polling" : "live";
+  const profile = sourceProfile(key);
   const lastFailureAt = Math.max(state.errorAt ?? 0, state.closedAt ?? 0);
 
   if (
-    profile === "live" &&
+    profile.kind === "live" &&
     lastFailureAt > 0 &&
     (state.lastSeenAt == null || lastFailureAt >= state.lastSeenAt)
   ) {
@@ -215,27 +303,40 @@ function sourceStatus(
   }
 
   const age = now - state.lastSeenAt;
-  if (profile === "live") {
-    if (age <= LIVE_SOURCE_LIVE_WINDOW_MS) {
+  if (profile.kind === "live") {
+    if (age <= profile.liveWindowMs) {
       return "live";
     }
-    if (age <= LIVE_SOURCE_DOWN_WINDOW_MS) {
+    if (age <= profile.downWindowMs) {
       return "stale";
     }
     return "down";
   }
 
-  if (age <= POLLING_SOURCE_LIVE_WINDOW_MS) {
+  if (age <= profile.liveWindowMs) {
     return "live";
   }
-  if (age <= POLLING_SOURCE_DOWN_WINDOW_MS) {
+  if (age <= profile.downWindowMs) {
     return "stale";
   }
   return "down";
 }
 
 function sourceProfile(key: TickerSourceKey): SourceProfile {
-  return key === "fx" || key === "snapshot" ? "polling" : "live";
+  return SOURCE_PROFILES[key];
+}
+
+function formatCriteriaWindow(
+  valueMs: number,
+  language: DashboardLanguage,
+): string {
+  if (valueMs % 60_000 === 0) {
+    const minutes = valueMs / 60_000;
+    return language === "ko" ? `${minutes}분` : `${minutes}m`;
+  }
+
+  const seconds = Math.round(valueMs / 1000);
+  return language === "ko" ? `${seconds}초` : `${seconds}s`;
 }
 
 function formatTooltipTimestamp(value: number | null, fallback: string): string {
@@ -347,10 +448,14 @@ export function MarketTickerStrip({
             tooltipUpbitOrigin: "KRW 기준 실시간 체결 스트림",
             tooltipFxOrigin: "USD/KRW 환율 보조 입력",
             tooltipSnapshotOrigin: "Binance REST + Upbit REST + FX를 합친 5분 스냅샷",
+            tooltipBitflyerOrigin: "일본 엔화 기준 REST 스냅샷",
+            tooltipKrakenOrigin: "미국 달러 기준 REST 스냅샷",
             tooltipBinanceSource: "Binance WebSocket",
             tooltipUpbitSource: "Upbit WebSocket",
             tooltipFxSource: "exchangerate.host → open.er-api → Upbit KRW-USDT",
             tooltipSnapshotSource: "Binance REST + Upbit REST + FX 합성",
+            tooltipBitflyerSource: "Bitflyer REST (BTC/ETH · JPY)",
+            tooltipKrakenSource: "Kraken REST (BTC/ETH · USD)",
             tooltipConnectingSummary: "초기 연결 또는 첫 데이터 수신을 기다리고 있습니다.",
             tooltipLiveSummaryLive: "최근 수신이 정상 범위 안에 있어 실시간 스트림이 살아 있습니다.",
             tooltipStaleSummaryLive: "연결은 있었지만 최근 메시지가 늦어지고 있어 지연 상태로 봅니다.",
@@ -406,10 +511,14 @@ export function MarketTickerStrip({
             tooltipFxOrigin: "USD/KRW exchange-rate input",
             tooltipSnapshotOrigin:
               "Five-minute snapshot merged from Binance REST, Upbit REST, and FX",
+            tooltipBitflyerOrigin: "REST snapshot for Japanese JPY pricing",
+            tooltipKrakenOrigin: "REST snapshot for US dollar pricing",
             tooltipBinanceSource: "Binance WebSocket",
             tooltipUpbitSource: "Upbit WebSocket",
             tooltipFxSource: "exchangerate.host → open.er-api → Upbit KRW-USDT",
             tooltipSnapshotSource: "Binance REST + Upbit REST + FX composite",
+            tooltipBitflyerSource: "Bitflyer REST (BTC/ETH · JPY)",
+            tooltipKrakenSource: "Kraken REST (BTC/ETH · USD)",
             tooltipConnectingSummary:
               "Waiting for the initial connection or the first successful payload.",
             tooltipLiveSummaryLive:
@@ -457,8 +566,12 @@ export function MarketTickerStrip({
     let hasEverReceivedLive = false;
     let binanceSocket: WebSocket | null = null;
     let upbitSocket: WebSocket | null = null;
+    let bitflyerTimer: number | null = null;
+    let krakenTimer: number | null = null;
 
     const hasAnyLive = () => hasBinanceLive || hasUpbitLive;
+    const hasBitflyerSupport = symbols.some((item) => item.bitflyerProductCode);
+    const hasKrakenSupport = symbols.some((item) => item.krakenPair);
 
     const updateSource = (key: TickerSourceKey, patch: SourceHealthPatch) => {
       if (cancelled) {
@@ -594,6 +707,120 @@ export function MarketTickerStrip({
           setNotice(copy.snapshotRefreshFailed);
         }
         setErrorMessage(error instanceof Error ? error.message : "snapshot_refresh_failed");
+      }
+    };
+
+    const refreshBitflyer = async () => {
+      if (!hasBitflyerSupport) {
+        updateSource("bitflyer", {
+          available: false,
+          isConnecting: false,
+        });
+        return;
+      }
+
+      try {
+        const quotes = await fetchBitflyerTickerSnapshot(symbols);
+        if (cancelled) {
+          return;
+        }
+
+        const lastSeenAt = Array.from(quotes.values()).reduce<number | null>(
+          (latest, quote) => {
+            if (quote.updatedAt == null) {
+              return latest;
+            }
+            if (latest == null || quote.updatedAt > latest) {
+              return quote.updatedAt;
+            }
+            return latest;
+          },
+          null,
+        );
+
+        if (lastSeenAt == null) {
+          updateSource("bitflyer", {
+            available: false,
+            isConnecting: false,
+            errorAt: Date.now(),
+          });
+          return;
+        }
+
+        updateSource("bitflyer", {
+          available: true,
+          lastSeenAt,
+          isConnecting: false,
+          errorAt: null,
+          closedAt: null,
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        console.warn("[ticker][bitflyer] snapshot refresh failed", error);
+        updateSource("bitflyer", {
+          isConnecting: false,
+          errorAt: Date.now(),
+        });
+      }
+    };
+
+    const refreshKraken = async () => {
+      if (!hasKrakenSupport) {
+        updateSource("kraken", {
+          available: false,
+          isConnecting: false,
+        });
+        return;
+      }
+
+      try {
+        const quotes = await fetchKrakenTickerSnapshot(symbols);
+        if (cancelled) {
+          return;
+        }
+
+        const lastSeenAt = Array.from(quotes.values()).reduce<number | null>(
+          (latest, quote) => {
+            if (quote.updatedAt == null) {
+              return latest;
+            }
+            if (latest == null || quote.updatedAt > latest) {
+              return quote.updatedAt;
+            }
+            return latest;
+          },
+          null,
+        );
+
+        if (lastSeenAt == null) {
+          updateSource("kraken", {
+            available: false,
+            isConnecting: false,
+            errorAt: Date.now(),
+          });
+          return;
+        }
+
+        updateSource("kraken", {
+          available: true,
+          lastSeenAt,
+          isConnecting: false,
+          errorAt: null,
+          closedAt: null,
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        console.warn("[ticker][kraken] snapshot refresh failed", error);
+        updateSource("kraken", {
+          isConnecting: false,
+          errorAt: Date.now(),
+        });
       }
     };
 
@@ -819,6 +1046,8 @@ export function MarketTickerStrip({
     }
 
     void refreshSnapshot("initial");
+    void refreshBitflyer();
+    void refreshKraken();
     void fetchMarketTickerMiniCharts(symbols)
       .then((nextCharts) => {
         if (cancelled) {
@@ -855,10 +1084,26 @@ export function MarketTickerStrip({
     const refreshTimer = window.setInterval(() => {
       void refreshSnapshot("background");
     }, SNAPSHOT_POLL_INTERVAL_MS);
+    if (hasBitflyerSupport) {
+      bitflyerTimer = window.setInterval(() => {
+        void refreshBitflyer();
+      }, BITFLYER_POLL_INTERVAL_MS);
+    }
+    if (hasKrakenSupport) {
+      krakenTimer = window.setInterval(() => {
+        void refreshKraken();
+      }, KRAKEN_POLL_INTERVAL_MS);
+    }
 
     return () => {
       cancelled = true;
       window.clearInterval(refreshTimer);
+      if (bitflyerTimer) {
+        window.clearInterval(bitflyerTimer);
+      }
+      if (krakenTimer) {
+        window.clearInterval(krakenTimer);
+      }
 
       if (binanceSocket) {
         binanceSocket.close();
@@ -893,16 +1138,9 @@ export function MarketTickerStrip({
     const status = sourceStatus(key, state, clock, phase);
     const lastFailureAt = Math.max(state.errorAt ?? 0, state.closedAt ?? 0);
     const isPollingHold =
-      profile === "polling" && state.lastSeenAt != null && lastFailureAt > state.lastSeenAt;
+      profile.kind === "polling" && state.lastSeenAt != null && lastFailureAt > state.lastSeenAt;
     const lastSeenText = formatTooltipTimestamp(state.lastSeenAt, copy.tooltipPending);
-    const criteriaText =
-      profile === "live"
-        ? language === "ko"
-          ? "15초 live / 45초 stale"
-          : "15s live / 45s stale"
-        : language === "ko"
-          ? "6분 live / 15분 stale"
-          : "6m live / 15m stale";
+    const criteriaText = `${formatCriteriaWindow(profile.liveWindowMs, language)} live / ${formatCriteriaWindow(profile.downWindowMs, language)} stale`;
 
     let originSummary = copy.tooltipSnapshotOrigin;
     let sourceLine = copy.tooltipSnapshotSource;
@@ -912,6 +1150,12 @@ export function MarketTickerStrip({
     } else if (key === "upbit") {
       originSummary = copy.tooltipUpbitOrigin;
       sourceLine = copy.tooltipUpbitSource;
+    } else if (key === "bitflyer") {
+      originSummary = copy.tooltipBitflyerOrigin;
+      sourceLine = copy.tooltipBitflyerSource;
+    } else if (key === "kraken") {
+      originSummary = copy.tooltipKrakenOrigin;
+      sourceLine = copy.tooltipKrakenSource;
     } else if (key === "fx") {
       originSummary = copy.tooltipFxOrigin;
       sourceLine = copy.tooltipFxSource;
@@ -920,21 +1164,21 @@ export function MarketTickerStrip({
     let statusSummary = copy.tooltipConnectingSummary;
     if (status === "live") {
       statusSummary =
-        profile === "live"
+        profile.kind === "live"
           ? copy.tooltipLiveSummaryLive
           : isPollingHold
             ? copy.tooltipPollingHoldingSummary
             : copy.tooltipLiveSummaryPolling;
     } else if (status === "stale") {
       statusSummary =
-        profile === "live"
+        profile.kind === "live"
           ? copy.tooltipStaleSummaryLive
           : isPollingHold
             ? copy.tooltipPollingHoldingSummary
             : copy.tooltipStaleSummaryPolling;
     } else if (status === "down") {
       statusSummary =
-        profile === "live" ? copy.tooltipDownSummaryLive : copy.tooltipDownSummaryPolling;
+        profile.kind === "live" ? copy.tooltipDownSummaryLive : copy.tooltipDownSummaryPolling;
     }
 
     return {
@@ -942,8 +1186,7 @@ export function MarketTickerStrip({
       label,
       status,
       lastSeenAt: state.lastSeenAt,
-      expectedIntervalMs:
-        profile === "live" ? LIVE_SOURCE_LIVE_WINDOW_MS : SNAPSHOT_POLL_INTERVAL_MS,
+      expectedIntervalMs: profile.expectedIntervalMs,
       originSummary,
       statusSummary,
       metaLines: [
@@ -956,6 +1199,8 @@ export function MarketTickerStrip({
   const sourceChips: MarketTickerSourceChip[] = [
     buildSourceChip("binance", "Binance", sourceHealth.binance),
     buildSourceChip("upbit", "Upbit", sourceHealth.upbit),
+    buildSourceChip("bitflyer", "Bitflyer", sourceHealth.bitflyer),
+    buildSourceChip("kraken", "Kraken", sourceHealth.kraken),
     buildSourceChip("fx", "FX", sourceHealth.fx),
     buildSourceChip("snapshot", "Snapshot", sourceHealth.snapshot),
   ];

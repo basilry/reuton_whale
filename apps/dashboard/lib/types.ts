@@ -246,7 +246,10 @@ export type CuratedWalletCategory =
   | "custody"
   | "bridge"
   | "protocol"
+  | "protocol_treasury"
   | "foundation"
+  | "founder"
+  | "celebrity"
   | "unknown";
 
 export type CuratedWalletGrade = "A" | "B" | "C" | "D";
@@ -259,7 +262,11 @@ export type CuratedWalletEntry = {
   category: CuratedWalletCategory;
   grade: CuratedWalletGrade;
   priority: number;
+  displayPriority?: number;
   enabled: boolean;
+  entityId?: string;
+  isRepresentative?: boolean;
+  narrativeTags?: string[];
   aliases?: string[];
   note?: string;
   focusSymbols?: string[];
@@ -288,6 +295,10 @@ export type CuratedWatchlistItem = {
   category: CuratedWalletCategory;
   grade: CuratedWalletGrade;
   priority: number;
+  displayPriority?: number;
+  entityId?: string;
+  isRepresentative?: boolean;
+  narrativeTags?: string[];
   tone: WhaleStoryTone;
   lastSeenAt?: string;
   relatedSignalCount: number;

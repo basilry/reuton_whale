@@ -7,6 +7,8 @@ import {
   parseDateTimeSafe,
   parseIntSafe,
   parseJsonSafe,
+  safeStringifyBounded,
+  sanitizeForRsc,
 } from "./format";
 import {
   type DailyBriefRow,
@@ -88,7 +90,15 @@ export interface LatestRunSummary {
   finished_at: string;
   transactions_count: number | null;
   errors: number | string | null;
-  details: unknown;
+  /**
+   * Bounded string form of the row's `details` column. We do NOT forward the
+   * raw parsed object to the client — arbitrary deeply-nested or cyclic
+   * payloads written by the Python pipeline (e.g., googleapis error objects
+   * that get JSON-stringified) can crash React Server Components deserialization
+   * with RangeError: Maximum call stack size exceeded when React replays the
+   * server console stream to the browser.
+   */
+  details: string;
 }
 
 export interface DashboardMetrics {
@@ -310,7 +320,10 @@ async function readOptionalSheetRows(tabName: string): Promise<OptionalSheetRow[
       })
       .filter(rowHasMeaningfulContent);
   } catch (error) {
-    console.warn(`[metrics] Optional tab ${tabName} unavailable`, error);
+    console.warn(
+      `[metrics] Optional tab ${tabName} unavailable`,
+      error instanceof Error ? error.message : String(error),
+    );
     return [];
   }
 }
@@ -532,7 +545,12 @@ function normalizeLatestRun(row: SystemLogRow): LatestRunSummary {
   const transactionsCount = parseIntSafe(compactString(row.transactions_count));
   const errorText = compactString(row.errors);
   const errors = parseIntSafe(errorText) ?? (errorText || null);
-  const details = parseJsonSafe(row.details) ?? row.details;
+  // IMPORTANT: we always return `details` as a bounded string. Forwarding raw
+  // parsed JSON here can leak unbounded/deeply-nested payloads to the RSC
+  // client and trigger "Maximum call stack size exceeded" during React's
+  // server→client console replay (see comment on `LatestRunSummary.details`).
+  const parsedDetails = parseJsonSafe(row.details);
+  const details = safeStringifyBounded(parsedDetails ?? row.details, 1000);
 
   return {
     run_id: row.run_id,
@@ -784,12 +802,16 @@ function humanizeLogMessage(row: SystemLogRow): string {
 
 function normalizeSystemLogRows(rows: SystemLogRow[]) {
   return rows.map((row) => {
-    const normalized = normalizeLatestRun(row);
     const errorCount = errorCountForRun(row);
     const humanized = humanizeLogMessage(row);
+    // IMPORTANT: only forward lean display-safe fields to the RSC client.
+    // Previously this spread `...normalizeLatestRun(row)` which leaked a
+    // raw (potentially huge / deeply-nested) `details` payload into every
+    // system log entry, triggering "Maximum call stack size exceeded" during
+    // React's server→client console replay. Keep the shape aligned with
+    // `DisplaySystemLogRow` in lib/types.ts.
     return {
       id: row.run_id,
-      ...normalized,
       timestamp: row.finished_at || row.started_at,
       status: row.status,
       title: row.run_type || "Pipeline run",
@@ -1517,7 +1539,25 @@ export async function getDashboardData(options?: {
   });
   const opsSummary = buildOpsSummary(serviceHealth);
 
-  return {
+  // IMPORTANT: Defensive RSC boundary guard.
+  //
+  // React Server Components serialize this payload to the client, and an
+  // unhandled cycle / non-serializable value / pathologically deep sub-tree
+  // anywhere in the object graph will crash the Flight serializer with
+  // `RangeError: Maximum call stack size exceeded at Set.add` — Flight
+  // uses a plain Set to dedupe written objects and the failure point is
+  // inside its own recursion.
+  //
+  // We normalize each field as best we can upstream (see normalizeLatestRun,
+  // normalizeSystemLogRows, normalizeDashboardSignal, etc.) but pipeline
+  // writers can still emit surprising shapes into Google Sheets columns
+  // (e.g., a gspread APIError's deeply-nested `response.request.response`
+  // chain written as JSON into `system_log.details`). `sanitizeForRsc`
+  // makes the return value robust regardless of what slips through:
+  // cycles, Dates, Errors, Maps, Sets, Promises, and depth > 20 are all
+  // replaced with safe representations. This is a cheap structural clone
+  // at the dashboard request frequency and is worth the safety budget.
+  return sanitizeForRsc({
     generatedAt,
     source: "google_sheets",
     latestBrief: normalizedBrief,
@@ -1556,7 +1596,7 @@ export async function getDashboardData(options?: {
       latestStatus: currentLatestRun?.status ?? null,
       errorCount: latestRunErrorCount,
     },
-  };
+  });
 }
 
 export async function getTransactionsData(limit: number): Promise<{

@@ -376,7 +376,10 @@ async function tryReadNewsFeed(): Promise<NewsFeedRow[]> {
   try {
     return await readSheetRows("news_feed");
   } catch (error) {
-    console.error("[lib/news] Failed to read news_feed.", error);
+    console.error(
+      "[lib/news] Failed to read news_feed.",
+      error instanceof Error ? error.message : String(error),
+    );
     return [];
   }
 }
@@ -385,7 +388,10 @@ async function tryReadSystemLog(): Promise<SystemLogRow[]> {
   try {
     return await readSheetRows("system_log");
   } catch (error) {
-    console.error("[lib/news] Failed to read system_log.", error);
+    console.error(
+      "[lib/news] Failed to read system_log.",
+      error instanceof Error ? error.message : String(error),
+    );
     return [];
   }
 }
@@ -401,7 +407,10 @@ async function tryReadDerivedInputs(): Promise<{
     ]);
     return { briefs, signals };
   } catch (error) {
-    console.error("[lib/news] Failed to read derived news inputs.", error);
+    console.error(
+      "[lib/news] Failed to read derived news inputs.",
+      error instanceof Error ? error.message : String(error),
+    );
     return { briefs: [], signals: [] };
   }
 }

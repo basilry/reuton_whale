@@ -144,7 +144,9 @@ USER_INTERESTS_HEADERS = [
 CURATED_WALLETS_HEADERS = [
     "id", "chain", "address", "owner_label", "owner_category",
     "owner_subcategory", "approx_balance", "tier", "source_ref",
-    "source_url", "note", "is_active", "created_at", "updated_at",
+    "source_url", "note", "entity_id", "is_representative",
+    "narrative_tags", "display_priority", "is_active",
+    "created_at", "updated_at",
 ]
 
 WALLET_ALIASES_HEADERS = [

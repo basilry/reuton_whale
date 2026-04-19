@@ -103,6 +103,10 @@ export const CURATED_WALLETS_HEADERS = [
   "source_ref",
   "source_url",
   "note",
+  "entity_id",
+  "is_representative",
+  "narrative_tags",
+  "display_priority",
   "is_active",
   "created_at",
   "updated_at",
@@ -237,6 +241,10 @@ export interface CuratedWalletRow {
   source_ref: string;
   source_url: string;
   note: string;
+  entity_id: string;
+  is_representative: string;
+  narrative_tags: string;
+  display_priority: string;
   is_active: string;
   created_at: string;
   updated_at: string;

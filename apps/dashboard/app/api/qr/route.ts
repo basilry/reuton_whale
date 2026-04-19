@@ -564,7 +564,7 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
-    console.error("[api/qr]", error);
+    console.error("[api/qr]", error instanceof Error ? error.message : String(error));
     return NextResponse.json(
       { error: "unable-to-generate-qr" },
       { status: 400, headers: { "Cache-Control": "no-store" } },

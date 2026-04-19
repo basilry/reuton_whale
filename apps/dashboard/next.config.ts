@@ -71,6 +71,22 @@ function loadRepoRootEnv(): void {
 
 loadRepoRootEnv();
 
+const CSP_CONNECT_SRC = [
+  "'self'",
+  "https://api.binance.com",
+  "https://stream.binance.com:9443",
+  "wss://stream.binance.com:9443",
+  "https://api.upbit.com",
+  "wss://api.upbit.com",
+  "https://api.exchangerate.host",
+  "https://open.er-api.com",
+  "https://api.bitflyer.com",
+  "https://api.kraken.com",
+  "https://api.alternative.me",
+  "https://sheets.googleapis.com",
+  "https://www.googleapis.com",
+];
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   async redirects() {
@@ -93,7 +109,7 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Content-Security-Policy",
-            value: "connect-src 'self' https: wss:;",
+            value: `connect-src ${CSP_CONNECT_SRC.join(" ")};`,
           },
         ],
       },

@@ -38,7 +38,10 @@ async function loadDashboardData(): Promise<DashboardData | null> {
     };
   } catch (error) {
     if (!(error instanceof DashboardConfigError)) {
-      console.error("Dashboard data load failed", error);
+      console.error(
+        "Dashboard data load failed",
+        error instanceof Error ? error.message : String(error),
+      );
     }
     return null;
   }

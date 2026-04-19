@@ -216,7 +216,7 @@ export function createGenericErrorResponse(
   if (error instanceof Error) {
     console.error(`[${context}]`, error.message, error.stack);
   } else {
-    console.error(`[${context}]`, error);
+    console.error(`[${context}]`, String(error));
   }
 
   return NextResponse.json(

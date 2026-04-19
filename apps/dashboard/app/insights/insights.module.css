@@ -253,10 +253,33 @@
   box-shadow: var(--elev-2);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: var(--space-lg);
+  text-align: left;
   scroll-margin-top: var(--inset-navbar);
+}
+
+.moodSummary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.moodSummaryEyebrow,
+.moodFallbackLabel {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-widest);
+}
+
+.moodFallbackStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
 }
 
 .moodLabel {
