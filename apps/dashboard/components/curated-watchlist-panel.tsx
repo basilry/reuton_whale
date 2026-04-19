@@ -50,12 +50,16 @@ const itemCopyStyle: CSSProperties = {
 };
 
 const avatarStyle: CSSProperties = {
-  width: "42px",
-  height: "42px",
+  minWidth: "48px",
+  height: "32px",
+  padding: "0 10px",
   borderRadius: "999px",
-  display: "grid",
-  placeItems: "center",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
   fontWeight: 700,
+  fontSize: "12px",
+  letterSpacing: "0.04em",
   background: "color-mix(in srgb, var(--accent-soft, #d9f0ff) 65%, white)",
   color: "var(--accent-strong, #0f6db5)",
   flexShrink: 0,
@@ -107,12 +111,10 @@ export function CuratedWatchlistPanel({
         ? {
             expand: `지갑 ${overflowItems.length}개 더 보기`,
             detailCta: "상세 보기",
-            recent: "최근 관측",
           }
         : {
             expand: `Show ${overflowItems.length} more wallets`,
             detailCta: "Open detail",
-            recent: "Last seen",
           },
     [language, overflowItems.length],
   );
@@ -120,6 +122,7 @@ export function CuratedWatchlistPanel({
   const renderItems = (watchlist: CuratedWatchlistItem[]) =>
     watchlist.map((item) => {
       const isHighlight = item.tone === "critical" || item.relatedSignalCount > 0;
+      const symbolLabel = item.symbol.slice(0, 4).toUpperCase();
 
       return (
         <button
@@ -130,21 +133,18 @@ export function CuratedWatchlistPanel({
             borderColor: isHighlight ? "var(--accent-strong, #0f6db5)" : "var(--line)",
           }}
           onClick={() => setSelectedItem(item)}
+          aria-label={`${item.title} ${humanizeChain(item.chain, language)} ${copy.detailCta}`}
         >
           <div style={itemCopyStyle}>
-            <div style={avatarStyle}>{item.symbol.slice(0, 1)}</div>
-            <div style={{ minWidth: 0, display: "grid", gap: "4px" }}>
+            <div style={avatarStyle} aria-hidden="true">{symbolLabel}</div>
+            <div style={{ minWidth: 0, display: "grid", gap: "2px" }}>
               <p style={{ margin: 0, fontWeight: 700, color: "var(--on-surface)" }}>{item.title}</p>
-              <p style={{ margin: 0, color: "var(--on-surface-variant)", fontSize: "13px" }}>
-                {item.note}
-              </p>
               <p style={{ margin: 0, color: "var(--on-surface-variant)", fontSize: "12px" }}>
-                {humanizeChain(item.chain, language)} · {copy.recent}{" "}
-                {item.lastSeenAt ? item.lastSeenAt : dictionary.home.timePending}
+                {humanizeChain(item.chain, language)}
               </p>
             </div>
           </div>
-          <div style={{ display: "grid", gap: "8px", justifyItems: "end" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <span style={badgeStyle}>{item.badge}</span>
             <span style={{ ...badgeStyle, background: "var(--accent-soft)", color: "var(--accent-strong)" }}>
               {copy.detailCta}

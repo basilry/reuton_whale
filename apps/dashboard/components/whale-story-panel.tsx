@@ -30,6 +30,7 @@ export function WhaleStoryPanel({
 }: WhaleStoryPanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selectedStory = stories.find((story) => story.id === selectedId) ?? null;
+  const visibleStories = stories.slice(0, 4);
 
   if (stories.length === 0) {
     return <p className={styles.emptyState}>{emptyMessage}</p>;
@@ -38,7 +39,7 @@ export function WhaleStoryPanel({
   return (
     <>
       <div className={styles.panel}>
-        {stories.map((story) => {
+        {visibleStories.map((story) => {
           const meta = [
             story.meta,
             story.generatedAt ? `${generatedPrefix} ${formatStoryTimestamp(story.generatedAt)}` : "",

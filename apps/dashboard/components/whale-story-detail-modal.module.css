@@ -19,10 +19,10 @@
 .storyCard {
   display: grid;
   grid-template-columns: auto 1fr auto;
-  gap: var(--space-md);
+  gap: var(--space-sm);
   align-items: flex-start;
-  padding: var(--space-md);
-  border-radius: var(--radius-lg);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
   border: 1px solid var(--line);
   background: var(--surface);
   transition:
@@ -72,22 +72,31 @@
 
 .storyTitle {
   margin: 0;
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   font-weight: var(--weight-extrabold);
   line-height: var(--leading-snug);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .storyBody {
   margin: var(--space-2xs) 0 0;
   color: var(--on-surface-variant);
-  line-height: var(--leading-relaxed);
+  line-height: var(--leading-snug);
+  font-size: var(--text-xs);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .storyMeta {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-xs);
-  margin-top: var(--space-sm);
+  margin-top: var(--space-xs);
   font-size: var(--text-2xs);
   color: var(--muted-strong);
 }
@@ -166,7 +175,7 @@
   margin: 0 0 var(--space-2xs);
   font-size: var(--text-2xs);
   font-weight: var(--weight-bold);
-  color: var(--accent);
+  color: var(--accent-dark);
   letter-spacing: var(--tracking-widest);
   text-transform: uppercase;
 }
@@ -230,7 +239,7 @@
   font-weight: var(--weight-bold);
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
-  color: var(--muted-strong);
+  color: var(--on-surface-variant);
 }
 
 .metaValue {
@@ -297,7 +306,7 @@
   font-weight: var(--weight-bold);
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-dark);
 }
 
 .participantLabel {
@@ -346,7 +355,7 @@
 .signalId {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
-  color: var(--muted-strong);
+  color: var(--on-surface-variant);
 }
 
 .linkAction {
@@ -356,7 +365,7 @@
   min-height: 44px;
   padding: 0 var(--space-lg);
   border-radius: var(--radius-full);
-  background: var(--accent);
+  background: var(--accent-dark);
   color: var(--on-accent);
   font-weight: var(--weight-bold);
   text-decoration: none;
