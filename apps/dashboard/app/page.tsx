@@ -1,19 +1,20 @@
 import type { ComponentProps } from "react";
 import type { Metadata } from "next";
 import { FearGreedGauge } from "@/components/fear-greed-gauge";
+import { CuratedWatchlistPanel } from "@/components/curated-watchlist-panel";
 import { TopNavbar } from "@/components/top-navbar";
 import { InsightsSidebar } from "@/components/insights-sidebar";
 import { MarketTickerStrip } from "@/components/market-ticker-strip";
 import { NewsWidget } from "@/components/news-widget";
 import { SignalSection } from "@/components/signal-section";
 import { TelegramConnectModal } from "@/components/telegram-connect-modal";
+import { WhaleStoryPanel } from "@/components/whale-story-panel";
 import { cleanGeneratedBrief } from "@/lib/format";
 import { humanizeSourceFailureKind } from "@/lib/humanize";
 import { formatDashboardMessage } from "@/lib/i18n/get-dictionary";
 import { getCurrentDashboardDictionary, getCurrentDashboardLanguage } from "@/lib/i18n/server";
 import { getDashboardData, type DashboardData } from "@/lib/metrics";
 import { getTelegramPublicConfig } from "@/lib/public-app-config";
-import { formatStoryTimestamp } from "@/lib/whale-stories";
 import { getFearGreedData } from "@/lib/fear-greed";
 import styles from "./insights/insights.module.css";
 
@@ -84,17 +85,6 @@ function formatCompactNumber(value: number): string {
   }).format(value);
 }
 
-function truncateHash(value?: string, fallback = "Detail"): string {
-  const text = safeText(value, "");
-  if (!text) {
-    return fallback;
-  }
-  if (text.startsWith("0x") && text.length > 8) {
-    return `${text.slice(0, 6)}…${text.slice(-4)}`;
-  }
-  return text.length <= 14 ? text : `${text.slice(0, 6)}…${text.slice(-4)}`;
-}
-
 function getSignalTone(severity: string, score: number): SignalTone {
   const normalized = severity.toLowerCase();
   if (normalized.includes("critical") || normalized.includes("high") || score >= 80) {
@@ -107,29 +97,6 @@ function getSignalTone(severity: string, score: number): SignalTone {
     return "positive";
   }
   return "neutral";
-}
-
-function getCuratedCategoryLabel(category: string, dictionary: DashboardDictionary): string {
-  const normalized = category.trim().toLowerCase();
-  return (
-    dictionary.curated.categoryLabels[
-      normalized as keyof typeof dictionary.curated.categoryLabels
-    ] ?? category
-  );
-}
-
-function humanizeChain(chain: string, dictionary: DashboardDictionary): string {
-  const normalized = chain.trim().toLowerCase();
-  if (normalized === "ethereum" || normalized === "eth") {
-    return dictionary.chains.ethereum;
-  }
-  if (normalized === "solana" || normalized === "sol") {
-    return dictionary.chains.solana;
-  }
-  if (normalized === "bitcoin" || normalized === "btc") {
-    return dictionary.chains.bitcoin;
-  }
-  return chain || dictionary.chains.unknown;
 }
 
 function buildBriefAnalysis(
@@ -495,123 +462,6 @@ function buildConnectionTone(data: DashboardData | null): "good" | "warn" | "bad
   return "good";
 }
 
-function buildWatchlistBadge(
-  item: NonNullable<DashboardData["watchlist"]>[number],
-  dictionary: DashboardDictionary,
-): string {
-  if (item.relatedSignalCount > 0) {
-    return formatDashboardMessage(dictionary.curated.signalBadge, {
-      count: item.relatedSignalCount,
-    });
-  }
-
-  return formatDashboardMessage(dictionary.curated.gradeBadge, {
-    grade: item.grade,
-    category: getCuratedCategoryLabel(item.category, dictionary),
-  });
-}
-
-function buildWatchlistNote(
-  item: NonNullable<DashboardData["watchlist"]>[number],
-  dictionary: DashboardDictionary,
-): string {
-  if (item.relatedSignalCount > 0) {
-    return dictionary.curated.noteSignal;
-  }
-  if (item.lastSeenAt) {
-    return dictionary.curated.noteRecent;
-  }
-  return dictionary.curated.noteIdle;
-}
-
-function renderWatchlistItems(
-  items: NonNullable<DashboardData["watchlist"]>,
-  dictionary: DashboardDictionary,
-) {
-  return items.map((item) => {
-    const isHighlight = item.tone === "critical" || item.relatedSignalCount > 0;
-    return (
-      <div key={item.id} className={styles.watchItem} data-highlight={isHighlight ? "true" : undefined}>
-        <div className={styles.watchItemLeft}>
-          <div className={styles.watchAvatar}>{item.symbol.slice(0, 1)}</div>
-          <div>
-            <p className={styles.watchSymbol}>{item.title}</p>
-            <p
-              className={styles.watchNote}
-              data-tone={item.tone === "critical" ? "critical" : item.tone === "positive" ? "positive" : undefined}
-            >
-              {buildWatchlistNote(item, dictionary)}
-            </p>
-            <div className={styles.watchMeta}>
-              <span>{humanizeChain(item.chain, dictionary)}</span>
-              <span>{buildWatchlistBadge(item, dictionary)}</span>
-            </div>
-          </div>
-        </div>
-        <div className={styles.watchItemRight}>
-          <span className={styles.watchBadge} data-tone={item.tone}>
-            {buildWatchlistBadge(item, dictionary)}
-          </span>
-        </div>
-      </div>
-    );
-  });
-}
-
-function buildStoryCopy(
-  story: NonNullable<DashboardData["whaleStories"]>[number],
-  dictionary: DashboardDictionary,
-): { title: string; body: string; meta: string } {
-  if (story.kind === "empty") {
-    return {
-      title: dictionary.stories.emptyTitle,
-      body: dictionary.stories.emptyBody,
-      meta: dictionary.stories.emptyMeta,
-    };
-  }
-
-  if (story.kind === "signal") {
-    return {
-      title: dictionary.stories.signalTitle,
-      body: dictionary.stories.signalBody,
-      meta: story.generatedAt ? formatStoryTimestamp(story.generatedAt) : story.meta,
-    };
-  }
-
-  if (story.kind === "brief") {
-    return {
-      title: dictionary.stories.briefTitle,
-      body: dictionary.stories.briefBody,
-      meta: story.generatedAt ? formatStoryTimestamp(story.generatedAt) : story.meta,
-    };
-  }
-
-  const participants = Array.isArray(story.participants) ? story.participants : [];
-  const fromLabel =
-    participants.find((item) => item.role === "from")?.label ??
-    dictionary.stories.participantFallback;
-  const toLabel =
-    participants.find((item) => item.role === "to")?.label ??
-    dictionary.stories.participantFallback;
-  const asset = safeText(story.symbol, dictionary.stories.assetFallback);
-  const timestamp = story.occurredAt ? formatStoryTimestamp(story.occurredAt) : story.meta;
-  const chain = story.chain ? humanizeChain(story.chain, dictionary) : "";
-
-  return {
-    title: formatDashboardMessage(dictionary.stories.transactionMove, {
-      from: fromLabel,
-      to: toLabel,
-      asset,
-    }),
-    body: formatDashboardMessage(dictionary.stories.transactionBody, {
-      from: fromLabel,
-      to: toLabel,
-      asset,
-    }),
-    meta: [chain, timestamp].filter(Boolean).join(" · "),
-  };
-}
-
 async function loadInsightState(): Promise<InsightState> {
   try {
     const data = await getDashboardData({
@@ -675,12 +525,6 @@ export default async function InsightsPage() {
       })
     : data?.latestBrief?.date ?? dictionary.home.briefDateFallback;
   const nextBriefLabel = buildNextBriefLabel(language);
-  const primaryWatchlist = watchlist.slice(0, WATCHLIST_COLLAPSED_COUNT);
-  const overflowWatchlist = watchlist.slice(WATCHLIST_COLLAPSED_COUNT);
-  const watchlistExpandLabel =
-    language === "ko"
-      ? `나머지 ${overflowWatchlist.length}개 더 보기`
-      : `Show ${overflowWatchlist.length} more`;
   const fearGreedCopy: FearGreedCopy = {
     title: dictionary.home.fearGreedTitle,
     subtitle: dictionary.home.fearGreedSubtitle,
@@ -841,70 +685,25 @@ export default async function InsightsPage() {
             <div className={styles.watchStoryRow} style={{ gridColumn: "1 / -1" }}>
               {/* Watchlist */}
               <div className={styles.watchlistCard} id="watchlist">
-                <h3 className={styles.watchlistTitle}>{dictionary.home.watchlistTitle}</h3>
-                <p className={styles.watchlistLead}>
-                  {dictionary.home.watchlistLead}
-                </p>
-                {watchlist.length > 0 ? (
-                  <>
-                    <div className={styles.watchlistItems}>
-                      {renderWatchlistItems(primaryWatchlist, dictionary)}
-                    </div>
-                    {overflowWatchlist.length > 0 ? (
-                      <details className={styles.watchlistDisclosure}>
-                        <summary className={styles.watchlistSummary}>
-                          <span>{watchlistExpandLabel}</span>
-                          <span className={`${styles.watchlistSummaryIcon} material-symbols-outlined`} aria-hidden="true">
-                            expand_more
-                          </span>
-                        </summary>
-                        <div className={styles.watchlistItems} data-overflow="true">
-                          {renderWatchlistItems(overflowWatchlist, dictionary)}
-                        </div>
-                      </details>
-                    ) : null}
-                  </>
-                ) : (
-                  <article className={styles.emptyCard}>
-                    <h4>{dictionary.curated.emptyTitle}</h4>
-                    <p>{dictionary.curated.emptyBody}</p>
-                  </article>
-                )}
+                <CuratedWatchlistPanel
+                  items={watchlist}
+                  initialLanguage={language}
+                  collapsedCount={WATCHLIST_COLLAPSED_COUNT}
+                  title={dictionary.home.watchlistTitle}
+                  lead={dictionary.home.watchlistLead}
+                  emptyTitle={dictionary.curated.emptyTitle}
+                  emptyBody={dictionary.curated.emptyBody}
+                />
               </div>
 
               {/* Whale Stories */}
               <div className={styles.storiesCard}>
                 <h3 className={styles.storiesTitle}>{dictionary.home.storiesTitle}</h3>
-                {stories.map((story) => {
-                  const storyCopy = buildStoryCopy(story, dictionary);
-                  return (
-                    <div
-                      key={story.id}
-                      className={styles.storyItem}
-                    >
-                      <div className={styles.storyItemInner}>
-                        <div className={styles.storyDot} data-tone={story.tone} />
-                        <div>
-                          <p className={styles.storyBody}>
-                            <strong>{storyCopy.title}</strong> {storyCopy.body}
-                          </p>
-                          <div className={styles.storyMeta}>
-                            <span>{storyCopy.meta}</span>
-                            {story.generatedAt ? (
-                              <span>
-                                {dictionary.home.storyGeneratedPrefix}{" "}
-                                {formatStoryTimestamp(story.generatedAt)}
-                              </span>
-                            ) : null}
-                            {story.hash ? (
-                              <span>{truncateHash(story.hash, dictionary.home.detailFallback)}</span>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                <WhaleStoryPanel
+                  stories={stories}
+                  emptyMessage={dictionary.stories.emptyBody}
+                  generatedPrefix={dictionary.home.storyGeneratedPrefix}
+                />
               </div>
             </div>
 

@@ -1,0 +1,414 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--ink-950, #071827) 62%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.modal {
+  width: min(980px, 100%);
+  max-height: min(88vh, 960px);
+  overflow: auto;
+  border-radius: 28px;
+  border: 1px solid color-mix(in srgb, var(--line, #d7e3ef) 82%, white);
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--accent-soft, #d9f0ff) 62%, white), transparent 48%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface, #ffffff) 92%, white), var(--surface, #ffffff));
+  box-shadow:
+    0 28px 80px color-mix(in srgb, var(--ink-950, #071827) 28%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 72%, transparent);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 28px 28px 18px;
+}
+
+.headerCopy {
+  display: grid;
+  gap: 10px;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-strong, #0f6db5);
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+  line-height: 1.05;
+  color: var(--on-surface, #09253a);
+}
+
+.description {
+  margin: 0;
+  max-width: 72ch;
+  color: var(--on-surface-variant, #486579);
+  line-height: 1.6;
+}
+
+.headerMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-soft, #d9f0ff) 55%, white);
+  color: var(--accent-strong, #0f6db5);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.closeButton {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-2, #f3f8fc) 86%, white);
+  color: var(--on-surface, #09253a);
+  cursor: pointer;
+}
+
+.closeButton:focus-visible {
+  outline: 2px solid var(--accent-strong, #0f6db5);
+  outline-offset: 3px;
+}
+
+.content {
+  display: grid;
+  gap: 20px;
+  padding: 0 28px 28px;
+}
+
+.heroCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  gap: 18px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid color-mix(in srgb, var(--line, #d7e3ef) 84%, white);
+  background: color-mix(in srgb, var(--surface-2, #f3f8fc) 52%, white);
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metricCard {
+  padding: 14px;
+  border-radius: 18px;
+  background: color-mix(in srgb, white 84%, var(--accent-soft, #d9f0ff));
+  border: 1px solid color-mix(in srgb, var(--line, #d7e3ef) 78%, white);
+}
+
+.metricLabel {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant, #486579);
+}
+
+.metricValue {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--on-surface, #09253a);
+}
+
+.metricHelp {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--on-surface-variant, #486579);
+}
+
+.section {
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid color-mix(in srgb, var(--line, #d7e3ef) 84%, white);
+  background: color-mix(in srgb, white 88%, var(--surface-2, #f3f8fc));
+}
+
+.sectionHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--on-surface, #09253a);
+}
+
+.sectionLead {
+  margin: 0;
+  font-size: 13px;
+  color: var(--on-surface-variant, #486579);
+}
+
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-soft, #d9f0ff) 58%, white);
+  color: var(--accent-strong, #0f6db5);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.walletList {
+  display: grid;
+  gap: 10px;
+}
+
+.walletRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: color-mix(in srgb, white 88%, var(--surface-2, #f3f8fc));
+  border: 1px solid color-mix(in srgb, var(--line, #d7e3ef) 80%, white);
+}
+
+.walletRowCopy {
+  display: grid;
+  gap: 4px;
+}
+
+.walletLabel {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: var(--on-surface, #09253a);
+}
+
+.walletMeta {
+  margin: 0;
+  font-size: 13px;
+  color: var(--on-surface-variant, #486579);
+}
+
+.walletBadge {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-2, #f3f8fc) 78%, white);
+  color: var(--on-surface, #09253a);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.balanceList,
+.activityList,
+.signalList {
+  display: grid;
+  gap: 12px;
+}
+
+.balanceRow,
+.activityRow,
+.signalRow {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 18px;
+  background: color-mix(in srgb, white 90%, var(--surface-2, #f3f8fc));
+  border: 1px solid color-mix(in srgb, var(--line, #d7e3ef) 80%, white);
+}
+
+.rowHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rowTitle {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: var(--on-surface, #09253a);
+}
+
+.rowMeta {
+  margin: 0;
+  font-size: 13px;
+  color: var(--on-surface-variant, #486579);
+}
+
+.barTrack {
+  position: relative;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-2, #f3f8fc) 80%, white);
+}
+
+.barFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent, #49a3df), var(--accent-strong, #0f6db5));
+}
+
+.barFill[data-tone="outflow"] {
+  background: linear-gradient(90deg, #f0a36b, #da6b3c);
+}
+
+.barFill[data-tone="internal"] {
+  background: linear-gradient(90deg, #a1b4c6, #7a91a7);
+}
+
+.barLegend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--on-surface-variant, #486579);
+}
+
+.signalMeta,
+.activityMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.signalChip,
+.activityChip {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-2, #f3f8fc) 82%, white);
+  color: var(--on-surface, #09253a);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.emptyState,
+.errorState,
+.loadingState {
+  display: grid;
+  gap: 10px;
+  padding: 20px;
+  border-radius: 18px;
+  background: color-mix(in srgb, white 88%, var(--surface-2, #f3f8fc));
+  border: 1px dashed color-mix(in srgb, var(--line, #d7e3ef) 84%, white);
+}
+
+.stateTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--on-surface, #09253a);
+}
+
+.stateBody {
+  margin: 0;
+  color: var(--on-surface-variant, #486579);
+  line-height: 1.6;
+}
+
+.skeletonLine {
+  height: 13px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--surface-2, #f3f8fc) 85%, white),
+    color-mix(in srgb, var(--accent-soft, #d9f0ff) 55%, white),
+    color-mix(in srgb, var(--surface-2, #f3f8fc) 85%, white)
+  );
+  background-size: 220% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+
+.skeletonLine[data-width="sm"] {
+  width: 32%;
+}
+
+.skeletonLine[data-width="md"] {
+  width: 54%;
+}
+
+.skeletonLine[data-width="lg"] {
+  width: 82%;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (max-width: 767px) {
+  .backdrop {
+    padding: 12px;
+  }
+
+  .modal {
+    max-height: 92vh;
+    border-radius: 24px;
+  }
+
+  .header,
+  .content {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .heroCard {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .metricGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rowHeader,
+  .walletRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
