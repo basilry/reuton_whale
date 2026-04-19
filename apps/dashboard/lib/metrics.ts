@@ -17,6 +17,7 @@ import {
   type SystemLogRow,
   type TgWhaleEventRow,
   type TransactionRow,
+  type WatchedAddressRow,
 } from "./schema";
 import {
   buildCuratedWatchlistItems,
@@ -40,6 +41,10 @@ import { buildWhaleStories, buildWhaleStoryCards } from "./whale-stories";
 import type {
   AdminChainCoverageEntry,
   AdminChainCoverageObservability,
+  AdminChainRolloutEntry,
+  AdminChainRolloutMode,
+  AdminChainRolloutObservability,
+  AdminChainRolloutStatus,
   AdminMarketSourceObservability,
   AdminRenderObservability,
   AdminObservabilitySummary,
@@ -70,7 +75,62 @@ const ADMIN_OBSERVABILITY_WINDOW_HOURS = 24;
 const ADMIN_OBSERVABILITY_WINDOW_MS = ADMIN_OBSERVABILITY_WINDOW_HOURS * 60 * 60 * 1000;
 const TELEGRAM_MESSAGE_HARD_CAP = 1500;
 const TELEGRAM_UNSUBSCRIBED_STATUSES = new Set(["paused", "blocked", "deactivated"]);
-
+const CHAIN_ROLLOUT_ORDER = [
+  "ETH",
+  "ARB",
+  "BASE",
+  "BSC",
+  "POLYGON",
+  "SOL",
+  "XRP",
+  "TRX",
+  "BTC",
+  "DOGE",
+] as const;
+const CHAIN_ROLLOUT_INDEX = new Map<string, number>(
+  CHAIN_ROLLOUT_ORDER.map((chain, index) => [chain, index] as const),
+);
+const CHAIN_ALIASES: Record<string, string> = {
+  bitcoin: "BTC",
+  btc: "BTC",
+  ethereum: "ETH",
+  eth: "ETH",
+  evm: "ETH",
+  arbitrum: "ARB",
+  arb: "ARB",
+  base: "BASE",
+  bsc: "BSC",
+  bnb: "BSC",
+  polygon: "POLYGON",
+  matic: "POLYGON",
+  solana: "SOL",
+  sol: "SOL",
+  ripple: "XRP",
+  xrp: "XRP",
+  tron: "TRX",
+  trx: "TRX",
+  dogecoin: "DOGE",
+  doge: "DOGE",
+};
+const CHAIN_ROLLOUT_CONFIG: Record<
+  string,
+  {
+    collectorMode: AdminChainRolloutMode;
+    envName?: string;
+    partialView: boolean;
+  }
+> = {
+  ETH: { collectorMode: "always_on", partialView: false },
+  ARB: { collectorMode: "always_on", partialView: false },
+  BASE: { collectorMode: "always_on", partialView: false },
+  BSC: { collectorMode: "always_on", partialView: false },
+  POLYGON: { collectorMode: "always_on", partialView: false },
+  SOL: { collectorMode: "always_on", partialView: false },
+  XRP: { collectorMode: "env_flag", envName: "ENABLE_CHAIN_XRP", partialView: false },
+  TRX: { collectorMode: "env_flag", envName: "ENABLE_CHAIN_TRX", partialView: false },
+  BTC: { collectorMode: "env_flag", envName: "ENABLE_CHAIN_BTC", partialView: true },
+  DOGE: { collectorMode: "env_flag", envName: "ENABLE_CHAIN_DOGE", partialView: true },
+};
 const SHEETS_API_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
 const OPTIONAL_TAB_RANGE = "A:ZZ";
 const PIPELINE_RUN_TYPES = new Set([
@@ -224,6 +284,14 @@ function envText(name: string): string {
       return process.env.NEXT_PUBLIC_TELEGRAM_BROADCAST_CHANNEL?.trim() ?? "";
     case "NODE_ENV":
       return process.env.NODE_ENV?.trim() ?? "";
+    case "ENABLE_CHAIN_XRP":
+      return process.env.ENABLE_CHAIN_XRP?.trim() ?? "";
+    case "ENABLE_CHAIN_TRX":
+      return process.env.ENABLE_CHAIN_TRX?.trim() ?? "";
+    case "ENABLE_CHAIN_BTC":
+      return process.env.ENABLE_CHAIN_BTC?.trim() ?? "";
+    case "ENABLE_CHAIN_DOGE":
+      return process.env.ENABLE_CHAIN_DOGE?.trim() ?? "";
     default:
       return "";
   }
@@ -359,6 +427,21 @@ async function readOptionalSheetRows(tabName: string): Promise<OptionalSheetRow[
   }
 }
 
+async function readWatchedAddressRows(): Promise<WatchedAddressRow[]> {
+  const rows = await readOptionalSheetRows("watched_addresses");
+  return rows.map((row) => ({
+    address: row.address ?? "",
+    chain: row.chain ?? "",
+    category: row.category ?? "",
+    label: row.label ?? "",
+    source: row.source ?? "",
+    confidence: row.confidence ?? "",
+    enabled: row.enabled ?? "",
+    added_at: row.added_at ?? "",
+    notes: row.notes ?? "",
+  }));
+}
+
 function rowValue(row: OptionalSheetRow | null | undefined, keys: string[]): string {
   if (!row) {
     return "";
@@ -404,6 +487,25 @@ function parseChainList(value: string): string[] {
     .split(/[,\n|]/)
     .map((item) => compactString(item).toUpperCase())
     .filter(Boolean);
+}
+
+function parseEnvFlag(name: string | null): boolean {
+  if (!name) {
+    return true;
+  }
+  const raw = process.env[name];
+  if (raw == null) {
+    return false;
+  }
+  return compactString(raw).toLowerCase() === "true" || compactString(raw) === "1";
+}
+
+function canonicalWatchChain(value: string): string {
+  const raw = compactString(value).toLowerCase();
+  if (!raw) {
+    return "";
+  }
+  return CHAIN_ALIASES[raw] ?? raw.toUpperCase();
 }
 
 function normalizeChainCoverageEntry(
@@ -587,6 +689,139 @@ function buildChainCoverageObservability(
     unsupportedChainCount,
     unsupportedChains,
     perChainEventCount,
+  };
+}
+
+function buildChainRolloutObservability(args: {
+  watchedAddressRows: WatchedAddressRow[];
+  chainCoverage: AdminChainCoverageObservability | null;
+}): AdminChainRolloutObservability {
+  const seedCounts = new Map<string, number>();
+  for (const row of args.watchedAddressRows) {
+    const enabledValue = compactString(row.enabled).toLowerCase();
+    if (enabledValue === "false" || enabledValue === "0" || enabledValue === "no") {
+      continue;
+    }
+    const chain = canonicalWatchChain(row.chain);
+    if (!chain) {
+      continue;
+    }
+    seedCounts.set(chain, (seedCounts.get(chain) ?? 0) + 1);
+  }
+
+  const eventCounts = new Map<string, number>();
+  for (const entry of args.chainCoverage?.perChainEventCount ?? []) {
+    if (!entry.chain || entry.count == null) {
+      continue;
+    }
+    eventCounts.set(canonicalWatchChain(entry.chain), entry.count);
+  }
+
+  const supportedChains = new Set(
+    (args.chainCoverage?.supportedChains ?? [])
+      .map((chain) => canonicalWatchChain(chain))
+      .filter(Boolean),
+  );
+  const latestWatchedSeedAt = latestTimestamp(
+    ...args.watchedAddressRows
+      .map((row) => compactString(row.added_at) || undefined)
+      .filter((value): value is string => Boolean(value)),
+  );
+  const chains = new Set<string>([
+    ...CHAIN_ROLLOUT_ORDER,
+    ...seedCounts.keys(),
+    ...eventCounts.keys(),
+    ...supportedChains.values(),
+  ]);
+
+  const entries: AdminChainRolloutEntry[] = Array.from(chains)
+    .sort((left, right) => {
+      const leftIndex = CHAIN_ROLLOUT_INDEX.get(left);
+      const rightIndex = CHAIN_ROLLOUT_INDEX.get(right);
+      if (leftIndex != null && rightIndex != null) {
+        return leftIndex - rightIndex;
+      }
+      if (leftIndex != null) {
+        return -1;
+      }
+      if (rightIndex != null) {
+        return 1;
+      }
+      return left.localeCompare(right, "en");
+    })
+    .map((chain) => {
+      const config = CHAIN_ROLLOUT_CONFIG[chain] ?? {
+        collectorMode: supportedChains.has(chain) ? "always_on" : "unmanaged",
+        partialView: false,
+      };
+      const collectorEnabled =
+        config.collectorMode === "always_on"
+          ? true
+          : config.collectorMode === "env_flag"
+            ? parseEnvFlag(config.envName ?? null)
+            : false;
+      const seedAddressCount = seedCounts.get(chain) ?? 0;
+      const recentEventCount = eventCounts.get(chain) ?? null;
+
+      let status: AdminChainRolloutStatus = "idle";
+      let statusLabel = "플래그와 seed address가 모두 대기 상태입니다";
+
+      if (config.collectorMode === "unmanaged") {
+        status = "unmanaged";
+        statusLabel =
+          seedAddressCount > 0
+            ? "시드는 있지만 대시보드 rollout 매핑이 없습니다"
+            : "미관리 체인";
+      } else if (seedAddressCount > 0 && !collectorEnabled) {
+        status = "seed_flag_off";
+        statusLabel = `${config.envName ?? "collector"}가 꺼져 있어 수집되지 않습니다`;
+      } else if (
+        seedAddressCount === 0 &&
+        collectorEnabled &&
+        config.collectorMode === "env_flag"
+      ) {
+        status = "flag_on_no_seed";
+        statusLabel = `${config.envName ?? "collector"}는 켜졌지만 seed address가 없습니다`;
+      } else if (seedAddressCount > 0 && collectorEnabled) {
+        status = recentEventCount != null && recentEventCount > 0 ? "collecting" : "seed_ready";
+        statusLabel =
+          status === "collecting"
+            ? config.partialView
+              ? "부분 관측으로 최근 이벤트를 수집 중"
+              : "최근 이벤트가 정상 수집됨"
+            : config.partialView
+              ? "부분 관측 준비 완료, 최근 이벤트만 없었습니다"
+              : "준비 완료, 최근 이벤트만 없었습니다";
+      } else if (config.collectorMode === "always_on") {
+        status = "idle";
+        statusLabel = "상시 수집기지만 현재 seed address가 없습니다";
+      }
+
+      return {
+        chain,
+        seedAddressCount,
+        collectorEnabled,
+        collectorMode: config.collectorMode,
+        flagEnvName: config.envName,
+        partialView: config.partialView,
+        recentEventCount,
+        status,
+        statusLabel,
+      };
+    });
+
+  return {
+    observedAt: latestTimestamp(args.chainCoverage?.observedAt, latestWatchedSeedAt),
+    source: args.chainCoverage?.source
+      ? `${args.chainCoverage.source} + watched_addresses + env`
+      : "watched_addresses + env",
+    seedButFlagDisabled: entries
+      .filter((entry) => entry.status === "seed_flag_off")
+      .map((entry) => entry.chain),
+    flagEnabledButNoSeed: entries
+      .filter((entry) => entry.status === "flag_on_no_seed")
+      .map((entry) => entry.chain),
+    entries,
   };
 }
 
@@ -2484,6 +2719,7 @@ async function buildAdminObservabilitySummary(args: {
   llmBudgetRows: OptionalSheetRow[];
   broadcastRows: OptionalSheetRow[];
   subscriberRows: SubscriberRow[];
+  watchedAddressRows: WatchedAddressRow[];
   channelHealthRows: OptionalSheetRow[];
   systemLogRows: SystemLogRow[];
   latestBrief: DashboardBrief | null;
@@ -2493,6 +2729,10 @@ async function buildAdminObservabilitySummary(args: {
 }): Promise<AdminObservabilitySummary> {
   const sinceMs = Date.now() - ADMIN_OBSERVABILITY_WINDOW_MS;
   const chainCoverage = buildChainCoverageObservability(args.serviceHealthRows);
+  const chainRollout = buildChainRolloutObservability({
+    watchedAddressRows: args.watchedAddressRows,
+    chainCoverage,
+  });
   const briefRows24h = rowsWithinWindow(args.briefLedgerRows, ["ts", "created_at", "updated_at"], sinceMs);
   const briefTotalRuns = briefRows24h.length;
   const briefGeneratedCount = briefRows24h.filter((row) => briefDecisionKey(row) === "generated").length;
@@ -2582,6 +2822,7 @@ async function buildAdminObservabilitySummary(args: {
     liveUpdates,
     marketSources,
     chainCoverage,
+    chainRollout,
     telegram,
     render: args.render,
   };
@@ -2604,6 +2845,7 @@ export async function getDashboardData(options?: {
     briefCostLedgerRows,
     broadcastLogRows,
     llmBudgetRows,
+    watchedAddressRows,
     renderObservability,
   ] = await Promise.all([
     readDashboardSnapshot(),
@@ -2613,6 +2855,7 @@ export async function getDashboardData(options?: {
     readOptionalSheetRows("brief_cost_ledger"),
     readOptionalSheetRows("broadcast_log"),
     readOptionalSheetRows("llm_budget_log"),
+    readWatchedAddressRows(),
     loadRenderObservability(),
   ]);
   const curatedWallets = curatedWalletBundle.wallets;
@@ -2651,6 +2894,7 @@ export async function getDashboardData(options?: {
     llmBudgetRows,
     broadcastRows: broadcastLogRows,
     subscriberRows: snapshot.subscribers,
+    watchedAddressRows,
     channelHealthRows,
     systemLogRows: snapshot.system_log,
     latestBrief: normalizedBrief,

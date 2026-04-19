@@ -108,6 +108,36 @@ export type AdminChainCoverageObservability = {
   perChainEventCount: AdminChainCoverageEntry[];
 };
 
+export type AdminChainRolloutMode = "always_on" | "env_flag" | "unmanaged";
+
+export type AdminChainRolloutStatus =
+  | "collecting"
+  | "seed_ready"
+  | "seed_flag_off"
+  | "flag_on_no_seed"
+  | "idle"
+  | "unmanaged";
+
+export type AdminChainRolloutEntry = {
+  chain: string;
+  seedAddressCount: number;
+  collectorEnabled: boolean;
+  collectorMode: AdminChainRolloutMode;
+  flagEnvName?: string;
+  partialView: boolean;
+  recentEventCount: number | null;
+  status: AdminChainRolloutStatus;
+  statusLabel: string;
+};
+
+export type AdminChainRolloutObservability = {
+  observedAt?: string;
+  source: string;
+  entries: AdminChainRolloutEntry[];
+  seedButFlagDisabled: string[];
+  flagEnabledButNoSeed: string[];
+};
+
 export type AdminTelegramObservability = {
   subscriberCountActive: number;
   subscriberCountPaused: number;
@@ -255,6 +285,7 @@ export type AdminObservabilitySummary = {
   liveUpdates: AdminLiveUpdatesObservability;
   marketSources: AdminMarketSourceObservability[];
   chainCoverage: AdminChainCoverageObservability | null;
+  chainRollout: AdminChainRolloutObservability;
   telegram: AdminTelegramObservability;
   render: AdminRenderObservability;
 };

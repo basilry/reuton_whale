@@ -262,6 +262,46 @@ function formatCount(value: number | null | undefined, suffix = "건"): string {
   return `${formatCompactCount(value)}${suffix}`;
 }
 
+function formatChainRolloutFlag(
+  entry: AdminObservabilitySummary["chainRollout"]["entries"][number],
+): string {
+  if (entry.collectorMode === "always_on") {
+    return "수집기 상시";
+  }
+  if (entry.collectorMode === "env_flag") {
+    return `${entry.collectorEnabled ? "플래그 ON" : "플래그 OFF"}${entry.flagEnvName ? ` (${entry.flagEnvName})` : ""}`;
+  }
+  return "수집기 미정";
+}
+
+function chainRolloutTone(summary: AdminObservabilitySummary["chainRollout"]): AdminTone {
+  if (summary.seedButFlagDisabled.length > 0) {
+    return "warn";
+  }
+  if (summary.flagEnabledButNoSeed.length > 0) {
+    return "neutral";
+  }
+  if (summary.entries.some((entry) => entry.seedAddressCount > 0 && entry.collectorEnabled)) {
+    return "good";
+  }
+  return "neutral";
+}
+
+function chainRolloutHint(summary: AdminObservabilitySummary["chainRollout"]): string {
+  const warnings: string[] = [];
+  if (summary.seedButFlagDisabled.length > 0) {
+    warnings.push(`시드는 있는데 플래그가 꺼진 체인: ${summary.seedButFlagDisabled.join(", ")}`);
+  }
+  if (summary.flagEnabledButNoSeed.length > 0) {
+    warnings.push(`플래그는 켜졌는데 seed가 없는 체인: ${summary.flagEnabledButNoSeed.join(", ")}`);
+  }
+  if (warnings.length === 0) {
+    warnings.push("rollout 순서 불일치가 현재는 보이지 않습니다.");
+  }
+  warnings.push(`기준 시각 ${formatObservedTime(summary.observedAt)} · source ${summary.source}`);
+  return warnings.join(" · ");
+}
+
 function humanizeLiveUpdateReason(
   reason: AdminObservabilitySummary["liveUpdates"]["reason"],
 ): string {
@@ -669,6 +709,18 @@ function buildWorkerInsights(summary: AdminObservabilitySummary | null): AdminIn
         : "Phase0 registry / service_health 배포 후 자동으로 채워집니다.",
     },
     {
+      key: "chain-rollout",
+      title: "체인 rollout 진단",
+      tone: chainRolloutTone(summary.chainRollout),
+      lines: [
+        `시드 있는 체인 ${formatCount(summary.chainRollout.entries.filter((entry) => entry.seedAddressCount > 0).length, "개")} · 부분 관측 ${summary.chainRollout.entries.filter((entry) => entry.partialView).map((entry) => entry.chain).join(", ") || "없음"}`,
+        ...summary.chainRollout.entries.map((entry) =>
+          `${entry.chain} · seed ${formatCount(entry.seedAddressCount, "개")} · ${formatChainRolloutFlag(entry)} · 부분관측 ${entry.partialView ? "예" : "아니오"} · 최근 이벤트 ${formatCount(entry.recentEventCount, "건")} · ${entry.statusLabel}`,
+        ),
+      ],
+      hint: chainRolloutHint(summary.chainRollout),
+    },
+    {
       key: "market-sources",
       title: "시장 소스 진단",
       tone: summary.marketSources.every((item) => item.status === "ready")
@@ -713,6 +765,18 @@ function buildWorkerJobRows(
   const summary = rawData?.adminObservability ?? null;
   const chainCoverageSummary = summary?.chainCoverage
     ? `체인 커버리지 ${summary.chainCoverage.supportedChains.length > 0 ? summary.chainCoverage.supportedChains.join(", ") : "기록 없음"} · 미지원 ${summary.chainCoverage.unsupportedChains.length > 0 ? formatChainCoverageEntries(summary.chainCoverage.unsupportedChains, `${formatCount(summary.chainCoverage.unsupportedChainCount, "건")}`) : formatCount(summary.chainCoverage.unsupportedChainCount, "건")}`
+    : "";
+  const chainRolloutSummary = summary
+    ? [
+        summary.chainRollout.seedButFlagDisabled.length > 0
+          ? `seed 있는데 flag 꺼짐 ${summary.chainRollout.seedButFlagDisabled.join(", ")}`
+          : "",
+        summary.chainRollout.flagEnabledButNoSeed.length > 0
+          ? `flag 켜졌는데 seed 없음 ${summary.chainRollout.flagEnabledButNoSeed.join(", ")}`
+          : "rollout 정렬",
+      ]
+        .filter(Boolean)
+        .join(" · ")
     : "";
   const liveUpdateSections =
     summary?.liveUpdates.sections
@@ -761,6 +825,7 @@ function buildWorkerJobRows(
       source: data.serviceHealth.pipeline.source || "service_health",
       detail: clipText(
         [data.serviceHealth.pipeline.summary, data.serviceHealth.pipeline.detail, chainCoverageSummary]
+          .concat(chainRolloutSummary ? [chainRolloutSummary] : [])
           .filter(Boolean)
           .join(" · "),
         140,

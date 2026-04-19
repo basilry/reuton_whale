@@ -12,8 +12,8 @@
 - 대시보드 실행: `npm run dashboard:dev`
 - 운영 저장소: Google Sheets
 - 운영 발송 채널: Telegram Bot
-- 검증된 자동 테스트: `pytest -q` 기준 `386 passed`
-- 검증된 프런트 회귀: `npm run dashboard:e2e` 기준 live updates / Fear & Greed / curated watchlist component spec 통과
+- 자동 테스트 기준 명령: `pytest -q`
+- 프런트 회귀 기준 명령: `npm run dashboard:e2e`
 
 ## 검증 목표
 
@@ -75,6 +75,17 @@ LLM provider는 아래 중 최소 1개가 필요하다.
 | 변수 | 비고 |
 |---|---|
 | `SOLSCAN_API_KEY` | 없으면 Solana 수집은 제한될 수 있다. |
+| `ENABLE_CHAIN_XRP` | XRP collector canary flag. 기본값 `false` |
+| `XRPSCAN_API_BASE` | XRP contract/live 수집 base. 기본값 `https://api.xrpscan.com/api/v1` |
+| `ENABLE_CHAIN_TRX` | TRX collector canary flag. 기본값 `false` |
+| `TRONGRID_API_KEY` | TronGrid rate limit 완화용. contract/live 검증에서 권장 |
+| `TRONGRID_API_BASE` | TRX contract/live 수집 base. 기본값 `https://api.trongrid.io` |
+| `ENABLE_CHAIN_BTC` | BTC collector canary flag. 기본값 `false` |
+| `BTC_INDEXER_BASE` | BTC contract/live 수집 base. 기본값 `https://mempool.space/api` |
+| `BTC_INDEXER_KEY` | BTC 유료 indexer를 붙일 때만 사용 |
+| `ENABLE_CHAIN_DOGE` | DOGE collector canary flag. 기본값 `false` |
+| `DOGE_INDEXER_BASE` | DOGE contract/live 수집 base. 기본값 `https://api.blockchair.com/dogecoin` |
+| `BLOCKCHAIR_API_KEY` | DOGE Blockchair key. 현재 코드에서는 `DOGE_INDEXER_KEY` alias도 함께 읽음 |
 | `TELETHON_API_ID` | Telegram channel listener 운영 시 필요 |
 | `TELETHON_API_HASH` | Telegram channel listener 운영 시 필요 |
 | `TELETHON_SESSION` | 기본값 `whalescope` |
@@ -125,6 +136,64 @@ python scripts/smoke_llm.py
 
 - CoinGecko는 rate limit이 발생할 수 있다. 현재 파이프라인은 가격 실패를 치명 오류로 취급하지 않아야 한다.
 - Anthropic key가 없어도 Gemini 또는 Groq key가 있으면 정상이다.
+
+### 5. Live chain contract preflight
+
+체인 collector canary 전에는 live contract test를 먼저 돌린다. contract test는 해당 base env가 없으면 skip되므로, 대상 체인의 base URL만 명시해도 된다.
+
+대표 수동 실행:
+
+```bash
+XRPSCAN_API_BASE="${XRPSCAN_API_BASE:-https://api.xrpscan.com/api/v1}" \
+TRONGRID_API_BASE="${TRONGRID_API_BASE:-https://api.trongrid.io}" \
+BTC_INDEXER_BASE="${BTC_INDEXER_BASE:-https://mempool.space/api}" \
+DOGE_INDEXER_BASE="${DOGE_INDEXER_BASE:-https://api.blockchair.com/dogecoin}" \
+pytest -q -m contract tests/contract
+```
+
+체인별로 하나씩 볼 때는 대상 base env만 켜고 같은 명령을 재사용하면 된다. TRX는 필요 시 `TRONGRID_API_KEY`, DOGE는 필요 시 `BLOCKCHAIR_API_KEY` 또는 기존 alias `DOGE_INDEXER_KEY`를 함께 넣는다.
+
+GitHub Actions 수동 경로:
+
+- workflow 파일: [`../.github/workflows/chain_contract.yml`](../.github/workflows/chain_contract.yml)
+- Actions UI 이름: `Chain Contract`
+- 입력값: `btc_indexer_base`, `xrpscan_api_base`, `trongrid_api_base`, `doge_indexer_base`
+
+합격 기준:
+
+- 대상 체인의 contract test가 skip이 아니라 pass로 끝난다.
+- 스키마 오류, 404, 권한 오류가 없다.
+
+## 체인 커버리지 canary rollout
+
+최근 확장 체인은 반드시 `XRP → TRX → BTC → DOGE` 순서로 한 체인씩 켠다. 이전 체인이 `/admin`과 시트에서 안정화되기 전에는 다음 체인을 같이 켜지 않는다.
+
+공통 원칙:
+
+- `config/watched_addresses.csv`에는 XRP/TRX/BTC/DOGE concrete seed가 이미 포함되어 있다.
+- import 전에는 항상 `python scripts/import_watched_addresses.py --dry-run`으로 seed 목록을 확인한다.
+- 실제 import는 `python scripts/import_watched_addresses.py`를 사용한다. 중복 row는 storage 레이어에서 건너뛰므로 재실행이 안전하다.
+- BTC와 DOGE는 UTXO 체인이라 대표 주소 기준의 부분 관측만 먼저 제공된다. UI에 `부분 관측 · cluster 미적용` 배지가 보이면 정상 동작이다.
+
+| 순서 | 체인 | 켤 env | 권장/선택 env | 시트/import | 최소 검증 포인트 |
+|---|---|---|---|---|---|
+| 1 | XRP | `ENABLE_CHAIN_XRP=true` | `XRPSCAN_API_BASE` | 기본 CSV dry-run 후 import | `transactions` 또는 `address_activity`에 `chain=XRP`가 쌓이거나, 최소한 contract test pass + `/admin`에서 XRP가 unsupported로 남지 않는다. |
+| 2 | TRX | `ENABLE_CHAIN_TRX=true` | `TRONGRID_API_KEY`, `TRONGRID_API_BASE` | 기본 CSV dry-run 후 import | `chain=TRX` 이벤트가 들어오고, TRC20 활동이 있으면 `token=USDT`까지 확인한다. |
+| 3 | BTC | `ENABLE_CHAIN_BTC=true` | `BTC_INDEXER_BASE`, `BTC_INDEXER_KEY` | 기본 CSV dry-run 후 import | `/admin` 또는 사용자 카드에서 BTC partial-view 문구가 기대대로 보이고, BTC가 unsupported로 남지 않는다. |
+| 4 | DOGE | `ENABLE_CHAIN_DOGE=true` | `DOGE_INDEXER_BASE`, `BLOCKCHAIR_API_KEY` 또는 `DOGE_INDEXER_KEY` alias | 기본 CSV dry-run 후 import | DOGE partial-view가 기대대로 보이고, DOGE가 unsupported로 남지 않는다. |
+
+권장 canary 절차:
+
+1. 대상 체인을 제외한 다른 `ENABLE_CHAIN_*` 확장 플래그는 모두 `false`로 둔다.
+2. `python scripts/import_watched_addresses.py --dry-run`으로 seed가 보이는지 확인한다.
+3. `python scripts/import_watched_addresses.py`로 시트에 반영한다.
+4. `pytest -q -m contract tests/contract` 또는 GitHub Actions `Chain Contract` workflow로 대상 체인 endpoint 스키마를 검증한다.
+5. `python -m src.pipeline.run_all` 1회를 수동 실행한다.
+6. `/admin`과 Google Sheets에서 아래를 확인한다.
+   - enabled chain이 chain coverage/unsupported 경고에 남아 있지 않다.
+   - 활동이 있는 경우 `transactions`, `address_activity`, 필요 시 `signals`에 대상 체인이 보인다.
+   - 활동이 적어도 `system_log`가 silent drop이 아니라 정상 완료 또는 `completed_empty`로 끝난다.
+   - BTC/DOGE는 partial-view badge가 보이면 정상이며, cluster 미적용 한계를 숨기지 않는다.
 
 ## 단계별 검증 절차
 
@@ -259,6 +328,7 @@ npm run dashboard:dev
 - `raw_response_hash` 기준 중복 저장이 방지된다.
 - 시그널이 생성된 경우 `signals`에 저장된다.
 - 브리핑이 생성된 경우 `daily_brief`에 저장된다.
+- chain canary 중이면 대상 체인이 `/admin`의 chain coverage 또는 운영 요약에서 unsupported로 남지 않는다.
 - `subscribers.status_changed_at`이 상태 변경 시각 기준으로 갱신된다.
 - `brief_cost_ledger`는 brief 실행 경로마다 반드시 1행 기록된다.
 - `broadcast_periodic`가 비어 있거나 중복 내용이면 `broadcast_log`에 skip 사유가 남는다.
@@ -280,6 +350,7 @@ npm run dashboard:dev
 - Google Sheets 연결 실패가 앱 전체 traceback으로 노출되지 않는다.
 - 거래가 있으면 `/admin` 최근 거래 영역에 표시된다.
 - 시그널이 있으면 `/admin` 또는 사용자 홈 시그널 카드에 `rule`, `severity`, `score`, `source`, `summary`가 표시된다.
+- BTC/DOGE 카드가 보일 때 `부분 관측 · cluster 미적용` 배지는 정상 동작으로 본다.
 - 데이터가 없으면 empty state 문구가 표시된다.
 - 사용자 홈의 Telegram CTA가 공개 채널 링크/QR을 정상 표시한다.
 
