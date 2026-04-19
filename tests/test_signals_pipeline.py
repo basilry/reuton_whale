@@ -90,3 +90,56 @@ def test_run_signals_pipeline_logs_stage_diagnostics():
     assert heartbeat["source_name"] == "chain,tg"
     assert heartbeat["last_success_at"]
     assert heartbeat["last_failure_at"]
+
+
+def test_run_signals_pipeline_writes_chain_coverage_into_service_health():
+    from src.pipeline.signals import run_signals_pipeline
+
+    sheets = _FakeSheets()
+    collected = CollectedEvents(
+        raw_events=[SimpleNamespace(source="chain")],
+        chain_events=[SimpleNamespace(source="chain")],
+        transactions=[{"hash": "0xabc"}],
+        errors=[],
+        coverage={
+            "supported_chains": "ETH,ARB,BASE,BSC,POLYGON,SOL",
+            "unsupported_chain_count": 2,
+            "unsupported_chain_names": "BTC=1,XRP=1",
+            "per_chain_event_count": "ETH=1",
+        },
+    )
+
+    with patch("src.pipeline.signals.load_pipeline_env", return_value=_fake_env()), patch(
+        "src.pipeline.signals.build_sheets_client", return_value=sheets
+    ), patch(
+        "src.pipeline.signals.build_price_services",
+        return_value=(object(), object(), object()),
+    ), patch("src.pipeline.signals._load_signals_cfg", return_value={}), patch(
+        "src.pipeline.signals.SignalEngine"
+    ), patch(
+        "src.pipeline.signals.collect_recent_events", return_value=collected
+    ), patch(
+        "src.pipeline.signals.persist_chain_activity",
+        return_value={
+            "stored_activity": 1,
+            "stored_transactions": 1,
+            "errors": [],
+        },
+    ), patch(
+        "src.pipeline.signals.log_unknown_price_symbols",
+        return_value=[],
+    ), patch(
+        "src.pipeline.signals.detect_signals",
+        return_value=([], []),
+    ), patch(
+        "src.pipeline.signals.persist_signals",
+        return_value=(0, []),
+    ):
+        result = run_signals_pipeline()
+
+    assert result["status"] == "completed"
+    heartbeat = sheets.service_health[-1]
+    assert heartbeat["supported_chains"] == "ETH,ARB,BASE,BSC,POLYGON,SOL"
+    assert heartbeat["unsupported_chain_count"] == 2
+    assert heartbeat["unsupported_chain_names"] == "BTC=1,XRP=1"
+    assert heartbeat["per_chain_event_count"] == "ETH=1"

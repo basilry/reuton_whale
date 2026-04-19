@@ -181,6 +181,23 @@ function formatSignedCount(value: number | null): string {
   return `${normalized > 0 ? "+" : ""}${normalized.toLocaleString("ko-KR")}`;
 }
 
+function formatChainCoverageEntries(
+  entries: Array<{ chain: string; count: number | null }> | undefined,
+  emptyLabel: string,
+): string {
+  if (!entries || entries.length === 0) {
+    return emptyLabel;
+  }
+
+  return entries
+    .map((entry) =>
+      entry.count == null
+        ? entry.chain
+        : `${entry.chain}=${entry.count.toLocaleString("ko-KR")}`,
+    )
+    .join(", ");
+}
+
 function formatMessageLength(value: number | null): string {
   return value == null ? "기록 없음" : `${value.toLocaleString("ko-KR")}자`;
 }
@@ -630,6 +647,30 @@ function buildWorkerInsights(summary: AdminObservabilitySummary | null): AdminIn
       hint: `최근 channel_health ${formatObservedTime(summary.telegram.lastChannelHealthAt)} · 최근 발송 ${formatObservedTime(summary.telegram.lastBroadcastAt)}`,
     },
     {
+      key: "chain-coverage",
+      title: "감시 지갑 체인 커버리지",
+      tone: !summary.chainCoverage
+        ? "neutral"
+        : summary.chainCoverage.unsupportedChainCount > 0
+          ? "warn"
+          : summary.chainCoverage.supportedChains.length > 0
+            ? "good"
+            : "neutral",
+      lines: !summary.chainCoverage
+        ? [
+            "service_health 신규 체인 커버리지 필드가 아직 들어오지 않았습니다.",
+            "supported_chains / unsupported_chain_names / per_chain_event_count 값을 대기 중입니다.",
+          ]
+        : [
+            `지원 체인 ${summary.chainCoverage.supportedChains.length > 0 ? summary.chainCoverage.supportedChains.join(", ") : "기록 없음"}`,
+            `미지원 주소 ${formatCount(summary.chainCoverage.unsupportedChainCount, "건")} · ${formatChainCoverageEntries(summary.chainCoverage.unsupportedChains, "미지원 체인 기록 없음")}`,
+            `체인별 이벤트 ${formatChainCoverageEntries(summary.chainCoverage.perChainEventCount, "집계 없음")}`,
+          ],
+      hint: summary.chainCoverage
+        ? `기준 시각 ${formatObservedTime(summary.chainCoverage.observedAt)} · source ${summary.chainCoverage.source}`
+        : "Phase0 registry / service_health 배포 후 자동으로 채워집니다.",
+    },
+    {
       key: "market-sources",
       title: "시장 소스 진단",
       tone: summary.marketSources.every((item) => item.status === "ready")
@@ -672,6 +713,9 @@ function buildWorkerJobRows(
   rawData: DashboardData | null,
 ): AdminWorkerSection["jobRows"] {
   const summary = rawData?.adminObservability ?? null;
+  const chainCoverageSummary = summary?.chainCoverage
+    ? `체인 커버리지 ${summary.chainCoverage.supportedChains.length > 0 ? summary.chainCoverage.supportedChains.join(", ") : "기록 없음"} · 미지원 ${summary.chainCoverage.unsupportedChains.length > 0 ? formatChainCoverageEntries(summary.chainCoverage.unsupportedChains, `${formatCount(summary.chainCoverage.unsupportedChainCount, "건")}`) : formatCount(summary.chainCoverage.unsupportedChainCount, "건")}`
+    : "";
   const liveUpdateSections =
     summary?.liveUpdates.sections
       .map((section) => `${section.section} ${ageLabel(section.lastUpdatedAt)}`)
@@ -718,7 +762,9 @@ function buildWorkerJobRows(
       observedAt: formatObservedTime(data.serviceHealth.pipeline.updatedAt),
       source: data.serviceHealth.pipeline.source || "service_health",
       detail: clipText(
-        `${data.serviceHealth.pipeline.summary} · ${data.serviceHealth.pipeline.detail}`,
+        [data.serviceHealth.pipeline.summary, data.serviceHealth.pipeline.detail, chainCoverageSummary]
+          .filter(Boolean)
+          .join(" · "),
         140,
       ),
     },

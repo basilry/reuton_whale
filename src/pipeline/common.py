@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 import json
 import os
@@ -11,7 +12,9 @@ import yaml
 from dotenv import load_dotenv
 
 from src.analyzer.price_service import PriceService
+from src.ingestion.base import ChainCollector
 from src.ingestion.etherscan import EtherscanCollector
+from src.ingestion.registry import ChainCollectorRegistry
 from src.ingestion.solscan import SolscanCollector
 from src.ingestion.tg_normalizer import tg_row_to_event
 from src.llm.router import LLMRouter
@@ -25,8 +28,6 @@ from src.utils.logger import get_logger
 from src.utils.datetime_utils import parse_dt
 
 logger = get_logger("pipeline.common")
-
-EVM_CHAINS = ("ETH", "ARB", "BASE", "BSC", "POLYGON")
 _LLM_ROUTING_CONFIG = Path(__file__).resolve().parents[2] / "config" / "llm_routing.yaml"
 
 SignalSeverity = Literal["low", "medium", "high", "critical"]
@@ -40,6 +41,7 @@ class CollectedEvents:
     chain_events: list[Event]
     transactions: list[dict]
     errors: list[str]
+    coverage: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -188,6 +190,21 @@ def build_price_services(env: PipelineEnv) -> tuple[PriceService, EtherscanColle
     return price_service, eth_collector, sol_collector
 
 
+def build_collector_registry(*collectors: ChainCollector | None) -> ChainCollectorRegistry:
+    registry = ChainCollectorRegistry()
+    for collector in collectors:
+        if collector is None:
+            continue
+        registry.register(collector)
+    return registry
+
+
+def _format_chain_counts(counts: dict[str, int]) -> str:
+    if not counts:
+        return ""
+    return ",".join(f"{chain}={count}" for chain, count in sorted(counts.items()))
+
+
 def normalize_signal_severity(value: object) -> SignalSeverity:
     normalized = str(value or "").strip().lower()
     if normalized in {"low", "medium", "high", "critical"}:
@@ -294,19 +311,35 @@ def collect_recent_events(
     since_ts = int(since_dt.timestamp())
     errors: list[str] = []
     raw_events: list[Event] = []
+    coverage: dict[str, object] = {}
 
     try:
         watched_index = sheets.list_watched_addresses()
-        if eth_collector is not None:
-            for chain in EVM_CHAINS:
-                addrs = [
-                    addr for addr, row in watched_index.items()
-                    if row.get("chain", "").upper() in (chain, "EVM", "")
-                ]
-                if not addrs:
-                    continue
+        registry = build_collector_registry(eth_collector, sol_collector)
+        grouped = registry.group_addresses(watched_index)
+
+        supported_chains = ",".join(registry.supported_chains)
+        unsupported_chain_count = sum(grouped.unsupported_counts.values())
+        unsupported_chain_names = _format_chain_counts(grouped.unsupported_counts)
+
+        coverage.update(
+            supported_chains=supported_chains,
+            unsupported_chain_count=unsupported_chain_count,
+            unsupported_chain_names=unsupported_chain_names,
+        )
+
+        if grouped.unsupported_counts:
+            message = f"unsupported_chains={unsupported_chain_names}"
+            errors.append(message)
+            logger.warning("Silent drop guard triggered: %s", message)
+
+        for chain, addrs in grouped.supported.items():
+            collector = registry.collector_for(chain)
+            if collector is None:
+                continue
+            try:
                 raw_events.extend(
-                    eth_collector.fetch(
+                    collector.fetch(
                         addrs,
                         chain,
                         since_ts,
@@ -314,21 +347,9 @@ def collect_recent_events(
                         price_service=price_service,
                     )
                 )
-
-        if sol_collector is not None:
-            sol_addrs = [
-                addr for addr, row in watched_index.items()
-                if row.get("chain", "").upper() == "SOL"
-            ]
-            if sol_addrs:
-                raw_events.extend(
-                    sol_collector.fetch(
-                        sol_addrs,
-                        since_ts,
-                        watched_index=watched_index,
-                        price_service=price_service,
-                    )
-                )
+            except Exception as exc:
+                errors.append(f"{chain}: {exc}")
+                logger.error("Failed to collect chain events chain=%s: %s", chain, exc)
 
         try:
             tg_rows = sheets.list_tg_whale_events(since=since_dt)
@@ -345,11 +366,13 @@ def collect_recent_events(
 
     chain_events = [event for event in raw_events if event.source == "chain"]
     transactions = [event_to_dict(event) for event in chain_events]
+    coverage["per_chain_event_count"] = _format_chain_counts(dict(Counter(event.chain for event in chain_events)))
     return CollectedEvents(
         raw_events=raw_events,
         chain_events=chain_events,
         transactions=transactions,
         errors=errors,
+        coverage=coverage,
     )
 
 

@@ -94,6 +94,20 @@ export type AdminMarketSourceObservability = {
   failureReason?: string;
 };
 
+export type AdminChainCoverageEntry = {
+  chain: string;
+  count: number | null;
+};
+
+export type AdminChainCoverageObservability = {
+  observedAt?: string;
+  source: string;
+  supportedChains: string[];
+  unsupportedChainCount: number;
+  unsupportedChains: AdminChainCoverageEntry[];
+  perChainEventCount: AdminChainCoverageEntry[];
+};
+
 export type AdminTelegramObservability = {
   subscriberCountActive: number;
   subscriberCountPaused: number;
@@ -240,6 +254,7 @@ export type AdminObservabilitySummary = {
   periodic: AdminBroadcastObservability;
   liveUpdates: AdminLiveUpdatesObservability;
   marketSources: AdminMarketSourceObservability[];
+  chainCoverage: AdminChainCoverageObservability | null;
   telegram: AdminTelegramObservability;
   render: AdminRenderObservability;
 };
@@ -268,6 +283,10 @@ export type ServiceHealthRow = {
   lagSeconds?: number;
   durationMs?: number;
   sourceName?: string;
+  supportedChains?: string[];
+  unsupportedChainCount?: number;
+  unsupportedChains?: AdminChainCoverageEntry[];
+  perChainEventCount?: AdminChainCoverageEntry[];
 };
 
 export type SourceFailureKind =

@@ -5,6 +5,7 @@ import time
 
 import requests
 
+from src.ingestion.base import ChainCollector
 from src.ingestion.normalizer import normalize_chain_tx
 from src.signals.models import Event
 from src.utils.errors import EtherscanError
@@ -44,7 +45,31 @@ def _get_with_backoff(url: str, params: dict) -> requests.Response:
     )
 
 
-class EtherscanCollector:
+class EtherscanCollector(ChainCollector):
+    supported_chains = ("ETH", "ARB", "BASE", "BSC", "POLYGON")
+    chain_aliases = {
+        "ETH": "ETH",
+        "eth": "ETH",
+        "ethereum": "ETH",
+        "ARB": "ARB",
+        "arb": "ARB",
+        "arbitrum": "ARB",
+        "BASE": "BASE",
+        "base": "BASE",
+        "BSC": "BSC",
+        "bsc": "BSC",
+        "bnb": "BSC",
+        "POLYGON": "POLYGON",
+        "polygon": "POLYGON",
+        "MATIC": "POLYGON",
+        "matic": "POLYGON",
+    }
+    expanded_aliases = {
+        "": supported_chains,
+        "EVM": supported_chains,
+        "evm": supported_chains,
+    }
+
     def __init__(
         self,
         api_key: str,

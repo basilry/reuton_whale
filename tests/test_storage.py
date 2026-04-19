@@ -56,7 +56,32 @@ class TestSchema:
         assert TAB_HEADERS[TAB_SUBSCRIBERS] == SUBSCRIBERS_HEADERS
 
     def test_service_health_headers_include_v2_tail_columns(self):
-        assert SERVICE_HEALTH_HEADERS[-8:] == [
+        assert SERVICE_HEALTH_HEADERS[:15] == [
+            "ts",
+            "service",
+            "component",
+            "status",
+            "heartbeat_key",
+            "details",
+            "error",
+            "instance_id",
+            "job_name",
+            "last_success_at",
+            "last_failure_at",
+            "processed_count",
+            "lag_seconds",
+            "duration_ms",
+            "source_name",
+        ]
+        assert SERVICE_HEALTH_HEADERS[-4:] == [
+            "supported_chains",
+            "unsupported_chain_count",
+            "unsupported_chain_names",
+            "per_chain_event_count",
+        ]
+
+    def test_service_health_headers_keep_v2_columns_append_only(self):
+        assert SERVICE_HEALTH_HEADERS[7:15] == [
             "instance_id",
             "job_name",
             "last_success_at",
@@ -243,6 +268,10 @@ class TestSheetsClient:
                 "lag_seconds": 12,
                 "duration_ms": 321,
                 "source_name": "scheduler",
+                "supported_chains": "ARB,BASE,BSC,ETH,POLYGON,SOL",
+                "unsupported_chain_count": 2,
+                "unsupported_chain_names": "BTC=1,XRP=1",
+                "per_chain_event_count": "ETH=3,SOL=2",
             }
         )
 
@@ -252,6 +281,31 @@ class TestSheetsClient:
         assert row[SERVICE_HEALTH_HEADERS.index("job_name")] == "dispatcher"
         assert row[SERVICE_HEALTH_HEADERS.index("processed_count")] == "4"
         assert row[SERVICE_HEALTH_HEADERS.index("duration_ms")] == "321"
+        assert row[SERVICE_HEALTH_HEADERS.index("supported_chains")] == "ARB,BASE,BSC,ETH,POLYGON,SOL"
+        assert row[SERVICE_HEALTH_HEADERS.index("unsupported_chain_count")] == "2"
+        assert row[SERVICE_HEALTH_HEADERS.index("unsupported_chain_names")] == "BTC=1,XRP=1"
+        assert row[SERVICE_HEALTH_HEADERS.index("per_chain_event_count")] == "ETH=3,SOL=2"
+
+    def test_append_service_health_keeps_optional_v21_fields_blank_when_missing(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ws.col_count = len(SERVICE_HEALTH_HEADERS)
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [SERVICE_HEALTH_HEADERS]
+
+        client.append_service_health(
+            {
+                "service": "pipeline.signals",
+                "component": "collector",
+                "status": "ok",
+            }
+        )
+
+        row = mock_ws.append_row.call_args[0][0]
+        assert row[SERVICE_HEALTH_HEADERS.index("supported_chains")] == ""
+        assert row[SERVICE_HEALTH_HEADERS.index("unsupported_chain_count")] == ""
+        assert row[SERVICE_HEALTH_HEADERS.index("unsupported_chain_names")] == ""
+        assert row[SERVICE_HEALTH_HEADERS.index("per_chain_event_count")] == ""
 
     def test_append_and_list_brief_cost_ledger(self):
         client, mock_ss = self._make_client()
@@ -671,6 +725,33 @@ class TestSheetsClient:
             SheetsClient("id", '{"type":"service_account"}')
             titles = [c.kwargs.get("title") for c in mock_ss.add_worksheet.call_args_list]
             assert TAB_SUBSCRIBERS in titles
+
+
+class TestServiceHealthHeartbeat:
+    def test_append_service_heartbeat_writes_v21_fields(self):
+        from src.observability.service_health import append_service_heartbeat
+
+        sheets = MagicMock()
+
+        entry = append_service_heartbeat(
+            sheets,
+            service="pipeline.signals",
+            component="collector",
+            status="degraded",
+            run_status="completed_with_errors",
+            heartbeat_key="signals:20260419T1015",
+            source_name="scheduler,signals",
+            supported_chains="ARB,BASE,BSC,ETH,POLYGON,SOL",
+            unsupported_chain_count=3,
+            unsupported_chain_names="BTC=1,TRX=2",
+            per_chain_event_count="ETH=8,SOL=1",
+        )
+
+        sheets.append_service_health.assert_called_once_with(entry)
+        assert entry["unsupported_chain_count"] == 3
+        assert entry["unsupported_chain_names"] == "BTC=1,TRX=2"
+        assert entry["per_chain_event_count"] == "ETH=8,SOL=1"
+        assert entry["source_name"] == "scheduler,signals"
 
 
 class TestStorageProtocolNewMethods:

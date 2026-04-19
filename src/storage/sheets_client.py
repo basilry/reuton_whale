@@ -1788,6 +1788,16 @@ class SheetsClient:
                         else ""
                     ),
                     "source_name": str(entry.get("source_name", "")),
+                    "supported_chains": str(entry.get("supported_chains", ""))[:1000],
+                    "unsupported_chain_count": (
+                        entry.get("unsupported_chain_count", "")
+                        if entry.get("unsupported_chain_count") not in (None, "")
+                        else ""
+                    ),
+                    "unsupported_chain_names": str(
+                        entry.get("unsupported_chain_names", "")
+                    )[:2000],
+                    "per_chain_event_count": str(entry.get("per_chain_event_count", ""))[:2000],
                 }
                 ws.append_row(
                     dict_to_row(normalized, SERVICE_HEALTH_HEADERS),

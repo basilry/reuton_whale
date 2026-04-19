@@ -38,6 +38,8 @@ import {
 } from "./sheets";
 import { buildWhaleStories, buildWhaleStoryCards } from "./whale-stories";
 import type {
+  AdminChainCoverageEntry,
+  AdminChainCoverageObservability,
   AdminMarketSourceObservability,
   AdminRenderObservability,
   AdminObservabilitySummary,
@@ -397,6 +399,89 @@ function parseServiceHealthStatus(value: string): ServiceHealthRow["status"] {
   }
 }
 
+function parseChainList(value: string): string[] {
+  return value
+    .split(/[,\n|]/)
+    .map((item) => compactString(item).toUpperCase())
+    .filter(Boolean);
+}
+
+function normalizeChainCoverageEntry(
+  chain: unknown,
+  count: unknown,
+): AdminChainCoverageEntry | null {
+  const chainName = compactString(String(chain ?? "")).toUpperCase();
+  if (!chainName) {
+    return null;
+  }
+
+  if (typeof count === "number" && Number.isFinite(count)) {
+    return { chain: chainName, count };
+  }
+
+  if (typeof count === "string" && count.trim()) {
+    const parsed = Number(count);
+    return {
+      chain: chainName,
+      count: Number.isFinite(parsed) ? parsed : null,
+    };
+  }
+
+  return { chain: chainName, count: null };
+}
+
+function parseChainCoverageEntries(value: string): AdminChainCoverageEntry[] {
+  const compactValue = compactString(value);
+  if (!compactValue) {
+    return [];
+  }
+
+  const fromJson = parseJsonSafe<unknown>(compactValue);
+  if (fromJson && typeof fromJson === "object") {
+    if (Array.isArray(fromJson)) {
+      return fromJson
+        .map((item) => {
+          if (typeof item === "string") {
+            const [chain, count] = item.split(/[:=]/, 2);
+            return normalizeChainCoverageEntry(chain, count);
+          }
+          if (!item || typeof item !== "object") {
+            return null;
+          }
+          const record = item as Record<string, unknown>;
+          return normalizeChainCoverageEntry(
+            record.chain ?? record.name ?? record.id,
+            record.count ?? record.value,
+          );
+        })
+        .filter((item): item is AdminChainCoverageEntry => item !== null);
+    }
+
+    return Object.entries(fromJson)
+      .map(([chain, count]) => normalizeChainCoverageEntry(chain, count))
+      .filter((item): item is AdminChainCoverageEntry => item !== null);
+  }
+
+  return compactValue
+    .split(/[,\n|]/)
+    .map((item) => compactString(item))
+    .filter(Boolean)
+    .map((item) => {
+      const pair = item.match(/^([A-Za-z0-9_-]+)\s*[:=]\s*(-?\d+(?:\.\d+)?)$/);
+      if (pair) {
+        return normalizeChainCoverageEntry(pair[1], pair[2]);
+      }
+
+      const tokens = item.split(/\s+/, 2);
+      if (tokens.length === 2) {
+        return normalizeChainCoverageEntry(tokens[0], tokens[1]);
+      }
+
+      return normalizeChainCoverageEntry(item, null);
+    })
+    .filter((item): item is AdminChainCoverageEntry => item !== null);
+}
+
 function parseServiceHealthRow(row: OptionalSheetRow | null | undefined): ServiceHealthRow | null {
   if (!row) {
     return null;
@@ -413,6 +498,14 @@ function parseServiceHealthRow(row: OptionalSheetRow | null | undefined): Servic
   const processedCount = rowNumber(row, ["processed_count"]);
   const lagSeconds = rowNumber(row, ["lag_seconds"]);
   const durationMs = rowNumber(row, ["duration_ms"]);
+  const supportedChains = parseChainList(rowValue(row, ["supported_chains"]));
+  const unsupportedChainCount = rowNumber(row, ["unsupported_chain_count"]);
+  const unsupportedChains = parseChainCoverageEntries(
+    rowValue(row, ["unsupported_chain_names"]),
+  );
+  const perChainEventCount = parseChainCoverageEntries(
+    rowValue(row, ["per_chain_event_count"]),
+  );
 
   return {
     ts,
@@ -430,6 +523,70 @@ function parseServiceHealthRow(row: OptionalSheetRow | null | undefined): Servic
     ...(lagSeconds == null ? {} : { lagSeconds }),
     ...(durationMs == null ? {} : { durationMs }),
     sourceName: rowValue(row, ["source_name", "source", "origin"]) || undefined,
+    ...(supportedChains.length === 0 ? {} : { supportedChains }),
+    ...(unsupportedChainCount == null ? {} : { unsupportedChainCount }),
+    ...(unsupportedChains.length === 0 ? {} : { unsupportedChains }),
+    ...(perChainEventCount.length === 0 ? {} : { perChainEventCount }),
+  };
+}
+
+function buildChainCoverageObservability(
+  serviceHealthRows: OptionalSheetRow[],
+): AdminChainCoverageObservability | null {
+  const coverageRows = newestFirst(serviceHealthRows, (candidate) => {
+    const parsed = parseServiceHealthRow(candidate);
+    return (
+      parseDateTimeSafe(parsed?.lastSuccessAt ?? "") ??
+      parseDateTimeSafe(parsed?.ts ?? "") ??
+      0
+    );
+  })
+    .map((candidate) => parseServiceHealthRow(candidate))
+    .filter((row): row is ServiceHealthRow => row !== null)
+    .filter((row) => serviceHealthAliases(row).some((alias) => ["pipeline", "run_all", "signals"].includes(alias)))
+    .filter((row) => {
+      return (
+        (row.supportedChains?.length ?? 0) > 0 ||
+        (row.unsupportedChainCount ?? 0) > 0 ||
+        (row.unsupportedChains?.length ?? 0) > 0 ||
+        (row.perChainEventCount?.length ?? 0) > 0
+      );
+    });
+  const row = coverageRows[0] ?? null;
+  if (!row) {
+    return null;
+  }
+
+  const supportedChains = row.supportedChains ?? [];
+  const unsupportedChains = row.unsupportedChains ?? [];
+  const perChainEventCount = row.perChainEventCount ?? [];
+  const unsupportedChainCount =
+    row.unsupportedChainCount ??
+    unsupportedChains.reduce((sum, item) => sum + Math.max(0, item.count ?? 0), 0);
+
+  const hasCoverage =
+    supportedChains.length > 0 ||
+    unsupportedChainCount > 0 ||
+    unsupportedChains.length > 0 ||
+    perChainEventCount.length > 0;
+
+  if (!hasCoverage) {
+    return null;
+  }
+
+  return {
+    observedAt: latestTimestamp(row.lastSuccessAt, row.ts),
+    source:
+      row.sourceName ||
+      row.heartbeatKey ||
+      row.jobName ||
+      row.component ||
+      row.service ||
+      "service_health",
+    supportedChains,
+    unsupportedChainCount,
+    unsupportedChains,
+    perChainEventCount,
   };
 }
 
@@ -2335,6 +2492,7 @@ async function buildAdminObservabilitySummary(args: {
   render: AdminRenderObservability;
 }): Promise<AdminObservabilitySummary> {
   const sinceMs = Date.now() - ADMIN_OBSERVABILITY_WINDOW_MS;
+  const chainCoverage = buildChainCoverageObservability(args.serviceHealthRows);
   const briefRows24h = rowsWithinWindow(args.briefLedgerRows, ["ts", "created_at", "updated_at"], sinceMs);
   const briefTotalRuns = briefRows24h.length;
   const briefGeneratedCount = briefRows24h.filter((row) => briefDecisionKey(row) === "generated").length;
@@ -2423,6 +2581,7 @@ async function buildAdminObservabilitySummary(args: {
     },
     liveUpdates,
     marketSources,
+    chainCoverage,
     telegram,
     render: args.render,
   };

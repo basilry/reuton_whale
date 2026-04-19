@@ -148,6 +148,10 @@ def append_service_heartbeat(
     lag_seconds: int | str | None = None,
     duration_ms: int | str | None = None,
     source_name: str | None = None,
+    supported_chains: str | None = None,
+    unsupported_chain_count: int | str | None = None,
+    unsupported_chain_names: str | None = None,
+    per_chain_event_count: str | None = None,
 ) -> dict[str, object]:
     ts = _normalize_timestamp(observed_at) or now_iso()
     derived_last_success_at, derived_last_failure_at = derive_status_timestamps(
@@ -172,6 +176,10 @@ def append_service_heartbeat(
         "lag_seconds": _normalize_optional_int(lag_seconds),
         "duration_ms": _normalize_optional_int(duration_ms),
         "source_name": coalesce_source_names(source_name),
+        "supported_chains": _truncate(supported_chains, limit=1000),
+        "unsupported_chain_count": _normalize_optional_int(unsupported_chain_count),
+        "unsupported_chain_names": _truncate(unsupported_chain_names, limit=2000),
+        "per_chain_event_count": _truncate(per_chain_event_count, limit=2000),
     }
     sheets.append_service_health(entry)
     return entry

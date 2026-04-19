@@ -41,7 +41,9 @@ def _record_signals_heartbeat(
     *,
     processed_count: int | None = None,
     source_name: str = "",
+    coverage: dict[str, object] | None = None,
 ) -> None:
+    coverage = coverage or {}
     append_service_heartbeat(
         sheets,
         service="pipeline.signals",
@@ -57,6 +59,10 @@ def _record_signals_heartbeat(
         observed_at=result.get("finished_at") or result.get("started_at"),
         processed_count=processed_count if processed_count is not None else result.get("transactions_count"),
         source_name=source_name,
+        supported_chains=str(coverage.get("supported_chains", "")),
+        unsupported_chain_count=coverage.get("unsupported_chain_count"),
+        unsupported_chain_names=str(coverage.get("unsupported_chain_names", "")),
+        per_chain_event_count=str(coverage.get("per_chain_event_count", "")),
     )
 
 
@@ -124,6 +130,7 @@ def run_signals_pipeline() -> dict[str, object]:
             result,
             processed_count=len(collected.raw_events),
             source_name=heartbeat_source_name,
+            coverage=collected.coverage,
         )
         logger.info(
             "signals pipeline finished status=%s details=%s error_count=%d error_preview=%s",
@@ -179,6 +186,7 @@ def run_signals_pipeline() -> dict[str, object]:
         result,
         processed_count=len(collected.raw_events),
         source_name=heartbeat_source_name,
+        coverage=collected.coverage,
     )
     logger.info(
         "signals pipeline finished status=%s details=%s error_count=%d error_preview=%s",

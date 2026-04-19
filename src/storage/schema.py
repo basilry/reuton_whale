@@ -268,6 +268,10 @@ SERVICE_HEALTH_HEADERS = [
     "lag_seconds",
     "duration_ms",
     "source_name",
+    "supported_chains",
+    "unsupported_chain_count",
+    "unsupported_chain_names",
+    "per_chain_event_count",
 ]
 
 ALL_TABS.extend([

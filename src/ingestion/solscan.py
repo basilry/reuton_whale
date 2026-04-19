@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import requests
 
+from src.ingestion.base import ChainCollector
 from src.ingestion.normalizer import normalize_chain_tx
 from src.signals.models import Event
 from src.utils.errors import SolscanError
@@ -28,7 +29,14 @@ def _get_with_backoff(url: str, params: dict, headers: dict | None = None) -> re
     )
 
 
-class SolscanCollector:
+class SolscanCollector(ChainCollector):
+    supported_chains = ("SOL",)
+    chain_aliases = {
+        "SOL": "SOL",
+        "sol": "SOL",
+        "solana": "SOL",
+    }
+
     def __init__(self, api_key: str | None = None) -> None:
         self._headers: dict[str, str] = {}
         if api_key:
@@ -37,11 +45,14 @@ class SolscanCollector:
     def fetch(
         self,
         addresses: list[str],
+        chain: str,
         since_ts: int,
         *,
         watched_index: dict | None = None,
         price_service=None,
     ) -> list[Event]:
+        if self.normalize_chain(chain) != "SOL":
+            raise SolscanError(f"Unknown chain: {chain!r}")
         seen: set[str] = set()
         events: list[Event] = []
 
