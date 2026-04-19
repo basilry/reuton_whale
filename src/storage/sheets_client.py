@@ -9,6 +9,7 @@ from google.oauth2.service_account import Credentials
 from src.storage.queries import dict_to_row, now_iso, row_to_dict
 from src.storage.schema import (
     ADDRESS_ACTIVITY_HEADERS,
+    BRIEF_COST_LEDGER_HEADERS,
     BROADCAST_LOG_HEADERS,
     CHANNEL_HEALTH_HEADERS,
     CURATED_WALLET_BALANCES_HEADERS,
@@ -23,6 +24,7 @@ from src.storage.schema import (
     SYSTEM_LOG_HEADERS,
     TAB_ADDRESS_ACTIVITY,
     TAB_ANALYSIS_LOG,
+    TAB_BRIEF_COST_LEDGER,
     TAB_BROADCAST_LOG,
     TAB_CHANNEL_HEALTH,
     TAB_CURATED_WALLET_BALANCES,
@@ -649,6 +651,13 @@ class SheetsClient:
         with self._write_lock:
             try:
                 ws = self._worksheet(TAB_BROADCAST_LOG)
+                all_values = ws.get_all_values()
+                self._ensure_append_only_header_schema(
+                    ws,
+                    all_values,
+                    BROADCAST_LOG_HEADERS,
+                    tab_name=TAB_BROADCAST_LOG,
+                )
                 normalized = {
                     "ts": entry.get("ts", now_iso()),
                     "kind": str(entry.get("kind", "")),
@@ -657,6 +666,12 @@ class SheetsClient:
                     "message_id": str(entry.get("message_id", "")),
                     "status": str(entry.get("status", "")),
                     "error": str(entry.get("error", ""))[:1000],
+                    "message_length": self._int_value(entry.get("message_length")),
+                    "content_hash": str(entry.get("content_hash", "")),
+                    "signal_count": self._int_value(entry.get("signal_count")),
+                    "transaction_count": self._int_value(entry.get("transaction_count")),
+                    "slot_key": str(entry.get("slot_key", "")),
+                    "delivery_mode": str(entry.get("delivery_mode", "")),
                 }
                 ws.append_row(
                     dict_to_row(normalized, BROADCAST_LOG_HEADERS),
@@ -670,6 +685,39 @@ class SheetsClient:
                 )
             except gspread.exceptions.APIError as e:
                 raise StorageError(f"Failed to append broadcast log: {e}") from e
+
+    @retry(max_retries=3, base_delay=2.0)
+    def list_broadcast_log(
+        self,
+        *,
+        kind: str | None = None,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
+        try:
+            ws = self._worksheet(TAB_BROADCAST_LOG)
+            all_values = ws.get_all_values()
+            if len(all_values) <= 1:
+                return []
+            rows = [row_to_dict(row, BROADCAST_LOG_HEADERS) for row in all_values[1:]]
+            if kind:
+                rows = [row for row in rows if str(row.get("kind", "")).strip() == kind]
+            if since is not None:
+                filtered: list[dict] = []
+                for row in rows:
+                    row_time = _parse_row_time(row.get("ts", ""))
+                    if row_time is None:
+                        continue
+                    if row_time.tzinfo is None and since.tzinfo is not None:
+                        row_time = row_time.replace(tzinfo=since.tzinfo)
+                    if row_time >= since:
+                        filtered.append(row)
+                rows = filtered
+            if limit is not None and limit >= 0:
+                rows = rows[-limit:] if limit else []
+            return rows
+        except gspread.exceptions.APIError as e:
+            raise StorageError(f"Failed to list broadcast log: {e}") from e
 
     # --- watched_addresses ---
 
@@ -1484,6 +1532,75 @@ class SheetsClient:
                 raise StorageError(f"Failed to append llm budget log: {e}") from e
 
     @retry(max_retries=3, base_delay=2.0)
+    def append_brief_cost_ledger(self, entry: dict) -> None:
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_BRIEF_COST_LEDGER)
+                all_values = ws.get_all_values()
+                self._ensure_append_only_header_schema(
+                    ws,
+                    all_values,
+                    BRIEF_COST_LEDGER_HEADERS,
+                    tab_name=TAB_BRIEF_COST_LEDGER,
+                )
+                normalized = {
+                    "ts": entry.get("ts", now_iso()),
+                    "slot_key": str(entry.get("slot_key", "")),
+                    "decision": str(entry.get("decision", "")),
+                    "llm_called": self._bool_str(entry.get("llm_called")),
+                    "model_id": str(entry.get("model_id", "")),
+                    "tokens_in": self._int_value(entry.get("tokens_in")),
+                    "tokens_out": self._int_value(entry.get("tokens_out")),
+                    "cost_usd": self._float_value(entry.get("cost_usd")),
+                    "cumulative_cost_usd": self._float_value(entry.get("cumulative_cost_usd")),
+                    "signal_count": self._int_value(entry.get("signal_count")),
+                    "transaction_count": self._int_value(entry.get("transaction_count")),
+                    "input_fingerprint": str(entry.get("input_fingerprint", "")),
+                    "reason": str(entry.get("reason", ""))[:2000],
+                }
+                ws.append_row(
+                    dict_to_row(normalized, BRIEF_COST_LEDGER_HEADERS),
+                    value_input_option="RAW",
+                )
+                logger.info(
+                    "Appended brief_cost_ledger decision=%s slot=%s llm_called=%s",
+                    normalized["decision"],
+                    normalized["slot_key"],
+                    normalized["llm_called"],
+                )
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to append brief cost ledger: {e}") from e
+
+    @retry(max_retries=3, base_delay=2.0)
+    def list_brief_cost_ledger(
+        self,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
+        try:
+            ws = self._worksheet(TAB_BRIEF_COST_LEDGER)
+            all_values = ws.get_all_values()
+            if len(all_values) <= 1:
+                return []
+            rows = [row_to_dict(row, BRIEF_COST_LEDGER_HEADERS) for row in all_values[1:]]
+            if since is not None:
+                filtered: list[dict] = []
+                for row in rows:
+                    row_time = _parse_row_time(row.get("ts", ""))
+                    if row_time is None:
+                        continue
+                    if row_time.tzinfo is None and since.tzinfo is not None:
+                        row_time = row_time.replace(tzinfo=since.tzinfo)
+                    if row_time >= since:
+                        filtered.append(row)
+                rows = filtered
+            if limit is not None and limit >= 0:
+                rows = rows[-limit:] if limit else []
+            return rows
+        except gspread.exceptions.APIError as e:
+            raise StorageError(f"Failed to list brief cost ledger: {e}") from e
+
+    @retry(max_retries=3, base_delay=2.0)
     def list_llm_budget_log(
         self,
         month_key: str | None = None,
@@ -1604,3 +1721,71 @@ class SheetsClient:
                 default=str,
             ),
         }
+
+    def _ensure_append_only_header_schema(
+        self,
+        ws: "gspread.Worksheet",
+        all_values: list[list[str]],
+        expected_headers: list[str],
+        *,
+        tab_name: str,
+    ) -> None:
+        expected = list(expected_headers)
+        if not all_values:
+            self._resize_cols_if_needed(ws, len(expected))
+            ws.append_row(expected)
+            return
+
+        header = all_values[0]
+        if header == expected:
+            return
+        if len(header) > len(expected):
+            logger.warning(
+                "%s header has unexpected extra columns (%d vs %d), skipping auto-extension",
+                tab_name,
+                len(header),
+                len(expected),
+            )
+            return
+        if expected[: len(header)] != header:
+            logger.warning(
+                "%s header layout unexpected, skipping auto-extension: %s",
+                tab_name,
+                header,
+            )
+            return
+
+        missing = expected[len(header) :]
+        if not missing:
+            return
+        self._resize_cols_if_needed(ws, len(expected))
+        start_col = _column_letter(len(header) + 1)
+        end_col = _column_letter(len(expected))
+        ws.update(f"{start_col}1:{end_col}1", [missing], value_input_option="RAW")
+        logger.info("%s header extended with columns: %s", tab_name, ",".join(missing))
+
+    def _resize_cols_if_needed(self, ws: "gspread.Worksheet", expected_cols: int) -> None:
+        current_cols = self._int_value(getattr(ws, "col_count", 0))
+        if current_cols < expected_cols:
+            ws.resize(cols=expected_cols)
+
+    def _int_value(self, value: object, *, default: int = 0) -> int:
+        try:
+            return int(value if value not in (None, "") else default)
+        except (TypeError, ValueError):
+            return default
+
+    def _float_value(self, value: object, *, default: float = 0.0) -> float:
+        try:
+            return float(value if value not in (None, "") else default)
+        except (TypeError, ValueError):
+            return default
+
+    def _bool_str(self, value: object) -> str:
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "yes"}:
+                return "true"
+            if normalized in {"false", "0", "no"}:
+                return "false"
+        return "true" if bool(value) else "false"

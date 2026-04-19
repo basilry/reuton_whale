@@ -1,6 +1,9 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useMemo, type ReactNode } from "react";
 import { formatDashboardMessage } from "@/lib/i18n/get-dictionary";
 import type { FearGreedClassification, FearGreedData, FearGreedSnapshot } from "@/lib/fear-greed";
+import { useDashboardI18n } from "@/lib/i18n/client";
 import styles from "./fear-greed-gauge.module.css";
 
 type FearGreedGaugeCopy = {
@@ -106,12 +109,41 @@ function buildComparisonValue(
 }
 
 export function FearGreedGauge({ data, fallback, language, copy }: FearGreedGaugeProps) {
+  const { dictionary, language: currentLanguage } = useDashboardI18n(language);
+  const runtimeCopy = useMemo<FearGreedGaugeCopy>(
+    () => ({
+      title: dictionary.home.fearGreedTitle,
+      subtitle: dictionary.home.fearGreedSubtitle,
+      classificationLabels: {
+        extreme_fear: dictionary.home.fearGreedClassificationExtremeFear,
+        fear: dictionary.home.fearGreedClassificationFear,
+        neutral: dictionary.home.fearGreedClassificationNeutral,
+        greed: dictionary.home.fearGreedClassificationGreed,
+        extreme_greed: dictionary.home.fearGreedClassificationExtremeGreed,
+      },
+      compareLabels: {
+        yesterday: dictionary.home.fearGreedCompareYesterday,
+        week: dictionary.home.fearGreedCompareWeek,
+        month: dictionary.home.fearGreedCompareMonth,
+      },
+      nextUpdateLabel: dictionary.home.fearGreedNextUpdateLabel,
+      nextUpdateValue: dictionary.home.fearGreedNextUpdateValue,
+      nextUpdateUnavailable: dictionary.home.fearGreedNextUpdateUnavailable,
+      sourceLabel: dictionary.home.fearGreedSourceLabel,
+      staleWarning: dictionary.home.fearGreedStaleWarning,
+      ariaLabel: dictionary.home.fearGreedAriaLabel,
+      disclaimer: dictionary.home.fearGreedDisclaimer,
+    }),
+    [dictionary],
+  );
+  const activeCopy = runtimeCopy ?? copy;
+
   if (!data) {
     return (
       <section className={styles.card}>
         <header className={styles.header}>
-          <p className={styles.eyebrow}>{copy.title}</p>
-          <p className={styles.subtitle}>{copy.subtitle}</p>
+          <p className={styles.eyebrow}>{activeCopy.title}</p>
+          <p className={styles.subtitle}>{activeCopy.subtitle}</p>
         </header>
         <div className={styles.fallback}>{fallback}</div>
       </section>
@@ -119,15 +151,15 @@ export function FearGreedGauge({ data, fallback, language, copy }: FearGreedGaug
   }
 
   const currentValue = clamp(data.current.value, 0, 100);
-  const classificationLabel = copy.classificationLabels[data.current.classification];
+  const classificationLabel = activeCopy.classificationLabels[data.current.classification];
   const progress = Math.max(currentValue, 0.0001);
   const needleRotation = currentValue * 1.8 - 90;
   const comparisons = [
-    buildComparisonValue(copy.compareLabels.yesterday, currentValue, data.yesterday),
-    buildComparisonValue(copy.compareLabels.week, currentValue, data.weekAgo),
-    buildComparisonValue(copy.compareLabels.month, currentValue, data.monthAgo),
+    buildComparisonValue(activeCopy.compareLabels.yesterday, currentValue, data.yesterday),
+    buildComparisonValue(activeCopy.compareLabels.week, currentValue, data.weekAgo),
+    buildComparisonValue(activeCopy.compareLabels.month, currentValue, data.monthAgo),
   ];
-  const ariaLabel = formatDashboardMessage(copy.ariaLabel, {
+  const ariaLabel = formatDashboardMessage(activeCopy.ariaLabel, {
     value: currentValue,
     classification: classificationLabel,
     delta_yesterday: formatSignedDelta(getSignedDelta(currentValue, data.yesterday)),
@@ -135,16 +167,16 @@ export function FearGreedGauge({ data, fallback, language, copy }: FearGreedGaug
   });
   const nextUpdateLabel = formatRelativeNextUpdate(
     data.nextUpdateInSeconds,
-    language,
-    copy.nextUpdateValue,
-    copy.nextUpdateUnavailable,
+    currentLanguage,
+    activeCopy.nextUpdateValue,
+    activeCopy.nextUpdateUnavailable,
   );
 
   return (
     <section className={styles.card}>
       <header className={styles.header}>
-        <p className={styles.eyebrow}>{copy.title}</p>
-        <p className={styles.subtitle}>{copy.subtitle}</p>
+        <p className={styles.eyebrow}>{activeCopy.title}</p>
+        <p className={styles.subtitle}>{activeCopy.subtitle}</p>
       </header>
 
       <div className={styles.gaugeFrame}>
@@ -203,11 +235,11 @@ export function FearGreedGauge({ data, fallback, language, copy }: FearGreedGaug
 
         <div className={styles.meta}>
           <div className={styles.metaRow}>
-            <span className={styles.metaLabel}>{copy.nextUpdateLabel}</span>
+            <span className={styles.metaLabel}>{activeCopy.nextUpdateLabel}</span>
             <span className={styles.metaValue}>{nextUpdateLabel}</span>
           </div>
           <div className={styles.metaRow}>
-            <span className={styles.metaLabel}>{copy.sourceLabel}</span>
+            <span className={styles.metaLabel}>{activeCopy.sourceLabel}</span>
             <a
               className={styles.sourceLink}
               href={data.sourceUrl}
@@ -219,8 +251,8 @@ export function FearGreedGauge({ data, fallback, language, copy }: FearGreedGaug
           </div>
         </div>
 
-        {data.isStale ? <div className={styles.warning}>{copy.staleWarning}</div> : null}
-        <p className={styles.disclaimer}>{copy.disclaimer}</p>
+        {data.isStale ? <div className={styles.warning}>{activeCopy.staleWarning}</div> : null}
+        <p className={styles.disclaimer}>{activeCopy.disclaimer}</p>
       </div>
     </section>
   );

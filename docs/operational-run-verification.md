@@ -26,8 +26,8 @@
 | 온체인 수집 | Etherscan/Solscan 수집이 timeout 없이 진행된다. |
 | 선저장 | LLM 실패 전에도 `transactions`, `address_activity`가 저장된다. |
 | Signal | 생성된 시그널이 있으면 `signals` 탭에 저장된다. |
-| LLM 브리핑 | provider fallback을 포함해 한국어 브리핑이 생성된다. |
-| Telegram | 구독자가 있으면 브리핑 발송 결과가 기록된다. |
+| LLM 브리핑 | provider fallback을 포함해 한국어 브리핑이 생성되거나, skip/cached/fallback 사유가 별도 원장에 기록된다. |
+| Telegram | 구독자가 있으면 브리핑 발송 결과가 기록되고, periodic broadcast의 skip/dedup/live 상태가 추적된다. |
 | Dashboard | 실행 후 Next.js 대시보드에서 거래/시그널/브리핑을 읽을 수 있다. |
 | 로그 | `system_log`, `analysis_log`에 추적 가능한 실행 기록이 남는다. |
 
@@ -103,7 +103,7 @@ python scripts/import_watched_addresses.py
 합격 기준:
 
 - `watched_addresses` 탭에 감시 주소가 존재한다.
-- `transactions`, `daily_brief`, `system_log`, `address_activity`, `signals` 탭이 존재한다.
+- `transactions`, `daily_brief`, `system_log`, `address_activity`, `signals`, `broadcast_log`, `brief_cost_ledger`, `channel_health` 탭이 존재한다.
 - 초기화 명령이 예외 없이 끝난다.
 
 ### 4. 외부 연결
@@ -178,6 +178,9 @@ python -m src.main --dry-run
 - `analysis_log`
 - `system_log`
 - `subscribers`
+- `brief_cost_ledger`
+- `broadcast_log`
+- `channel_health`
 
 권장 기록 형식:
 
@@ -189,6 +192,9 @@ python -m src.main --dry-run
 | `daily_brief` |  |  | brief 생성 시 증가 |
 | `analysis_log` |  |  | LLM 호출 성공 시 증가 |
 | `system_log` |  |  | 매 실행마다 증가 |
+| `brief_cost_ledger` |  |  | brief 실행마다 1행 증가 |
+| `broadcast_log` |  |  | broadcast_daily 또는 broadcast_periodic 실행 시 증가 |
+| `channel_health` |  |  | channel health 워커 실행 시 증가 |
 
 주의:
 
@@ -239,6 +245,9 @@ npm run dashboard:dev
 | `signals` | `signal_id`, `rule`, `severity`, `score`, `summary` |
 | `daily_brief` | `date`, `summary`, `top_transactions`, `alert_count` |
 | `analysis_log` | `task`, `model_id`, `tokens_in`, `tokens_out`, `latency_ms` |
+| `brief_cost_ledger` | `slot_key`, `decision`, `llm_called`, `cost_usd`, `input_fingerprint`, `reason` |
+| `broadcast_log` | `kind`, `status`, `message_length`, `content_hash`, `slot_key`, `delivery_mode` |
+| `channel_health` | `chat_id`, `username`, `member_count`, `status`, `error` |
 
 합격 기준:
 
@@ -247,6 +256,9 @@ npm run dashboard:dev
 - `raw_response_hash` 기준 중복 저장이 방지된다.
 - 시그널이 생성된 경우 `signals`에 저장된다.
 - 브리핑이 생성된 경우 `daily_brief`에 저장된다.
+- `brief_cost_ledger`는 brief 실행 경로마다 반드시 1행 기록된다.
+- `broadcast_periodic`가 비어 있거나 중복 내용이면 `broadcast_log`에 skip 사유가 남는다.
+- 실제 발송 또는 dry-run 모두 `broadcast_log.message_length <= 1500` 기준을 만족한다.
 
 ### Step 6. Next.js dashboard 검증
 
@@ -325,6 +337,35 @@ TG_CHANNEL=@whale_alert_io python scripts/run_listener.py
 - GitHub Actions는 long-running listener에 적합하지 않다.
 - listener는 로컬, VPS, Render, Fly.io 같은 상시 실행 환경에서 운용하는 편이 맞다.
 
+### Step 9. 관리자 관측치 검증
+
+`/admin`에서 아래 운영 요약치를 직접 확인한다.
+
+| 카드/지표 | 합격 기준 |
+|---|---|
+| 최근 24h brief 실행 횟수 | `brief_cost_ledger` 최근 24시간 합계와 일치 |
+| generated / cached / skipped_inactive / skipped_budget 비율 | `brief_cost_ledger.decision` 집계와 일치 |
+| 실제 LLM 호출 횟수 | `brief_cost_ledger.llm_called=true` 건수와 일치 |
+| periodic 실행 횟수 | `broadcast_log.kind=broadcast_periodic` 최근 24시간 합계와 일치 |
+| skipped_empty / skipped_duplicate_content 비율 | `broadcast_log.status`, `delivery_mode` 집계와 일치 |
+| 최근 메시지 길이 | `broadcast_log.message_length` 최신 row와 일치 |
+| 최근 brief 생성 시각 / 최근 periodic 발송 시각 | 각 원장 최신 row 시각과 일치 |
+
+운영자가 시트 raw row를 뒤지지 않고 `/admin`에서 바로 판정 가능해야 한다.
+
+### Step 10. 배포 환경 수동 검증
+
+아래 항목은 로컬 자동화가 아니라 실제 배포 환경에서 판정한다.
+
+| 영역 | 확인 방법 | 합격 기준 |
+|---|---|---|
+| SSE 연결 | 브라우저 DevTools Network에서 `/api/stream` 확인 | `content-type: text/event-stream` 유지 |
+| UI 갱신 지연 | 파이프라인 수동 실행 후 10초 내 `/` 또는 `/admin` 갱신 | 최근 상태/카드가 10초 내 반영 |
+| Alternative.me 실값 | 공개 지수 페이지와 비교 | 숫자/분류가 동일 |
+| Bitflyer / Kraken 값 | 시장 티커와 fallback 문구 확인 | 지연 시 stale/fallback 설명이 정합 |
+| Telegram shadow/live | `TELEGRAM_BROADCAST_DRY_RUN=true`로 24h 관측 후 live 전환 | shadow 기간 실패 없음, live 전환 후 단일 채널 도착 확인 |
+| 장시간 연결 | 30분 유지 후 재연결 관찰 | listener/SSE 모두 crash 없이 재연결 |
+
 ## 운영 실행 판정 기준
 
 ### 통과
@@ -336,6 +377,8 @@ TG_CHANNEL=@whale_alert_io python scripts/run_listener.py
 - `python -m src.main --dry-run` 통과
 - `python -m src.pipeline.run_all` 실행 후 `system_log` 기록 생성
 - 이벤트가 수집된 경우 `transactions`와 `address_activity` 저장 확인
+- `brief_cost_ledger`에 이번 brief 경로가 기록됨
+- `broadcast_log`에 periodic/daily broadcast 상태가 기록됨
 - 대시보드가 traceback 없이 렌더링
 - Telegram bot long polling 상태에서 일반 텍스트와 `/help` 응답 확인
 
@@ -444,6 +487,9 @@ TG_CHANNEL=@whale_alert_io python scripts/run_listener.py
 | daily_brief |  |
 | analysis_log |  |
 | system_log |  |
+| brief_cost_ledger |  |
+| broadcast_log |  |
+| channel_health |  |
 
 ### 사후 row count
 
@@ -455,12 +501,16 @@ TG_CHANNEL=@whale_alert_io python scripts/run_listener.py
 | daily_brief |  |
 | analysis_log |  |
 | system_log |  |
+| brief_cost_ledger |  |
+| broadcast_log |  |
+| channel_health |  |
 
 ### 관찰 로그
 
 - Stage 3 수집 결과:
 - Stage 5 signal 수:
 - Stage 8 brief 생성 여부:
+- Stage 9 관리자 관측치 확인:
 - Stage 10 Telegram 발송 결과:
 - errors:
 

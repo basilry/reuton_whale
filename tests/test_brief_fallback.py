@@ -27,6 +27,7 @@ class _FakeSheets:
         self.run_logs: list[dict] = []
         self.analysis_logs: list[dict] = []
         self.service_health: list[dict] = []
+        self.brief_cost_ledger_rows: list[dict] = []
 
     def list_llm_budget_log(self, month_key: str | None = None, limit: int | None = None) -> list[dict]:
         rows = self.budget_rows
@@ -38,6 +39,26 @@ class _FakeSheets:
 
     def append_llm_budget_log(self, entry: dict) -> None:
         self.budget_rows.append(dict(entry))
+
+    def append_brief_cost_ledger(self, entry: dict) -> None:
+        self.brief_cost_ledger_rows.append(dict(entry))
+
+    def list_brief_cost_ledger(
+        self,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
+        rows = list(self.brief_cost_ledger_rows)
+        if since is not None:
+            filtered: list[dict] = []
+            for row in rows:
+                created_at = datetime.fromisoformat(str(row.get("ts")).replace("Z", "+00:00"))
+                if created_at >= since:
+                    filtered.append(row)
+            rows = filtered
+        if limit is not None and limit >= 0:
+            rows = rows[-limit:] if limit else []
+        return rows
 
     def list_signals(self, since, limit=None) -> list[dict]:
         rows = list(self.signal_rows)
@@ -226,6 +247,9 @@ def test_run_brief_pipeline_uses_transaction_fallback_when_signals_are_empty():
     assert top_transactions[0]["symbol"] == "USDT"
     assert top_transactions[0]["amount_usd"] == 400000000.0
     assert top_transactions[1]["amount_usd"] == 10000000.0
+    assert sheets.brief_cost_ledger_rows[-1]["decision"] == "transaction_fallback"
+    assert sheets.brief_cost_ledger_rows[-1]["llm_called"] == "false"
+    assert sheets.brief_cost_ledger_rows[-1]["transaction_count"] == 2
 
 
 def test_run_brief_pipeline_skips_when_recent_activity_is_empty():
@@ -240,6 +264,8 @@ def test_run_brief_pipeline_skips_when_recent_activity_is_empty():
     assert result["status"] == "skipped_inactive"
     assert "inactive_window=60m" in result["details"]
     assert sheets.saved_briefs == []
+    assert sheets.brief_cost_ledger_rows[-1]["decision"] == "skipped_inactive"
+    assert sheets.brief_cost_ledger_rows[-1]["llm_called"] == "false"
 
 
 def test_run_brief_pipeline_prefers_llm_path_when_signals_exist():
@@ -272,6 +298,9 @@ def test_run_brief_pipeline_prefers_llm_path_when_signals_exist():
     assert sheets.analysis_logs
     current_month = month_key_for(datetime.now(timezone.utc))
     assert sheets.budget_rows[-1]["month_key"] == current_month
+    assert sheets.brief_cost_ledger_rows[-1]["decision"] == "generated"
+    assert sheets.brief_cost_ledger_rows[-1]["llm_called"] == "true"
+    assert sheets.brief_cost_ledger_rows[-1]["model_id"] == "gemini/gemini-2.5-flash"
 
 
 def test_run_brief_pipeline_reuses_cached_completion_for_same_fingerprint():
@@ -310,6 +339,8 @@ def test_run_brief_pipeline_reuses_cached_completion_for_same_fingerprint():
     assert sheets.saved_briefs[-1][1][0]["input_fingerprint"]
     assert sheets.analysis_logs == []
     assert sheets.budget_rows == []
+    assert sheets.brief_cost_ledger_rows[-1]["decision"] == "cached"
+    assert sheets.brief_cost_ledger_rows[-1]["llm_called"] == "false"
 
 
 def test_run_brief_pipeline_logs_fallback_skip_when_signals_are_empty():
@@ -377,3 +408,81 @@ def test_run_brief_pipeline_publishes_completed_update():
         pipeline="brief",
         result=result,
     )
+
+
+def test_run_brief_pipeline_records_budget_skip_in_cost_ledger():
+    from src.pipeline.brief import run_brief_pipeline
+
+    current_month = month_key_for(datetime.now(timezone.utc))
+    sheets = _FakeSheets(
+        signal_rows=[_signal_row()],
+        transaction_rows=[_recent_tx_row(symbol="USDT", amount="1000000", amount_usd="1000000")],
+        budget_rows=[
+            {
+                "month_key": current_month,
+                "cost_usd": 15.0,
+                "cumulative_cost_usd": 15.0,
+                "decision": "generated",
+            }
+        ],
+    )
+
+    with patch("src.pipeline.brief.load_pipeline_env", return_value=_fake_env()), patch(
+        "src.pipeline.brief.build_sheets_client", return_value=sheets
+    ):
+        result = run_brief_pipeline()
+
+    assert result["status"] == "skipped_budget"
+    assert sheets.brief_cost_ledger_rows[-1]["decision"] == "skipped_budget"
+    assert sheets.brief_cost_ledger_rows[-1]["llm_called"] == "false"
+    assert sheets.brief_cost_ledger_rows[-1]["cumulative_cost_usd"] == 15.0
+
+
+def test_run_brief_pipeline_records_completed_empty_in_cost_ledger():
+    from src.pipeline.brief import run_brief_pipeline
+
+    sheets = _FakeSheets(
+        transaction_rows=[_recent_tx_row(symbol="USDT", amount="100", amount_usd="100")]
+    )
+
+    with patch("src.pipeline.brief.load_pipeline_env", return_value=_fake_env()), patch(
+        "src.pipeline.brief.build_sheets_client", return_value=sheets
+    ), patch(
+        "src.pipeline.brief._build_transaction_fallback_brief",
+        return_value=(
+            None,
+            {
+                "transactions": 0,
+                "priced": 0,
+                "unpriced": 0,
+                "total_volume_usd": 0.0,
+                "price_sources": "",
+            },
+        ),
+    ):
+        result = run_brief_pipeline()
+
+    assert result["status"] == "completed_empty"
+    assert sheets.brief_cost_ledger_rows[-1]["decision"] == "completed_empty"
+    assert sheets.brief_cost_ledger_rows[-1]["llm_called"] == "false"
+
+
+def test_run_brief_pipeline_records_llm_errors_in_cost_ledger():
+    from src.pipeline.brief import run_brief_pipeline
+
+    sheets = _FakeSheets(
+        signal_rows=[_signal_row()],
+        transaction_rows=[_recent_tx_row(symbol="USDT", amount="1000000", amount_usd="1000000")],
+    )
+    router = MagicMock()
+    router.call_task.side_effect = RuntimeError("llm unavailable")
+
+    with patch("src.pipeline.brief.load_pipeline_env", return_value=_fake_env()), patch(
+        "src.pipeline.brief.build_sheets_client", return_value=sheets
+    ), patch("src.pipeline.brief.build_router_from_env", return_value=router):
+        result = run_brief_pipeline()
+
+    assert result["status"] == "completed_with_errors"
+    assert sheets.brief_cost_ledger_rows[-1]["decision"] == "completed_with_errors"
+    assert sheets.brief_cost_ledger_rows[-1]["llm_called"] == "false"
+    assert "llm unavailable" in sheets.brief_cost_ledger_rows[-1]["reason"]

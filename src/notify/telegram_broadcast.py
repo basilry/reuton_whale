@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+import hashlib
 
 import requests
 
@@ -26,6 +27,12 @@ class BroadcastAttempt:
     status: str
     message_id: str = ""
     error: str = ""
+    message_length: int = 0
+    content_hash: str = ""
+    signal_count: int = 0
+    transaction_count: int = 0
+    slot_key: str = ""
+    delivery_mode: str = ""
 
     def to_sheet_row(self) -> dict[str, str]:
         return {
@@ -36,7 +43,21 @@ class BroadcastAttempt:
             "message_id": self.message_id,
             "status": self.status,
             "error": self.error,
+            "message_length": self.message_length,
+            "content_hash": self.content_hash,
+            "signal_count": self.signal_count,
+            "transaction_count": self.transaction_count,
+            "slot_key": self.slot_key,
+            "delivery_mode": self.delivery_mode or self._delivery_mode_for_status(),
         }
+
+    def _delivery_mode_for_status(self) -> str:
+        normalized = self.status.strip().lower()
+        if normalized == "sent":
+            return "live"
+        if normalized == "dry_run":
+            return "dry_run"
+        return "skipped"
 
 
 class TelegramBroadcastAdapter:
@@ -99,27 +120,31 @@ class TelegramBroadcastAdapter:
         text: str,
         kind: str,
         dedup_key: str,
+        metadata: dict[str, object] | None = None,
     ) -> BroadcastAttempt:
         normalized_text = (text or "").strip()
+        clipped_text = self._clip_message(normalized_text) if normalized_text else ""
         if not normalized_text:
             return self._finalize_attempt(
-                BroadcastAttempt(
+                self._build_attempt(
                     kind=kind,
                     dedup_key=dedup_key,
-                    chat_id=self._chat_id,
                     status="skipped_empty",
                     error="message text was empty",
+                    clipped_text=clipped_text,
+                    metadata=metadata,
                 )
             )
 
         if not self._enabled:
             return self._finalize_attempt(
-                BroadcastAttempt(
+                self._build_attempt(
                     kind=kind,
                     dedup_key=dedup_key,
-                    chat_id=self._chat_id,
                     status="skipped_disabled",
                     error="TELEGRAM_BROADCAST_ENABLED is false",
+                    clipped_text=clipped_text,
+                    metadata=metadata,
                 )
             )
 
@@ -130,29 +155,31 @@ class TelegramBroadcastAdapter:
             if not self._token:
                 missing.append("TELEGRAM_BROADCAST_BOT_TOKEN/TELEGRAM_BOT_TOKEN")
             return self._finalize_attempt(
-                BroadcastAttempt(
+                self._build_attempt(
                     kind=kind,
                     dedup_key=dedup_key,
-                    chat_id=self._chat_id,
                     status="skipped_unconfigured",
                     error=f"missing {', '.join(missing)}",
+                    clipped_text=clipped_text,
+                    metadata=metadata,
                 )
             )
 
         if self._dry_run:
             return self._finalize_attempt(
-                BroadcastAttempt(
+                self._build_attempt(
                     kind=kind,
                     dedup_key=dedup_key,
-                    chat_id=self._chat_id,
                     status="dry_run",
                     error=self._dry_run_reason,
+                    clipped_text=clipped_text,
+                    metadata=metadata,
                 )
             )
 
         payload = {
             "chat_id": self._chat_id,
-            "text": self._clip_message(normalized_text),
+            "text": clipped_text,
             "parse_mode": "HTML",
             "disable_web_page_preview": True,
         }
@@ -166,44 +193,48 @@ class TelegramBroadcastAdapter:
             if not response.ok or not body.get("ok"):
                 description = str(body.get("description") or response.text or response.reason)
                 return self._finalize_attempt(
-                    BroadcastAttempt(
+                    self._build_attempt(
                         kind=kind,
                         dedup_key=dedup_key,
-                        chat_id=self._chat_id,
                         status="failed",
                         error=self._clip_error(description),
+                        clipped_text=clipped_text,
+                        metadata=metadata,
                     )
                 )
 
             result = body.get("result") or {}
             message_id = str(result.get("message_id") or "")
             return self._finalize_attempt(
-                BroadcastAttempt(
+                self._build_attempt(
                     kind=kind,
                     dedup_key=dedup_key,
-                    chat_id=self._chat_id,
                     status="sent",
                     message_id=message_id,
+                    clipped_text=clipped_text,
+                    metadata=metadata,
                 )
             )
         except requests.RequestException as exc:
             return self._finalize_attempt(
-                BroadcastAttempt(
+                self._build_attempt(
                     kind=kind,
                     dedup_key=dedup_key,
-                    chat_id=self._chat_id,
                     status="failed",
                     error=self._clip_error(str(exc)),
+                    clipped_text=clipped_text,
+                    metadata=metadata,
                 )
             )
         except ValueError as exc:
             return self._finalize_attempt(
-                BroadcastAttempt(
+                self._build_attempt(
                     kind=kind,
                     dedup_key=dedup_key,
-                    chat_id=self._chat_id,
                     status="failed",
                     error=self._clip_error(f"invalid telegram response: {exc}"),
+                    clipped_text=clipped_text,
+                    metadata=metadata,
                 )
             )
 
@@ -282,3 +313,58 @@ class TelegramBroadcastAdapter:
 
     def _clip_error(self, error: str) -> str:
         return str(error or "")[:1000]
+
+    def _build_attempt(
+        self,
+        *,
+        kind: str,
+        dedup_key: str,
+        status: str,
+        clipped_text: str,
+        metadata: dict[str, object] | None = None,
+        message_id: str = "",
+        error: str = "",
+    ) -> BroadcastAttempt:
+        resolved = self._resolve_metadata(clipped_text, metadata or {}, status=status)
+        return BroadcastAttempt(
+            kind=kind,
+            dedup_key=dedup_key,
+            chat_id=self._chat_id,
+            status=status,
+            message_id=message_id,
+            error=error,
+            **resolved,
+        )
+
+    def _resolve_metadata(
+        self,
+        clipped_text: str,
+        metadata: dict[str, object],
+        *,
+        status: str,
+    ) -> dict[str, object]:
+        return {
+            "message_length": self._coerce_int(metadata.get("message_length"), default=len(clipped_text)),
+            "content_hash": str(metadata.get("content_hash") or self._hash_content(clipped_text)),
+            "signal_count": self._coerce_int(metadata.get("signal_count"), default=0),
+            "transaction_count": self._coerce_int(metadata.get("transaction_count"), default=0),
+            "slot_key": str(metadata.get("slot_key") or ""),
+            "delivery_mode": str(metadata.get("delivery_mode") or BroadcastAttempt(
+                kind="",
+                dedup_key="",
+                chat_id="",
+                status=status,
+            )._delivery_mode_for_status()),
+        }
+
+    def _coerce_int(self, value: object, *, default: int = 0) -> int:
+        try:
+            return int(value if value not in (None, "") else default)
+        except (TypeError, ValueError):
+            return default
+
+    def _hash_content(self, text: str) -> str:
+        normalized = str(text or "")
+        if not normalized:
+            return ""
+        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()

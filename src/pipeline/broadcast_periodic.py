@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -20,6 +21,7 @@ _TERMINAL_RUN_STATUSES = {
     "skipped_empty",
     "skipped_budget",
     "skipped_window",
+    "skipped_duplicate_content",
 }
 _PERIODIC_MESSAGE_MAX_LENGTH = 1500
 
@@ -54,6 +56,7 @@ def _health_for_status(status: object) -> str:
         "skipped_empty",
         "skipped_window",
         "skipped_budget",
+        "skipped_duplicate_content",
     }:
         return "ok"
     if normalized in {"completed_with_errors", "skipped_duplicate"}:
@@ -157,6 +160,44 @@ def _clip_periodic_message(text: str, *, limit: int = _PERIODIC_MESSAGE_MAX_LENG
     return f"{normalized[: max(0, limit - 1)].rstrip()}…"
 
 
+def _content_hash(text: str) -> str:
+    normalized = str(text or "").strip()
+    if not normalized:
+        return ""
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _logged_delivery_mode(row: dict) -> str:
+    delivery_mode = str(row.get("delivery_mode") or "").strip().lower()
+    if delivery_mode:
+        return delivery_mode
+    status = str(row.get("status") or "").strip().lower()
+    if status == "sent":
+        return "live"
+    if status == "dry_run":
+        return "dry_run"
+    return "skipped"
+
+
+def _has_recent_duplicate_content(
+    sheets,
+    *,
+    kind: str,
+    content_hash: str,
+    since: datetime,
+) -> bool:
+    if not content_hash:
+        return False
+    rows = sheets.list_broadcast_log(kind=kind, since=since, limit=100)
+    for row in reversed(rows):
+        if str(row.get("content_hash") or "").strip() != content_hash:
+            continue
+        if _logged_delivery_mode(row) not in {"live", "dry_run"}:
+            continue
+        return True
+    return False
+
+
 def _record_broadcast_heartbeat(
     sheets,
     result: dict[str, object],
@@ -217,7 +258,26 @@ def run_broadcast_periodic() -> dict[str, object]:
 
     signal_rows = sheets.list_signals(since=window_start, limit=20)
     transaction_rows = sheets.list_transactions(since=window_start, limit=50)
+    slot_key = slot_start_kst.strftime("%Y%m%dT%H%M")
+    dedup_key = f"broadcast_periodic:{slot_key}"
     if not signal_rows and not transaction_rows:
+        sheets.append_broadcast_log(
+            {
+                "ts": now_iso(),
+                "kind": "broadcast_periodic",
+                "dedup_key": dedup_key,
+                "chat_id": env.telegram_broadcast_chat,
+                "message_id": "",
+                "status": "skipped_empty",
+                "error": "signals=0; transactions=0; recent_window=15m",
+                "message_length": 0,
+                "content_hash": "",
+                "signal_count": 0,
+                "transaction_count": 0,
+                "slot_key": slot_key,
+                "delivery_mode": "skipped",
+            }
+        )
         result.update(
             status="skipped_empty",
             finished_at=now_iso(),
@@ -243,10 +303,61 @@ def run_broadcast_periodic() -> dict[str, object]:
             transaction_rows=transaction_rows,
         )
     )
+    content_hash = _content_hash(message)
+    if _has_recent_duplicate_content(
+        sheets,
+        kind="broadcast_periodic",
+        content_hash=content_hash,
+        since=now - timedelta(hours=1),
+    ):
+        sheets.append_broadcast_log(
+            {
+                "ts": now_iso(),
+                "kind": "broadcast_periodic",
+                "dedup_key": dedup_key,
+                "chat_id": env.telegram_broadcast_chat,
+                "message_id": "",
+                "status": "skipped_duplicate_content",
+                "error": "matched previous content hash within 1h",
+                "message_length": len(message),
+                "content_hash": content_hash,
+                "signal_count": len(signal_rows),
+                "transaction_count": len(transaction_rows),
+                "slot_key": slot_key,
+                "delivery_mode": "skipped",
+            }
+        )
+        result.update(
+            status="skipped_duplicate_content",
+            finished_at=now_iso(),
+            transactions_count=len(transaction_rows),
+            errors="[]",
+            details=(
+                f"signals={len(signal_rows)}; transactions={len(transaction_rows)}; "
+                f"duplicate_window=60m; message_len={len(message)}"
+            ),
+        )
+        sheets.log_run(result)
+        _record_broadcast_heartbeat(sheets, result, channel_status="skipped_duplicate_content")
+        logger.info(
+            "broadcast_periodic skipped duplicate content signals=%d transactions=%d slot=%s",
+            len(signal_rows),
+            len(transaction_rows),
+            slot_key,
+        )
+        return result
+
     attempt = broadcaster.broadcast_text(
         text=message,
         kind="broadcast_periodic",
-        dedup_key=f"broadcast_periodic:{slot_start_kst.strftime('%Y%m%dT%H%M')}",
+        dedup_key=dedup_key,
+        metadata={
+            "message_length": len(message),
+            "content_hash": content_hash,
+            "signal_count": len(signal_rows),
+            "transaction_count": len(transaction_rows),
+            "slot_key": slot_key,
+        },
     )
     if attempt.status in {"failed", "skipped_unconfigured"}:
         errors.append(f"telegram_broadcast:{attempt.error}")

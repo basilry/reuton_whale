@@ -531,13 +531,87 @@ def _build_transaction_fallback_brief(
     return payload, metadata
 
 
+def _brief_slot_key(now: datetime) -> str:
+    slot = now.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    return slot.strftime("%Y%m%dT%H00Z")
+
+
+def _append_brief_cost_ledger(
+    sheets,
+    *,
+    now: datetime,
+    decision: str,
+    llm_called: bool,
+    model_id: str = "",
+    tokens_in: int = 0,
+    tokens_out: int = 0,
+    cost_usd: float = 0.0,
+    cumulative_cost_usd: float = 0.0,
+    signal_count: int = 0,
+    transaction_count: int = 0,
+    input_fingerprint: str = "",
+    reason: str = "",
+) -> None:
+    sheets.append_brief_cost_ledger(
+        {
+            "ts": now.isoformat(),
+            "slot_key": _brief_slot_key(now),
+            "decision": decision,
+            "llm_called": "true" if llm_called else "false",
+            "model_id": model_id,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "cost_usd": cost_usd,
+            "cumulative_cost_usd": cumulative_cost_usd,
+            "signal_count": signal_count,
+            "transaction_count": transaction_count,
+            "input_fingerprint": input_fingerprint,
+            "reason": reason,
+        }
+    )
+
+
 def run_brief_pipeline() -> dict[str, object]:
     result = init_run_result("brief")
     errors: list[str] = []
 
     env = load_pipeline_env()
     sheets = build_sheets_client(env)
+    guard = MonthlyBudgetGuard(sheets)
     now = datetime.now(timezone.utc)
+
+    def record_ledger(
+        *,
+        decision: str,
+        llm_called: bool,
+        model_id: str = "",
+        tokens_in: int = 0,
+        tokens_out: int = 0,
+        cost_usd: float = 0.0,
+        cumulative_cost_usd: float | None = None,
+        signal_count: int = 0,
+        transaction_count: int = 0,
+        input_fingerprint: str = "",
+        reason: str = "",
+    ) -> None:
+        if cumulative_cost_usd is None:
+            _, cumulative_cost_usd = guard.monthly_spend(now=now)
+        _append_brief_cost_ledger(
+            sheets,
+            now=now,
+            decision=decision,
+            llm_called=llm_called,
+            model_id=model_id,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_usd=cost_usd,
+            cumulative_cost_usd=cumulative_cost_usd,
+            signal_count=signal_count,
+            transaction_count=transaction_count,
+            input_fingerprint=input_fingerprint,
+            reason=reason,
+        )
+
     recent_since = now - timedelta(hours=1)
     recent_signal_rows = sheets.list_signals(since=recent_since, limit=50)
     recent_transaction_rows = sheets.list_transactions(since=recent_since, limit=200)
@@ -551,6 +625,13 @@ def run_brief_pipeline() -> dict[str, object]:
             finished_at=now_iso(),
             errors="[]",
             details="inactive_window=60m; signals=0; transactions=0",
+        )
+        record_ledger(
+            decision="skipped_inactive",
+            llm_called=False,
+            signal_count=0,
+            transaction_count=0,
+            reason="inactive_window",
         )
         sheets.log_run(result)
         _record_brief_heartbeat(sheets, result)
@@ -580,6 +661,13 @@ def run_brief_pipeline() -> dict[str, object]:
                 finished_at=now_iso(),
                 errors="[]",
                 details="mode=fallback_empty; signals=0; transactions=0",
+            )
+            record_ledger(
+                decision="completed_empty",
+                llm_called=False,
+                signal_count=0,
+                transaction_count=0,
+                reason="fallback_empty",
             )
             sheets.log_run(result)
             _record_brief_heartbeat(sheets, result)
@@ -620,6 +708,17 @@ def run_brief_pipeline() -> dict[str, object]:
                 f"price_sources={fallback_meta['price_sources']}"
             ),
         )
+        record_ledger(
+            decision="transaction_fallback",
+            llm_called=False,
+            signal_count=0,
+            transaction_count=int(fallback_meta["transactions"]),
+            input_fingerprint=fallback_payload["input_fingerprint"],
+            reason=(
+                "no_signals_transaction_fallback;"
+                f"priced={fallback_meta['priced']};unpriced={fallback_meta['unpriced']}"
+            ),
+        )
         sheets.log_run(result)
         _record_brief_heartbeat(sheets, result)
         publish_success_event(section="brief", pipeline="brief", result=result)
@@ -649,20 +748,30 @@ def run_brief_pipeline() -> dict[str, object]:
         market_mood=market_mood,
     )
     today = now.strftime("%Y-%m-%d")
-    guard = MonthlyBudgetGuard(sheets)
-    decision = guard.precheck("brief")
-    if not decision.allowed:
+    budget_decision = guard.precheck("brief")
+    if not budget_decision.allowed:
         logger.info(
             "brief llm call skipped reason=budget_cap spent_usd=%.4f cap_usd=%.2f",
-            decision.spent_usd,
-            decision.cap_usd,
+            budget_decision.spent_usd,
+            budget_decision.cap_usd,
         )
-        guard.log_blocked(pipeline="brief")
+        blocked_decision = guard.log_blocked(pipeline="brief")
         result.update(
             status="skipped_budget",
             finished_at=now_iso(),
             errors="[]",
-            details=f"budget_cap_reached spent_usd={decision.spent_usd:.4f} cap_usd={decision.cap_usd:.2f}",
+            details=(
+                "budget_cap_reached "
+                f"spent_usd={budget_decision.spent_usd:.4f} cap_usd={budget_decision.cap_usd:.2f}"
+            ),
+        )
+        record_ledger(
+            decision="skipped_budget",
+            llm_called=False,
+            cumulative_cost_usd=blocked_decision.spent_usd,
+            signal_count=len(signals),
+            transaction_count=len(transaction_rows),
+            reason="budget_cap",
         )
         sheets.log_run(result)
         _record_brief_heartbeat(sheets, result)
@@ -716,6 +825,15 @@ def run_brief_pipeline() -> dict[str, object]:
             errors="[]",
             details=details,
         )
+        record_ledger(
+            decision="cached",
+            llm_called=False,
+            cumulative_cost_usd=budget_decision.spent_usd,
+            signal_count=len(signals),
+            transaction_count=len(transaction_rows),
+            input_fingerprint=input_fingerprint,
+            reason="cache_hit",
+        )
         sheets.log_run(result)
         _record_brief_heartbeat(sheets, result)
         publish_success_event(section="brief", pipeline="brief", result=result)
@@ -738,9 +856,18 @@ def run_brief_pipeline() -> dict[str, object]:
         result.update(
             status="completed_with_errors",
             finished_at=now_iso(),
-            transactions_count=0,
+            transactions_count=len(transaction_rows),
             errors=json.dumps(errors, ensure_ascii=False),
             details="Failed to generate brief text",
+        )
+        record_ledger(
+            decision="completed_with_errors",
+            llm_called=False,
+            cumulative_cost_usd=budget_decision.spent_usd,
+            signal_count=len(signals),
+            transaction_count=len(transaction_rows),
+            input_fingerprint=input_fingerprint,
+            reason=str(exc),
         )
         sheets.log_run(result)
         _record_brief_heartbeat(sheets, result)
@@ -755,7 +882,7 @@ def run_brief_pipeline() -> dict[str, object]:
         llm_result.cost_usd,
         llm_result.latency_ms,
     )
-    guard.record_usage(
+    usage_decision = guard.record_usage(
         pipeline="brief",
         model_id=llm_result.model_id,
         tokens_in=llm_result.tokens_in,
@@ -804,6 +931,19 @@ def run_brief_pipeline() -> dict[str, object]:
         transactions_count=len(transaction_rows),
         errors=json.dumps(errors, ensure_ascii=False),
         details=details,
+    )
+    record_ledger(
+        decision="generated",
+        llm_called=True,
+        model_id=llm_result.model_id,
+        tokens_in=llm_result.tokens_in,
+        tokens_out=llm_result.tokens_out,
+        cost_usd=llm_result.cost_usd,
+        cumulative_cost_usd=usage_decision.spent_usd,
+        signal_count=len(signals),
+        transaction_count=len(transaction_rows),
+        input_fingerprint=input_fingerprint,
+        reason="generated",
     )
     sheets.log_run(result)
     _record_brief_heartbeat(sheets, result)

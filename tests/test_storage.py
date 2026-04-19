@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,6 +9,8 @@ from src.storage.schema import (
     ADDRESS_ACTIVITY_HEADERS,
     ALL_TABS,
     ANALYSIS_LOG_HEADERS,
+    BRIEF_COST_LEDGER_HEADERS,
+    BROADCAST_LOG_HEADERS,
     DAILY_BRIEF_HEADERS,
     SUBSCRIBERS_HEADERS,
     SYSTEM_LOG_HEADERS,
@@ -164,6 +167,69 @@ class TestSheetsClient:
         result = client.get_daily_brief("2026-04-14")
         assert len(result) == 1
         assert result[0]["date"] == "2026-04-14"
+
+    def test_append_broadcast_log_extends_schema_and_writes_new_metadata(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ws.col_count = 7
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [BROADCAST_LOG_HEADERS[:7]]
+
+        client.append_broadcast_log(
+            {
+                "kind": "broadcast_periodic",
+                "dedup_key": "broadcast_periodic:20260419T1015",
+                "chat_id": "@channel",
+                "status": "dry_run",
+                "message_length": 1500,
+                "content_hash": "abc123",
+                "signal_count": 2,
+                "transaction_count": 4,
+                "slot_key": "20260419T1015",
+                "delivery_mode": "dry_run",
+            }
+        )
+
+        mock_ws.update.assert_called_once()
+        row = mock_ws.append_row.call_args[0][0]
+        assert row[BROADCAST_LOG_HEADERS.index("message_length")] == "1500"
+        assert row[BROADCAST_LOG_HEADERS.index("content_hash")] == "abc123"
+        assert row[BROADCAST_LOG_HEADERS.index("delivery_mode")] == "dry_run"
+
+    def test_append_and_list_brief_cost_ledger(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ws.col_count = len(BRIEF_COST_LEDGER_HEADERS)
+        mock_ss.worksheet.return_value = mock_ws
+        ledger_entry = {
+            "ts": "2026-04-19T01:00:00+00:00",
+            "slot_key": "20260419T1000KST",
+            "decision": "generated",
+            "llm_called": "true",
+            "model_id": "gemini/gemini-2.5-flash",
+            "tokens_in": 120,
+            "tokens_out": 80,
+            "cost_usd": 0.01,
+            "cumulative_cost_usd": 1.25,
+            "signal_count": 3,
+            "transaction_count": 9,
+            "input_fingerprint": "fp-1",
+            "reason": "generated",
+        }
+        mock_ws.get_all_values.side_effect = [
+            [BRIEF_COST_LEDGER_HEADERS],
+            [BRIEF_COST_LEDGER_HEADERS, dict_to_row(ledger_entry, BRIEF_COST_LEDGER_HEADERS)],
+        ]
+
+        client.append_brief_cost_ledger(ledger_entry)
+        rows = client.list_brief_cost_ledger(
+            since=datetime.fromisoformat("2026-04-19T00:30:00+00:00")
+        )
+
+        row = mock_ws.append_row.call_args[0][0]
+        assert row[BRIEF_COST_LEDGER_HEADERS.index("decision")] == "generated"
+        assert row[BRIEF_COST_LEDGER_HEADERS.index("llm_called")] == "true"
+        assert rows[0]["input_fingerprint"] == "fp-1"
 
     def test_get_active_subscribers_filters_by_status(self):
         client, mock_ss = self._make_client()

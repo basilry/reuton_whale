@@ -105,6 +105,7 @@ TAB_WALLET_ACTIVITY_SNAPSHOTS = "wallet_activity_snapshots"
 TAB_WHALE_STORIES = "whale_stories"
 TAB_BROADCAST_LOG = "broadcast_log"
 TAB_LLM_BUDGET_LOG = "llm_budget_log"
+TAB_BRIEF_COST_LEDGER = "brief_cost_ledger"
 TAB_CURATED_WALLET_BALANCES = "curated_wallet_balances"
 TAB_CHANNEL_HEALTH = "channel_health"
 TAB_SERVICE_HEALTH = "service_health"
@@ -183,7 +184,19 @@ WHALE_STORIES_HEADERS = [
 ]
 
 BROADCAST_LOG_HEADERS = [
-    "ts", "kind", "dedup_key", "chat_id", "message_id", "status", "error",
+    "ts",
+    "kind",
+    "dedup_key",
+    "chat_id",
+    "message_id",
+    "status",
+    "error",
+    "message_length",
+    "content_hash",
+    "signal_count",
+    "transaction_count",
+    "slot_key",
+    "delivery_mode",
 ]
 
 LLM_BUDGET_LOG_HEADERS = [
@@ -196,6 +209,22 @@ LLM_BUDGET_LOG_HEADERS = [
     "cost_usd",
     "cumulative_cost_usd",
     "decision",
+]
+
+BRIEF_COST_LEDGER_HEADERS = [
+    "ts",
+    "slot_key",
+    "decision",
+    "llm_called",
+    "model_id",
+    "tokens_in",
+    "tokens_out",
+    "cost_usd",
+    "cumulative_cost_usd",
+    "signal_count",
+    "transaction_count",
+    "input_fingerprint",
+    "reason",
 ]
 
 CURATED_WALLET_BALANCES_HEADERS = [
@@ -248,6 +277,7 @@ ALL_TABS.extend([
     TAB_WHALE_STORIES,
     TAB_BROADCAST_LOG,
     TAB_LLM_BUDGET_LOG,
+    TAB_BRIEF_COST_LEDGER,
     TAB_CURATED_WALLET_BALANCES,
     TAB_CHANNEL_HEALTH,
     TAB_SERVICE_HEALTH,
@@ -269,6 +299,7 @@ TAB_HEADERS.update({
     TAB_WHALE_STORIES: WHALE_STORIES_HEADERS,
     TAB_BROADCAST_LOG: BROADCAST_LOG_HEADERS,
     TAB_LLM_BUDGET_LOG: LLM_BUDGET_LOG_HEADERS,
+    TAB_BRIEF_COST_LEDGER: BRIEF_COST_LEDGER_HEADERS,
     TAB_CURATED_WALLET_BALANCES: CURATED_WALLET_BALANCES_HEADERS,
     TAB_CHANNEL_HEALTH: CHANNEL_HEALTH_HEADERS,
     TAB_SERVICE_HEALTH: SERVICE_HEALTH_HEADERS,

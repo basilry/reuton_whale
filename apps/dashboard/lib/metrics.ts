@@ -33,6 +33,7 @@ import {
 } from "./sheets";
 import { buildWhaleStories, buildWhaleStoryCards } from "./whale-stories";
 import type {
+  AdminObservabilitySummary,
   BriefMarketMood,
   CuratedWalletEntry,
   CuratedWatchlistItem,
@@ -51,6 +52,9 @@ export const LISTENER_STALE_MINUTES = 15;
 export const PIPELINE_STALE_MINUTES = 20;
 export const PIPELINE_DOWN_MINUTES = 45;
 export const SOURCE_STALE_MINUTES = 30;
+const ADMIN_OBSERVABILITY_WINDOW_HOURS = 24;
+const ADMIN_OBSERVABILITY_WINDOW_MS = ADMIN_OBSERVABILITY_WINDOW_HOURS * 60 * 60 * 1000;
+const TELEGRAM_MESSAGE_HARD_CAP = 1500;
 
 const SHEETS_API_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
 const OPTIONAL_TAB_RANGE = "A:ZZ";
@@ -147,6 +151,7 @@ export interface DashboardBrief {
 export interface DashboardData {
   generatedAt: string;
   source: string;
+  adminObservability: AdminObservabilitySummary | null;
   latestBrief: DashboardBrief | null;
   recentTransactions: TransactionRow[];
   recentSignals: Array<SignalRow | DisplaySignalRow>;
@@ -1406,6 +1411,250 @@ function buildOpsSummary(
   };
 }
 
+function rowTimestampMs(row: OptionalSheetRow, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = rowValue(row, [key]);
+    if (!value) {
+      continue;
+    }
+    const parsed = parseDateTimeSafe(value);
+    if (parsed != null) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function rowsWithinWindow(
+  rows: OptionalSheetRow[],
+  keys: string[],
+  sinceMs: number,
+): OptionalSheetRow[] {
+  return rows.filter((row) => {
+    const parsed = rowTimestampMs(row, keys);
+    return parsed != null && parsed >= sinceMs;
+  });
+}
+
+function rowBoolean(row: OptionalSheetRow | null | undefined, keys: string[]): boolean | null {
+  const value = rowValue(row, keys).toLowerCase();
+  if (!value) {
+    return null;
+  }
+  if (["1", "true", "yes", "y", "on"].includes(value)) {
+    return true;
+  }
+  if (["0", "false", "no", "n", "off"].includes(value)) {
+    return false;
+  }
+  return null;
+}
+
+function rowNumber(row: OptionalSheetRow | null | undefined, keys: string[]): number | null {
+  const text = rowValue(row, keys);
+  if (!text) {
+    return null;
+  }
+  return parseFloatSafe(text);
+}
+
+function ratioSummary(count: number, total: number) {
+  return {
+    count,
+    ratio: total > 0 ? count / total : 0,
+  };
+}
+
+function briefDecisionKey(row: OptionalSheetRow): string {
+  return rowValue(row, ["decision", "status", "result"]).toLowerCase();
+}
+
+function countBriefLlmCalls(rows: OptionalSheetRow[]): number {
+  return rows.filter((row) => {
+    const llmCalled = rowBoolean(row, ["llm_called", "llmCall"]);
+    if (llmCalled != null) {
+      return llmCalled;
+    }
+    const decision = briefDecisionKey(row);
+    if (decision === "generated") {
+      return true;
+    }
+    const tokensIn = rowNumber(row, ["tokens_in", "tokensIn"]) ?? 0;
+    const tokensOut = rowNumber(row, ["tokens_out", "tokensOut"]) ?? 0;
+    const costUsd = rowNumber(row, ["cost_usd", "costUsd"]) ?? 0;
+    return tokensIn > 0 || tokensOut > 0 || costUsd > 0;
+  }).length;
+}
+
+function fallbackBriefLlmCalls(rows: OptionalSheetRow[], sinceMs: number): number {
+  return rowsWithinWindow(rows, ["ts"], sinceMs).filter((row) => {
+    const pipeline = rowValue(row, ["pipeline"]).toLowerCase();
+    if (pipeline !== "brief") {
+      return false;
+    }
+    const decision = rowValue(row, ["decision"]).toLowerCase();
+    if (decision === "blocked_cap") {
+      return false;
+    }
+    const tokensIn = rowNumber(row, ["tokens_in"]) ?? 0;
+    const tokensOut = rowNumber(row, ["tokens_out"]) ?? 0;
+    const costUsd = rowNumber(row, ["cost_usd"]) ?? 0;
+    return tokensIn > 0 || tokensOut > 0 || costUsd > 0 || decision === "generated";
+  }).length;
+}
+
+function latestGeneratedBriefAt(
+  briefLedgerRows: OptionalSheetRow[],
+  latestBrief: DashboardBrief | null,
+): string | undefined {
+  const generatedRows = briefLedgerRows.filter((row) => briefDecisionKey(row) === "generated");
+  const latestGeneratedRow = latestOptionalRow(generatedRows, ["ts", "created_at", "updated_at"]);
+  return (
+    rowValue(latestGeneratedRow, ["ts", "created_at", "updated_at"]) ||
+    latestBrief?.generatedAt ||
+    latestBrief?.date
+  );
+}
+
+function matchesPeriodicBroadcast(row: OptionalSheetRow): boolean {
+  const kind = rowValue(row, ["kind", "run_type", "pipeline"]).toLowerCase();
+  const dedupKey = rowValue(row, ["dedup_key", "slot_key"]).toLowerCase();
+  return kind === "broadcast_periodic" || dedupKey.startsWith("broadcast_periodic:");
+}
+
+function periodicRunStatus(row: SystemLogRow): string {
+  return compactString(row.status).toLowerCase();
+}
+
+function periodicRunDetails(row: SystemLogRow): string {
+  return compactString(row.details).toLowerCase();
+}
+
+function parseMessageLengthFromLog(row: SystemLogRow | null): number | null {
+  if (!row) {
+    return null;
+  }
+  const match = compactString(row.details).match(/message_len=(\d+)/i);
+  if (!match) {
+    return null;
+  }
+  return parseIntSafe(match[1]) ?? null;
+}
+
+function latestPeriodicSendAt(
+  broadcastRows: OptionalSheetRow[],
+  periodicRows: SystemLogRow[],
+): string | undefined {
+  const sentRows = broadcastRows.filter((row) => {
+    const deliveryMode = rowValue(row, ["delivery_mode"]).toLowerCase();
+    const status = rowValue(row, ["status"]).toLowerCase();
+    if (deliveryMode === "skipped") {
+      return false;
+    }
+    if (status.startsWith("skipped")) {
+      return false;
+    }
+    return true;
+  });
+  const latestBroadcastRow = latestOptionalRow(sentRows, ["ts", "created_at", "updated_at"]);
+  const broadcastTs = rowValue(latestBroadcastRow, ["ts", "created_at", "updated_at"]);
+  if (broadcastTs) {
+    return broadcastTs;
+  }
+
+  const latestPeriodicRun = newestFirst(periodicRows, (row) => {
+    return parseDateTimeSafe(row.finished_at) ?? parseDateTimeSafe(row.started_at);
+  }).find((row) => {
+    const status = periodicRunStatus(row);
+    return status === "completed" || status === "completed_with_errors";
+  });
+  return latestPeriodicRun?.finished_at || latestPeriodicRun?.started_at;
+}
+
+function buildAdminObservabilitySummary(args: {
+  briefLedgerRows: OptionalSheetRow[];
+  llmBudgetRows: OptionalSheetRow[];
+  broadcastRows: OptionalSheetRow[];
+  systemLogRows: SystemLogRow[];
+  latestBrief: DashboardBrief | null;
+}): AdminObservabilitySummary {
+  const sinceMs = Date.now() - ADMIN_OBSERVABILITY_WINDOW_MS;
+  const briefRows24h = rowsWithinWindow(args.briefLedgerRows, ["ts", "created_at", "updated_at"], sinceMs);
+  const briefTotalRuns = briefRows24h.length;
+  const briefGeneratedCount = briefRows24h.filter((row) => briefDecisionKey(row) === "generated").length;
+  const briefCachedCount = briefRows24h.filter((row) => briefDecisionKey(row) === "cached").length;
+  const briefSkippedInactiveCount = briefRows24h.filter(
+    (row) => briefDecisionKey(row) === "skipped_inactive",
+  ).length;
+  const briefSkippedBudgetCount = briefRows24h.filter(
+    (row) => briefDecisionKey(row) === "skipped_budget",
+  ).length;
+  const briefLlmCallCount =
+    briefRows24h.length > 0
+      ? countBriefLlmCalls(briefRows24h)
+      : fallbackBriefLlmCalls(args.llmBudgetRows, sinceMs);
+
+  const periodicRuns24h = args.systemLogRows.filter((row) => {
+    if (compactString(row.run_type).toLowerCase() !== "broadcast_periodic") {
+      return false;
+    }
+    const timestamp =
+      parseDateTimeSafe(row.finished_at) ?? parseDateTimeSafe(row.started_at);
+    return timestamp != null && timestamp >= sinceMs;
+  });
+  const periodicTotalExecutions = periodicRuns24h.length;
+  const skippedEmptyCount = periodicRuns24h.filter((row) => {
+    const status = periodicRunStatus(row);
+    return status === "skipped_empty" || periodicRunDetails(row).includes("signals=0; transactions=0");
+  }).length;
+  const skippedDuplicateContentCount = periodicRuns24h.filter((row) => {
+    const status = periodicRunStatus(row);
+    const details = periodicRunDetails(row);
+    return status === "skipped_duplicate_content" || details.includes("duplicate_content");
+  }).length;
+
+  const periodicBroadcastRows = args.broadcastRows.filter(matchesPeriodicBroadcast);
+  const latestPeriodicBroadcastRow = latestOptionalRow(
+    periodicBroadcastRows,
+    ["ts", "created_at", "updated_at"],
+  );
+  const latestMessageLength =
+    (rowNumber(latestPeriodicBroadcastRow, ["message_length", "message_len"]) ?? null) ??
+    parseMessageLengthFromLog(
+      newestFirst(periodicRuns24h, (row) => {
+        return parseDateTimeSafe(row.finished_at) ?? parseDateTimeSafe(row.started_at);
+      })[0] ?? null,
+    );
+  const latestMessageExceededCap =
+    rowBoolean(latestPeriodicBroadcastRow, ["over_cap", "is_over_cap", "truncated"]) ??
+    (latestMessageLength != null ? latestMessageLength > TELEGRAM_MESSAGE_HARD_CAP : null);
+
+  return {
+    brief: {
+      windowHours: ADMIN_OBSERVABILITY_WINDOW_HOURS,
+      totalRuns: briefTotalRuns,
+      generated: ratioSummary(briefGeneratedCount, briefTotalRuns),
+      cached: ratioSummary(briefCachedCount, briefTotalRuns),
+      skippedInactive: ratioSummary(briefSkippedInactiveCount, briefTotalRuns),
+      skippedBudget: ratioSummary(briefSkippedBudgetCount, briefTotalRuns),
+      llmCallCount: briefLlmCallCount,
+      latestGeneratedAt: latestGeneratedBriefAt(args.briefLedgerRows, args.latestBrief),
+    },
+    periodic: {
+      windowHours: ADMIN_OBSERVABILITY_WINDOW_HOURS,
+      totalExecutions: periodicTotalExecutions,
+      skippedEmpty: ratioSummary(skippedEmptyCount, periodicTotalExecutions),
+      skippedDuplicateContent: ratioSummary(
+        skippedDuplicateContentCount,
+        periodicTotalExecutions,
+      ),
+      latestMessageLength,
+      latestMessageExceededCap,
+      latestPeriodicSendAt: latestPeriodicSendAt(periodicBroadcastRows, periodicRuns24h),
+    },
+  };
+}
+
 export async function getDashboardData(options?: {
   transactionLimit?: number;
   signalLimit?: number;
@@ -1415,11 +1664,22 @@ export async function getDashboardData(options?: {
   const transactionLimit = options?.transactionLimit ?? 20;
   const signalLimit = options?.signalLimit ?? 20;
   const systemLogLimit = options?.systemLogLimit ?? 25;
-  const [snapshot, curatedWalletBundle, serviceHealthRows, channelHealthRows] = await Promise.all([
+  const [
+    snapshot,
+    curatedWalletBundle,
+    serviceHealthRows,
+    channelHealthRows,
+    briefCostLedgerRows,
+    broadcastLogRows,
+    llmBudgetRows,
+  ] = await Promise.all([
     readDashboardSnapshot(),
     loadCuratedWalletEntriesWithMeta(),
     readOptionalSheetRows("service_health"),
     readOptionalSheetRows("channel_health"),
+    readOptionalSheetRows("brief_cost_ledger"),
+    readOptionalSheetRows("broadcast_log"),
+    readOptionalSheetRows("llm_budget_log"),
   ]);
   const curatedWallets = curatedWalletBundle.wallets;
   const curatedRegistryMeta = curatedWalletBundle.meta;
@@ -1452,6 +1712,13 @@ export async function getDashboardData(options?: {
   );
   const currentLatestBrief = latestBrief(snapshot.daily_brief);
   const normalizedBrief = normalizeBrief(currentLatestBrief);
+  const adminObservability = buildAdminObservabilitySummary({
+    briefLedgerRows: briefCostLedgerRows,
+    llmBudgetRows,
+    broadcastRows: broadcastLogRows,
+    systemLogRows: snapshot.system_log,
+    latestBrief: normalizedBrief,
+  });
   const latestRunErrorCount = errorCountForRun(currentLatestRunRow);
   const latestRunStatus = currentLatestRun?.status ?? "unknown";
   const latestRunUpdatedAt = currentLatestRun?.finished_at || currentLatestRun?.started_at || undefined;
@@ -1560,6 +1827,7 @@ export async function getDashboardData(options?: {
   return sanitizeForRsc({
     generatedAt,
     source: "google_sheets",
+    adminObservability,
     latestBrief: normalizedBrief,
     recentTransactions,
     recentSignals,

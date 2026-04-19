@@ -1,4 +1,5 @@
 .env
+.DS_Store
 __pycache__/
 *.pyc
 *.pyo
@@ -18,5 +19,9 @@ node_modules/
 *.tsbuildinfo
 apps/dashboard/.env.local
 apps/dashboard/.vercel/
+apps/dashboard/playwright-report/
+apps/dashboard/test-results/
+apps/dashboard/.playwright/
+apps/dashboard/playwright/.cache/
 .dmux/
 .claude/worktrees/

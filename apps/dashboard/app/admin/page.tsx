@@ -24,7 +24,12 @@ import { getDashboardData } from "@/lib/metrics";
 import { getCurrentDashboardLanguage } from "@/lib/i18n/server";
 import { normalizeDashboardData } from "@/lib/normalize";
 import { cookies } from "next/headers";
-import type { DashboardData, NormalizedDashboard, OpsServiceName } from "@/lib/types";
+import type {
+  AdminObservabilitySummary,
+  DashboardData,
+  NormalizedDashboard,
+  OpsServiceName,
+} from "@/lib/types";
 import styles from "../page.module.css";
 
 export const runtime = "nodejs";
@@ -143,6 +148,85 @@ function buildConfigChecklist(data: NormalizedDashboard) {
   }));
 }
 
+function formatRatio(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatObservedTime(value?: string): string {
+  return value
+    ? formatTime(value, { dateStyle: "medium", timeStyle: "short" })
+    : "기록 없음";
+}
+
+function formatMessageLength(value: number | null): string {
+  return value == null ? "기록 없음" : `${value.toLocaleString("ko-KR")}자`;
+}
+
+function formatCapFlag(value: boolean | null): string {
+  if (value == null) {
+    return "확인 불가";
+  }
+  return value ? "초과" : "정상";
+}
+
+function buildObservabilityCards(summary: AdminObservabilitySummary | null) {
+  if (!summary) {
+    return [];
+  }
+
+  return [
+    {
+      key: "brief-runs",
+      title: `브리핑 실행 (${summary.brief.windowHours}h)`,
+      tone: summary.brief.totalRuns > 0 ? "good" : "neutral",
+      lines: [
+        `총 실행 ${formatCompactCount(summary.brief.totalRuns)}건`,
+        `generated ${formatRatio(summary.brief.generated.ratio)} · cached ${formatRatio(summary.brief.cached.ratio)}`,
+        `inactive skip ${formatRatio(summary.brief.skippedInactive.ratio)} · budget skip ${formatRatio(summary.brief.skippedBudget.ratio)}`,
+      ],
+      hint: `최근 생성 시각: ${formatObservedTime(summary.brief.latestGeneratedAt)}`,
+    },
+    {
+      key: "brief-llm",
+      title: "브리핑 LLM 사용",
+      tone: summary.brief.llmCallCount > 0 ? "good" : "neutral",
+      lines: [
+        `실제 호출 ${formatCompactCount(summary.brief.llmCallCount)}회`,
+        `generated ${summary.brief.generated.count} · cached ${summary.brief.cached.count}`,
+        `skipped_inactive ${summary.brief.skippedInactive.count} · skipped_budget ${summary.brief.skippedBudget.count}`,
+      ],
+      hint: "brief_cost_ledger 우선, 없으면 llm_budget_log로 호출 수를 보정합니다.",
+    },
+    {
+      key: "periodic-runs",
+      title: `Periodic 발송 (${summary.periodic.windowHours}h)`,
+      tone: summary.periodic.totalExecutions > 0 ? "good" : "neutral",
+      lines: [
+        `총 실행 ${formatCompactCount(summary.periodic.totalExecutions)}건`,
+        `skipped_empty ${formatRatio(summary.periodic.skippedEmpty.ratio)} (${summary.periodic.skippedEmpty.count}건)`,
+        `duplicate_content ${formatRatio(summary.periodic.skippedDuplicateContent.ratio)} (${summary.periodic.skippedDuplicateContent.count}건)`,
+      ],
+      hint: `최근 발송 시각: ${formatObservedTime(summary.periodic.latestPeriodicSendAt)}`,
+    },
+    {
+      key: "periodic-message",
+      title: "최근 발송 메시지",
+      tone:
+        summary.periodic.latestMessageExceededCap == null
+          ? "neutral"
+          : summary.periodic.latestMessageExceededCap
+            ? "bad"
+            : "good",
+      lines: [
+        `길이 ${formatMessageLength(summary.periodic.latestMessageLength)}`,
+        `1500자 캡 ${formatCapFlag(summary.periodic.latestMessageExceededCap)}`,
+        "broadcast_log 우선, 없으면 system_log의 message_len을 사용합니다.",
+      ],
+      hint: "운영 중에는 1500자 초과가 나오면 Track A 파이프라인 로그와 메시지 clipping 경로를 확인합니다.",
+    },
+  ];
+}
+
 export default async function DashboardPage() {
   const language = await getCurrentDashboardLanguage();
   const cookieStore = await cookies();
@@ -178,7 +262,9 @@ export default async function DashboardPage() {
     );
   }
 
-  const data = normalizeDashboardData(await loadDashboardData());
+  const rawData = await loadDashboardData();
+  const data = normalizeDashboardData(rawData);
+  const observabilityCards = buildObservabilityCards(rawData?.adminObservability ?? null);
   const serviceCards = buildServiceCards(data);
   const runtimeChecklist = buildRuntimeChecklist(data);
   const configChecklist = buildConfigChecklist(data);
@@ -270,6 +356,53 @@ export default async function DashboardPage() {
                 </div>
               );
             })}
+          </div>
+        </section>
+
+        <section className={styles.colSpan12} id="admin-observability">
+          <div className={styles.briefCard}>
+            <div className={styles.briefHeader}>
+              <h2 className={styles.briefHeaderTitle}>최근 24시간 운영 관측</h2>
+              <span className={styles.briefHeaderTime}>
+                요약 기준: {formatObservedTime(rawData?.generatedAt)}
+              </span>
+            </div>
+            {observabilityCards.length > 0 ? (
+              <div className={styles.serviceGrid} style={{ marginTop: "var(--space-lg)" }}>
+                {observabilityCards.map((card) => (
+                  <div key={card.key} className={styles.serviceCard}>
+                    <div className={styles.serviceCardHeader}>
+                      <span className={styles.serviceBadge} data-tone={card.tone}>
+                        {card.title}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: "var(--space-xs)",
+                        marginTop: "var(--space-sm)",
+                      }}
+                    >
+                      {card.lines.map((line) => (
+                        <p key={line} className={styles.serviceDesc}>
+                          {line}
+                        </p>
+                      ))}
+                    </div>
+                    <p className={styles.serviceDesc} style={{ marginTop: "var(--space-sm)" }}>
+                      {card.hint}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className={styles.emptyState}>
+                <p className={styles.emptyStateTitle}>운영 관측 데이터가 아직 없습니다.</p>
+                <p className={styles.emptyStateBody}>
+                  brief_cost_ledger 또는 확장 broadcast_log가 채워지면 이 섹션이 자동으로 요약됩니다.
+                </p>
+              </div>
+            )}
           </div>
         </section>
 

@@ -11,6 +11,37 @@ export type DashboardMetrics = {
   lastUpdatedAt?: string;
 };
 
+export type AdminObservabilityRatioSummary = {
+  count: number;
+  ratio: number;
+};
+
+export type AdminBriefObservability = {
+  windowHours: number;
+  totalRuns: number;
+  generated: AdminObservabilityRatioSummary;
+  cached: AdminObservabilityRatioSummary;
+  skippedInactive: AdminObservabilityRatioSummary;
+  skippedBudget: AdminObservabilityRatioSummary;
+  llmCallCount: number;
+  latestGeneratedAt?: string;
+};
+
+export type AdminBroadcastObservability = {
+  windowHours: number;
+  totalExecutions: number;
+  skippedEmpty: AdminObservabilityRatioSummary;
+  skippedDuplicateContent: AdminObservabilityRatioSummary;
+  latestMessageLength: number | null;
+  latestMessageExceededCap: boolean | null;
+  latestPeriodicSendAt?: string;
+};
+
+export type AdminObservabilitySummary = {
+  brief: AdminBriefObservability;
+  periodic: AdminBroadcastObservability;
+};
+
 export type SourceFailureKind =
   | "auth"
   | "quota"
@@ -109,6 +140,7 @@ export type DashboardBrief = {
 export type DashboardData = {
   generatedAt?: string;
   metrics?: Partial<DashboardMetrics>;
+  adminObservability?: AdminObservabilitySummary | null;
   latestBrief?: DashboardBrief | null;
   recentTransactions?: unknown[] | null;
   recentSignals?: unknown[] | null;

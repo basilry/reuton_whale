@@ -9,8 +9,11 @@ import pytest
 from src.storage.schema import (
     ADDRESS_ACTIVITY_HEADERS,
     ALL_TABS,
+    BRIEF_COST_LEDGER_HEADERS,
+    BROADCAST_LOG_HEADERS,
     DAILY_BRIEF_HEADERS,
     SIGNALS_HEADERS,
+    TAB_BRIEF_COST_LEDGER,
     TAB_USER_INTERESTS,
     TAB_WATCHED_ADDRESSES,
     TG_WHALE_EVENTS_HEADERS,
@@ -501,6 +504,7 @@ class TestNewTabsRegistered:
         for tab in [
             TAB_WATCHED_ADDRESSES, "address_activity", "tg_whale_events",
             "signals", "weekly_trend", TAB_USER_INTERESTS,
+            "broadcast_log", TAB_BRIEF_COST_LEDGER,
         ]:
             assert tab in ALL_TABS
             assert tab in TAB_HEADERS
@@ -510,7 +514,63 @@ class TestNewTabsRegistered:
         new_tabs = [
             TAB_WATCHED_ADDRESSES, "address_activity", "tg_whale_events",
             "signals", "weekly_trend", TAB_USER_INTERESTS,
+            "broadcast_log", TAB_BRIEF_COST_LEDGER,
         ]
         for tab in new_tabs:
             headers = TAB_HEADERS[tab]
             assert len(headers) == len(set(headers)), f"Duplicate headers in {tab}"
+
+
+class TestBroadcastAndBriefCostLedger:
+    def test_append_broadcast_log_serializes_extended_columns(self):
+        client, mock_ss = _make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [BROADCAST_LOG_HEADERS]
+
+        client.append_broadcast_log(
+            {
+                "kind": "broadcast_periodic",
+                "dedup_key": "broadcast_periodic:20260419T1015",
+                "status": "dry_run",
+                "message_length": 1499,
+                "content_hash": "abc123",
+                "signal_count": 2,
+                "transaction_count": 3,
+                "slot_key": "20260419T1015",
+                "delivery_mode": "dry_run",
+            }
+        )
+
+        row = mock_ws.append_row.call_args[0][0]
+        assert row[BROADCAST_LOG_HEADERS.index("message_length")] == "1499"
+        assert row[BROADCAST_LOG_HEADERS.index("content_hash")] == "abc123"
+        assert row[BROADCAST_LOG_HEADERS.index("delivery_mode")] == "dry_run"
+
+    def test_append_brief_cost_ledger_serializes_entry(self):
+        client, mock_ss = _make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [BRIEF_COST_LEDGER_HEADERS]
+
+        client.append_brief_cost_ledger(
+            {
+                "slot_key": "20260419T1000",
+                "decision": "generated",
+                "llm_called": True,
+                "model_id": "gemini/gemini-2.5-flash",
+                "tokens_in": 120,
+                "tokens_out": 80,
+                "cost_usd": 0.01,
+                "cumulative_cost_usd": 1.23,
+                "signal_count": 2,
+                "transaction_count": 5,
+                "input_fingerprint": "fp123",
+                "reason": "generated",
+            }
+        )
+
+        row = mock_ws.append_row.call_args[0][0]
+        assert row[BRIEF_COST_LEDGER_HEADERS.index("llm_called")] == "true"
+        assert row[BRIEF_COST_LEDGER_HEADERS.index("model_id")] == "gemini/gemini-2.5-flash"
+        assert row[BRIEF_COST_LEDGER_HEADERS.index("transaction_count")] == "5"

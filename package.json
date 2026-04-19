@@ -7,7 +7,9 @@
     "dashboard:dev": "npm --prefix apps/dashboard run dev",
     "dashboard:build": "npm --prefix apps/dashboard run build",
     "dashboard:lint": "npm --prefix apps/dashboard run lint",
-    "dashboard:typecheck": "npm --prefix apps/dashboard run typecheck"
+    "dashboard:typecheck": "npm --prefix apps/dashboard run typecheck",
+    "dashboard:e2e": "npm --prefix apps/dashboard run dashboard:e2e",
+    "dashboard:e2e:headed": "npm --prefix apps/dashboard run dashboard:e2e:headed"
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }
