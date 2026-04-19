@@ -357,6 +357,66 @@
   background: var(--surface);
 }
 
+.scaleCard {
+  display: grid;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--surface-container);
+}
+
+.scaleHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.scaleLabel {
+  margin: 0;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.scaleSummary {
+  margin: 6px 0 0;
+  color: var(--on-surface-variant);
+  line-height: var(--leading-relaxed);
+}
+
+.scaleValue {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-extrabold);
+  color: var(--on-surface);
+  text-align: right;
+}
+
+.scaleTrack {
+  position: relative;
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-container) 62%, var(--surface));
+}
+
+.scaleFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  min-width: 10%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 64%, white));
+}
+
+.scaleReference {
+  margin: 0;
+  font-size: var(--text-2xs);
+  color: var(--muted-strong);
+}
+
 @media (max-width: 1024px) {
   .metaGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -383,5 +443,24 @@
   .participantGrid,
   .metaGrid {
     grid-template-columns: 1fr;
+  }
+
+  .scaleHeader {
+    flex-direction: column;
+  }
+
+  .scaleValue {
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .storyCard {
+    transition: none;
+  }
+
+  .storyButton:hover .storyCard,
+  .storyButton:focus-visible .storyCard {
+    transform: none;
   }
 }

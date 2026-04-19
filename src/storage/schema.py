@@ -39,6 +39,7 @@ DAILY_BRIEF_HEADERS = [
     "highlights",
     "signal_themes",
     "note",
+    "input_fingerprint",
 ]
 
 SUBSCRIBERS_HEADERS = [

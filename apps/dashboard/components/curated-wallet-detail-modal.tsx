@@ -2,10 +2,21 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import {
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+} from "recharts";
 
 import type { DashboardLanguage } from "@/lib/i18n/config";
 import { useDashboardI18n } from "@/lib/i18n/client";
 
+import {
+  focusModalFallback,
+  trapModalKeydown,
+} from "./modal-focus-trap";
 import styles from "./curated-wallet-detail-modal.module.css";
 
 type WalletDetailSignal = {
@@ -123,7 +134,20 @@ type LoadState =
   | { status: "ready"; data: CuratedWalletDetailPayload; errorMessage: null }
   | { status: "error"; data: CuratedWalletDetailPayload | null; errorMessage: string };
 
+type BalanceCompositionSlice = {
+  label: string;
+  value: number;
+  share: number;
+};
+
 const detailCache = new Map<string, CuratedWalletDetailPayload>();
+const BALANCE_COMPOSITION_COLORS = [
+  "#0f6db5",
+  "#49a3df",
+  "#7fd4f2",
+  "#8edcb5",
+  "#f0a36b",
+];
 
 function formatKstDateTime(value: string | undefined, fallback: string): string {
   const text = value?.trim();
@@ -200,6 +224,13 @@ function amountBarWidth(value: number | null, maxValue: number): number {
   return Math.max(8, Math.min(100, (Math.abs(value) / maxValue) * 100));
 }
 
+function formatPercent(value: number, language: DashboardLanguage): string {
+  return new Intl.NumberFormat(language === "ko" ? "ko-KR" : "en-US", {
+    style: "percent",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
 export function CuratedWalletDetailModal({
   walletKey,
   fallbackTitle,
@@ -215,6 +246,7 @@ export function CuratedWalletDetailModal({
     errorMessage: null,
   });
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const descriptionId = useId();
@@ -237,6 +269,8 @@ export function CuratedWalletDetailModal({
             entityWalletsLead: "대표 주소가 아닌 보조 주소도 함께 확인합니다.",
             balancesTitle: "잔고 스냅샷",
             balancesLead: "현재 시트에서 읽을 수 있는 최신 잔고 정보입니다.",
+            balanceCompositionTitle: "잔고 구성",
+            balanceCompositionLead: "추적 가능한 잔고 값을 기준으로 상위 보유분만 비중으로 보여줍니다.",
             activityTitle: "최근 온체인 이동",
             activityLead: "해당 엔티티 주소가 직접 연관된 최신 거래입니다.",
             signalsTitle: "연결된 시그널",
@@ -254,6 +288,7 @@ export function CuratedWalletDetailModal({
             noTags: "등록된 태그 없음",
             noAliases: "등록된 별칭 없음",
             noBalances: "표시 가능한 잔고 스냅샷이 없습니다.",
+            noBalanceComposition: "수치형 잔고 값이 부족해 구성 차트를 만들지 못했습니다.",
             noActivity: "연결된 거래가 아직 없습니다.",
             noSignals: "연결된 시그널이 아직 없습니다.",
             inflow: "유입",
@@ -281,6 +316,9 @@ export function CuratedWalletDetailModal({
             entityWalletsLead: "Secondary addresses are listed together with the representative one.",
             balancesTitle: "Balance snapshots",
             balancesLead: "Latest balance rows available from the sheet-backed registry.",
+            balanceCompositionTitle: "Balance composition",
+            balanceCompositionLead:
+              "Shows the tracked balance split using the largest balance rows available.",
             activityTitle: "Recent on-chain activity",
             activityLead: "Latest transfers directly involving this entity's addresses.",
             signalsTitle: "Linked signals",
@@ -298,6 +336,7 @@ export function CuratedWalletDetailModal({
             noTags: "No narrative tags yet",
             noAliases: "No aliases yet",
             noBalances: "No balance snapshots are available.",
+            noBalanceComposition: "There is not enough numeric balance data to draw a composition chart.",
             noActivity: "No related transfers yet.",
             noSignals: "No linked signals yet.",
             inflow: "Inflow",
@@ -332,20 +371,34 @@ export function CuratedWalletDetailModal({
     document.body.style.overflow = "hidden";
 
     const focusTimer = window.setTimeout(() => {
-      closeButtonRef.current?.focus();
+      focusModalFallback(modalRef.current, closeButtonRef.current);
     }, 0);
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
+      trapModalKeydown(event, modalRef.current, closeButtonRef.current, onClose);
     };
 
-    window.addEventListener("keydown", handleKeyDown);
+    const handleFocusIn = (event: FocusEvent) => {
+      const modal = modalRef.current;
+      if (!modal) {
+        return;
+      }
+
+      const target = event.target;
+      if (target instanceof Node && modal.contains(target)) {
+        return;
+      }
+
+      focusModalFallback(modal, closeButtonRef.current);
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("focusin", handleFocusIn);
 
     return () => {
       window.clearTimeout(focusTimer);
-      window.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("focusin", handleFocusIn);
       document.body.style.overflow = previousOverflow;
       previouslyFocusedRef.current?.focus();
     };
@@ -424,6 +477,42 @@ export function CuratedWalletDetailModal({
       return value > max ? value : max;
     }, 0);
   }, [data]);
+  const balanceComposition = useMemo(() => {
+    if (!data) {
+      return { total: 0, slices: [] as BalanceCompositionSlice[] };
+    }
+
+    const ranked = data.balances
+      .map((row) => ({
+        label: row.label,
+        value: row.approxBalanceValue ?? 0,
+      }))
+      .filter((row) => Number.isFinite(row.value) && row.value > 0)
+      .sort((left, right) => right.value - left.value);
+
+    const total = ranked.reduce((sum, row) => sum + row.value, 0);
+    if (total <= 0) {
+      return { total: 0, slices: [] as BalanceCompositionSlice[] };
+    }
+
+    const topRows = ranked.slice(0, 4);
+    const othersValue = ranked.slice(4).reduce((sum, row) => sum + row.value, 0);
+    const slices = topRows.map((row) => ({
+      label: row.label,
+      value: row.value,
+      share: row.value / total,
+    }));
+
+    if (othersValue > 0) {
+      slices.push({
+        label: language === "ko" ? "기타 잔고" : "Other balances",
+        value: othersValue,
+        share: othersValue / total,
+      });
+    }
+
+    return { total, slices };
+  }, [data, language]);
 
   if (!isMounted || !isOpen) {
     return null;
@@ -446,6 +535,8 @@ export function CuratedWalletDetailModal({
         className={styles.modal}
         onClick={(event) => event.stopPropagation()}
         role="dialog"
+        ref={modalRef}
+        tabIndex={-1}
       >
         <div className={styles.header}>
           <div className={styles.headerCopy}>
@@ -578,6 +669,90 @@ export function CuratedWalletDetailModal({
                       <p className={styles.metricHelp}>{data.wallet.sourceRef}</p>
                     ) : null}
                   </div>
+                  <div className={styles.sectionHeader}>
+                    <div>
+                      <h4 className={styles.sectionTitle}>{copy.balanceCompositionTitle}</h4>
+                      <p className={styles.sectionLead}>{copy.balanceCompositionLead}</p>
+                    </div>
+                  </div>
+                  {balanceComposition.slices.length > 0 ? (
+                    <div className={styles.compositionCard}>
+                      <div className={styles.compositionChartWrap}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={balanceComposition.slices}
+                              dataKey="value"
+                              nameKey="label"
+                              innerRadius={54}
+                              outerRadius={84}
+                              paddingAngle={2}
+                              stroke="none"
+                            >
+                              {balanceComposition.slices.map((slice, index) => (
+                                <Cell
+                                  key={`${slice.label}-${slice.value}`}
+                                  fill={
+                                    BALANCE_COMPOSITION_COLORS[
+                                      index % BALANCE_COMPOSITION_COLORS.length
+                                    ]
+                                  }
+                                />
+                              ))}
+                            </Pie>
+                            <RechartsTooltip
+                              formatter={(value: number, name: string) => [
+                                formatUsd(value, language, copy.unresolved),
+                                name,
+                              ]}
+                              contentStyle={{
+                                borderRadius: 16,
+                                border: "1px solid color-mix(in srgb, var(--line, #d7e3ef) 82%, white)",
+                                background: "color-mix(in srgb, white 94%, var(--surface-2, #f3f8fc))",
+                              }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className={styles.compositionLegend}>
+                        <div className={styles.compositionLegendItem}>
+                          <span className={styles.compositionLegendLabel}>{copy.balance}</span>
+                          <strong className={styles.compositionLegendValue}>
+                            {formatUsd(balanceComposition.total, language, copy.unresolved)}
+                          </strong>
+                        </div>
+                        {balanceComposition.slices.map((slice, index) => (
+                          <div key={`${slice.label}-${slice.value}`} className={styles.compositionLegendItem}>
+                            <div className={styles.compositionLegendCopy}>
+                              <span
+                                className={styles.compositionSwatch}
+                                style={{
+                                  background:
+                                    BALANCE_COMPOSITION_COLORS[
+                                      index % BALANCE_COMPOSITION_COLORS.length
+                                    ],
+                                }}
+                                aria-hidden="true"
+                              />
+                              <span className={styles.compositionLegendLabel}>{slice.label}</span>
+                            </div>
+                            <div className={styles.compositionLegendMetrics}>
+                              <strong className={styles.compositionLegendValue}>
+                                {formatUsd(slice.value, language, copy.unresolved)}
+                              </strong>
+                              <span className={styles.compositionLegendShare}>
+                                {formatPercent(slice.share, language)}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={styles.emptyState}>
+                      <p className={styles.stateBody}>{copy.noBalanceComposition}</p>
+                    </div>
+                  )}
                   <div className={styles.sectionHeader}>
                     <div>
                       <h4 className={styles.sectionTitle}>{copy.tagsTitle}</h4>

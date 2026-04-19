@@ -44,6 +44,25 @@ def _warn_sheets_error(action: str, exc: Exception) -> None:
     st.warning(f"Google Sheets {action} 실패: {type(exc).__name__}: {detail}")
 
 
+def _sheet_rows_to_frame(
+    rows: list[list[str]],
+    *,
+    fallback_headers: list[str],
+) -> pd.DataFrame:
+    if not rows:
+        return pd.DataFrame(columns=fallback_headers)
+
+    headers = list(rows[0]) if rows[0] else list(fallback_headers)
+    target_len = len(headers)
+    normalized_rows: list[list[str]] = []
+    for row in rows[1:]:
+        values = list(row[:target_len])
+        if len(values) < target_len:
+            values.extend([""] * (target_len - len(values)))
+        normalized_rows.append(values)
+    return pd.DataFrame(normalized_rows, columns=headers)
+
+
 def _check_password() -> None:
     expected = os.getenv("STREAMLIT_PASSWORD", "")
     if not expected:
@@ -90,7 +109,7 @@ def load_transactions() -> pd.DataFrame:
         return pd.DataFrame(columns=TRANSACTIONS_HEADERS)
     if len(rows) <= 1:
         return pd.DataFrame(columns=TRANSACTIONS_HEADERS)
-    df = pd.DataFrame(rows[1:], columns=rows[0])
+    df = _sheet_rows_to_frame(rows, fallback_headers=TRANSACTIONS_HEADERS)
     df["amount"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0)
     df["amount_usd"] = pd.to_numeric(df["amount_usd"], errors="coerce").fillna(0)
     df["timestamp"] = pd.to_numeric(df["timestamp"], errors="coerce")
@@ -114,7 +133,7 @@ def load_daily_briefs() -> pd.DataFrame:
         return pd.DataFrame(columns=DAILY_BRIEF_HEADERS)
     if len(rows) <= 1:
         return pd.DataFrame(columns=DAILY_BRIEF_HEADERS)
-    df = pd.DataFrame(rows[1:], columns=rows[0])
+    df = _sheet_rows_to_frame(rows, fallback_headers=DAILY_BRIEF_HEADERS)
     df["total_volume_usd"] = pd.to_numeric(df["total_volume_usd"], errors="coerce").fillna(0)
     df["alert_count"] = pd.to_numeric(df["alert_count"], errors="coerce").fillna(0)
     return df
@@ -135,7 +154,7 @@ def load_signals() -> pd.DataFrame:
         return pd.DataFrame(columns=SIGNALS_HEADERS)
     if len(rows) <= 1:
         return pd.DataFrame(columns=SIGNALS_HEADERS)
-    df = pd.DataFrame(rows[1:], columns=rows[0])
+    df = _sheet_rows_to_frame(rows, fallback_headers=SIGNALS_HEADERS)
     df["score"] = pd.to_numeric(df["score"], errors="coerce").fillna(0)
     df["confidence"] = pd.to_numeric(df["confidence"], errors="coerce").fillna(0)
     df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce")

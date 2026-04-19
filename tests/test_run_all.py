@@ -38,25 +38,31 @@ def _kst_datetime(year: int, month: int, day: int, hour: int, minute: int) -> da
 def test_due_job_names_midnight_window():
     due = run_all_module.due_job_names(_kst_datetime(2026, 4, 20, 0, 0))
 
-    assert due == ["signals", "curated_balance", "news_rss", "stories", "brief"]
+    assert due == ["signals", "curated_balance", "news_rss", "broadcast_periodic", "stories", "brief"]
 
 
 def test_due_job_names_jitter_snaps_to_previous_slot():
     due = run_all_module.due_job_names(_kst_datetime(2026, 4, 20, 0, 1))
 
-    assert due == ["signals", "curated_balance", "news_rss", "stories", "brief"]
+    assert due == ["signals", "curated_balance", "news_rss", "broadcast_periodic", "stories", "brief"]
+
+
+def test_due_job_names_brief_runs_every_hour_boundary():
+    due = run_all_module.due_job_names(_kst_datetime(2026, 4, 20, 13, 1))
+
+    assert due == ["signals", "curated_balance", "news_rss", "broadcast_periodic", "brief"]
 
 
 def test_due_job_names_tuesday_weekly_trend_window():
     due = run_all_module.due_job_names(_kst_datetime(2026, 4, 21, 8, 1))
 
-    assert due == ["signals", "curated_balance", "news_rss", "brief", "weekly_trend"]
+    assert due == ["signals", "curated_balance", "news_rss", "broadcast_periodic", "brief", "weekly_trend"]
 
 
 def test_due_job_names_channel_health_window():
     due = run_all_module.due_job_names(_kst_datetime(2026, 4, 20, 9, 16))
 
-    assert due == ["signals", "curated_balance", "news_rss", "channel_health"]
+    assert due == ["signals", "curated_balance", "news_rss", "broadcast_periodic", "channel_health"]
 
 
 def test_run_all_executes_snapped_slot_for_non_boundary_minute():
@@ -75,6 +81,10 @@ def test_run_all_executes_snapped_slot_for_non_boundary_minute():
     ), patch.object(
         run_all_module, "run_news_rss_refresh", side_effect=_record("news_rss")
     ), patch.object(
+        run_all_module, "run_broadcast_periodic", side_effect=_record("broadcast_periodic")
+    ), patch.object(
+        run_all_module, "run_brief_pipeline", side_effect=_record("brief")
+    ), patch.object(
         run_all_module, "run_broadcast_daily", side_effect=_record("broadcast_daily")
     ):
         summary = run_all_module.run_all(
@@ -83,11 +93,32 @@ def test_run_all_executes_snapped_slot_for_non_boundary_minute():
         )
 
     assert summary["status"] == "completed"
-    assert summary["due_jobs"] == ["signals", "curated_balance", "news_rss", "broadcast_daily"]
-    assert summary["executed_jobs"] == ["signals", "curated_balance", "news_rss", "broadcast_daily"]
+    assert summary["due_jobs"] == [
+        "signals",
+        "curated_balance",
+        "news_rss",
+        "broadcast_periodic",
+        "brief",
+        "broadcast_daily",
+    ]
+    assert summary["executed_jobs"] == [
+        "signals",
+        "curated_balance",
+        "news_rss",
+        "broadcast_periodic",
+        "brief",
+        "broadcast_daily",
+    ]
     assert summary["skipped_jobs"] == {}
     assert summary["failed_jobs"] == {}
-    assert calls == ["signals", "curated_balance", "news_rss", "broadcast_daily"]
+    assert calls == [
+        "signals",
+        "curated_balance",
+        "news_rss",
+        "broadcast_periodic",
+        "brief",
+        "broadcast_daily",
+    ]
     assert sheets.service_health_entries[-1]["service"] == "pipeline.run_all"
 
 
@@ -111,21 +142,29 @@ def test_run_all_continues_after_individual_job_failure():
     ), patch.object(
         run_all_module, "run_news_rss_refresh", side_effect=_record("news_rss")
     ), patch.object(
+        run_all_module, "run_broadcast_periodic", side_effect=_record("broadcast_periodic")
+    ), patch.object(
         run_all_module, "run_brief_pipeline", side_effect=_record("brief")
     ), patch.object(
         run_all_module, "_run_weekly_trend_job", side_effect=_record("weekly_trend")
     ):
         summary = run_all_module.run_all(now=_kst_datetime(2026, 4, 21, 8, 1), sheets=sheets)
 
-    assert calls == ["signals", "curated_balance", "news_rss", "brief", "weekly_trend"]
+    assert calls == ["signals", "curated_balance", "news_rss", "broadcast_periodic", "brief", "weekly_trend"]
     assert summary["status"] == "completed_with_errors"
-    assert summary["executed_jobs"] == ["curated_balance", "news_rss", "brief", "weekly_trend"]
+    assert summary["executed_jobs"] == [
+        "curated_balance",
+        "news_rss",
+        "broadcast_periodic",
+        "brief",
+        "weekly_trend",
+    ]
     assert summary["failed_jobs"] == {"signals": "signals boom"}
 
 
 def test_run_all_skips_duplicate_jobs_for_same_slot():
     sheets = FakeSheets(
-        duplicates={"signals", "curated_balance", "news_rss", "brief", "weekly_trend"}
+        duplicates={"signals", "curated_balance", "news_rss", "broadcast_periodic", "brief", "weekly_trend"}
     )
 
     with patch.object(run_all_module, "run_signals_pipeline") as signals, patch.object(
@@ -133,6 +172,8 @@ def test_run_all_skips_duplicate_jobs_for_same_slot():
     ) as curated, patch.object(
         run_all_module, "run_news_rss_refresh"
     ) as news, patch.object(
+        run_all_module, "run_broadcast_periodic"
+    ) as periodic, patch.object(
         run_all_module, "run_brief_pipeline"
     ) as brief, patch.object(
         run_all_module, "_run_weekly_trend_job"
@@ -145,6 +186,7 @@ def test_run_all_skips_duplicate_jobs_for_same_slot():
         "signals": "duplicate_slot",
         "curated_balance": "duplicate_slot",
         "news_rss": "duplicate_slot",
+        "broadcast_periodic": "duplicate_slot",
         "brief": "duplicate_slot",
         "weekly_trend": "duplicate_slot",
     }
@@ -152,6 +194,7 @@ def test_run_all_skips_duplicate_jobs_for_same_slot():
     signals.assert_not_called()
     curated.assert_not_called()
     news.assert_not_called()
+    periodic.assert_not_called()
     brief.assert_not_called()
     weekly.assert_not_called()
     assert sheets.service_health_entries[-1]["status"] == "degraded"
@@ -178,6 +221,10 @@ def test_run_all_publishes_success_for_news_and_watchlist_only():
     ), patch.object(
         run_all_module, "run_news_rss_refresh", side_effect=_record("news_rss")
     ), patch.object(
+        run_all_module, "run_broadcast_periodic", side_effect=_record("broadcast_periodic")
+    ), patch.object(
+        run_all_module, "run_brief_pipeline", side_effect=_record("brief")
+    ), patch.object(
         run_all_module, "run_broadcast_daily", side_effect=_record("broadcast_daily")
     ), patch.object(run_all_module, "publish_success_event") as publish_success_event:
         summary = run_all_module.run_all(
@@ -186,7 +233,14 @@ def test_run_all_publishes_success_for_news_and_watchlist_only():
         )
 
     assert summary["status"] == "completed"
-    assert calls == ["signals", "curated_balance", "news_rss", "broadcast_daily"]
+    assert calls == [
+        "signals",
+        "curated_balance",
+        "news_rss",
+        "broadcast_periodic",
+        "brief",
+        "broadcast_daily",
+    ]
     assert publish_success_event.call_args_list == [
         call(
             section="watchlist",
@@ -228,6 +282,10 @@ def test_run_all_skips_publish_for_non_completed_results():
         run_all_module, "run_curated_balance_refresh", return_value=_record("curated_balance")
     ), patch.object(
         run_all_module, "run_news_rss_refresh", return_value=_record("news_rss", status="completed_with_errors")
+    ), patch.object(
+        run_all_module, "run_broadcast_periodic", return_value=_record("broadcast_periodic")
+    ), patch.object(
+        run_all_module, "run_brief_pipeline", return_value=_record("brief")
     ), patch.object(
         run_all_module, "run_broadcast_daily", return_value=_record("broadcast_daily")
     ), patch.object(run_all_module, "publish_success_event") as publish_success_event:

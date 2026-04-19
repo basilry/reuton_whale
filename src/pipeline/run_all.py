@@ -15,6 +15,7 @@ from src.observability.service_health import (
 )
 from src.pipeline.brief import run_brief_pipeline
 from src.pipeline.broadcast_daily import run_broadcast_daily
+from src.pipeline.broadcast_periodic import run_broadcast_periodic
 from src.pipeline.channel_health import run_channel_health
 from src.pipeline.common import build_sheets_client, load_pipeline_env
 from src.pipeline.signals import run_signals_pipeline
@@ -28,6 +29,8 @@ _TERMINAL_RUN_STATUSES = {
     "completed",
     "completed_with_errors",
     "completed_empty",
+    "skipped_empty",
+    "skipped_inactive",
     "skipped_window",
     "skipped_budget",
 }
@@ -102,10 +105,10 @@ def due_job_names(now: datetime | None = None) -> list[str]:
     minute = slot.minute
     hour = slot.hour
     weekday = slot.weekday
-    due = ["signals", "curated_balance", "news_rss"]
+    due = ["signals", "curated_balance", "news_rss", "broadcast_periodic"]
     if minute == 0 and hour in {0, 6, 12, 18}:
         due.append("stories")
-    if minute == 0 and hour in {0, 8, 16}:
+    if minute == 0:
         due.append("brief")
     if minute == 0 and hour == 9:
         due.append("broadcast_daily")
@@ -121,6 +124,7 @@ def _job_runners() -> dict[str, Callable[[], object]]:
         "signals": run_signals_pipeline,
         "curated_balance": run_curated_balance_refresh,
         "news_rss": run_news_rss_refresh,
+        "broadcast_periodic": run_broadcast_periodic,
         "stories": run_stories_pipeline,
         "brief": run_brief_pipeline,
         "broadcast_daily": run_broadcast_daily,

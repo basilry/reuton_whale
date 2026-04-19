@@ -232,21 +232,27 @@ class SheetsClient:
 
     @retry(max_retries=3, base_delay=2.0)
     def save_daily_brief(self, date: str, briefs: list[dict]) -> None:
-        try:
-            ws = self._worksheet(TAB_DAILY_BRIEF)
-            rows = []
-            for brief in briefs:
-                normalized = dict(brief)
-                if "signal_themes" not in normalized and "signalThemes" in normalized:
-                    normalized["signal_themes"] = normalized.pop("signalThemes")
-                normalized["date"] = date
-                normalized.setdefault("created_at", now_iso())
-                rows.append(dict_to_row(normalized, DAILY_BRIEF_HEADERS))
-            if rows:
-                ws.append_rows(rows, value_input_option="RAW")
-            logger.info("Saved %d daily brief entries for %s", len(rows), date)
-        except gspread.exceptions.APIError as e:
-            raise StorageError(f"Failed to save daily brief: {e}") from e
+        with self._write_lock:
+            try:
+                ws = self._worksheet(TAB_DAILY_BRIEF)
+                all_values = ws.get_all_values()
+                self._ensure_daily_brief_schema(ws, all_values)
+
+                rows = []
+                for brief in briefs:
+                    normalized = dict(brief)
+                    if "signal_themes" not in normalized and "signalThemes" in normalized:
+                        normalized["signal_themes"] = normalized.pop("signalThemes")
+                    if "input_fingerprint" not in normalized and "inputFingerprint" in normalized:
+                        normalized["input_fingerprint"] = normalized.pop("inputFingerprint")
+                    normalized["date"] = date
+                    normalized.setdefault("created_at", now_iso())
+                    rows.append(dict_to_row(normalized, DAILY_BRIEF_HEADERS))
+                if rows:
+                    ws.append_rows(rows, value_input_option="RAW")
+                logger.info("Saved %d daily brief entries for %s", len(rows), date)
+            except gspread.exceptions.APIError as e:
+                raise StorageError(f"Failed to save daily brief: {e}") from e
 
     @retry(max_retries=3, base_delay=2.0)
     def get_daily_brief(self, date: str) -> list[dict]:
@@ -274,6 +280,25 @@ class SheetsClient:
             return row_to_dict(all_values[-1], DAILY_BRIEF_HEADERS)
         except gspread.exceptions.APIError as e:
             raise StorageError(f"Failed to get latest daily brief: {e}") from e
+
+    @retry(max_retries=3, base_delay=2.0)
+    def find_daily_brief_by_fingerprint(self, fingerprint: str) -> dict | None:
+        target = str(fingerprint or "").strip()
+        if not target:
+            return None
+        try:
+            ws = self._worksheet(TAB_DAILY_BRIEF)
+            all_values = ws.get_all_values()
+            if len(all_values) <= 1:
+                return None
+
+            fingerprint_col = DAILY_BRIEF_HEADERS.index("input_fingerprint")
+            for row in reversed(all_values[1:]):
+                if fingerprint_col < len(row) and str(row[fingerprint_col]).strip() == target:
+                    return row_to_dict(row, DAILY_BRIEF_HEADERS)
+            return None
+        except gspread.exceptions.APIError as e:
+            raise StorageError(f"Failed to find daily brief by fingerprint: {e}") from e
 
     # --- subscribers ---
 
@@ -1005,6 +1030,56 @@ class SheetsClient:
                 logger.info("Appended tg_whale_event: %s", target)
             except gspread.exceptions.APIError as e:
                 raise StorageError(f"Failed to append tg_whale_event: {e}") from e
+
+    def _ensure_daily_brief_schema(
+        self,
+        ws: "gspread.Worksheet",
+        all_values: list[list[str]],
+    ) -> None:
+        expected = list(DAILY_BRIEF_HEADERS)
+        if not all_values:
+            if ws.col_count < len(expected):
+                ws.resize(cols=len(expected))
+                logger.info("Resized daily_brief worksheet grid to %d cols", len(expected))
+            ws.append_row(expected)
+            return
+
+        header = all_values[0]
+        if header == expected:
+            return
+
+        if len(header) > len(expected):
+            logger.warning(
+                "daily_brief header has unexpected extra columns (%d vs %d), "
+                "skipping auto-extension. Manual review required: %s",
+                len(header),
+                len(expected),
+                header,
+            )
+            return
+
+        if expected[: len(header)] != header:
+            logger.warning(
+                "daily_brief header layout unexpected, skipping auto-extension: %s",
+                header,
+            )
+            return
+
+        missing = expected[len(header) :]
+        if not missing:
+            return
+
+        if ws.col_count < len(expected):
+            ws.resize(cols=len(expected))
+            logger.info("Resized daily_brief worksheet grid to %d cols", len(expected))
+
+        start_col = _column_letter(len(header) + 1)
+        end_col = _column_letter(len(expected))
+        ws.update(f"{start_col}1:{end_col}1", [missing], value_input_option="RAW")
+        logger.info(
+            "Extended daily_brief header with columns: %s",
+            ",".join(missing),
+        )
 
     # --- news_feed ---
 

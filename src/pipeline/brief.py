@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -29,6 +30,19 @@ from src.utils.number_utils import safe_float as numeric_safe_float
 from src.utils.logger import get_logger
 
 logger = get_logger("pipeline.brief")
+
+
+def _build_input_fingerprint(*, prompt_version: str, user_content: str) -> str:
+    payload = json.dumps(
+        {
+            "prompt_version": prompt_version,
+            "user_content": user_content,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _serialize_brief_signals(signals) -> str:
@@ -523,26 +537,25 @@ def run_brief_pipeline() -> dict[str, object]:
 
     env = load_pipeline_env()
     sheets = build_sheets_client(env)
-    guard = MonthlyBudgetGuard(sheets)
-    decision = guard.precheck("brief")
-    if not decision.allowed:
+    now = datetime.now(timezone.utc)
+    recent_since = now - timedelta(hours=1)
+    recent_signal_rows = sheets.list_signals(since=recent_since, limit=50)
+    recent_transaction_rows = sheets.list_transactions(since=recent_since, limit=200)
+    if not recent_signal_rows and not recent_transaction_rows:
         logger.info(
-            "brief llm call skipped reason=budget_cap spent_usd=%.4f cap_usd=%.2f",
-            decision.spent_usd,
-            decision.cap_usd,
+            "brief generation skipped reason=inactivity recent_signals=0 recent_transactions=0 window_start=%s",
+            recent_since.isoformat(),
         )
-        guard.log_blocked(pipeline="brief")
         result.update(
-            status="skipped_budget",
+            status="skipped_inactive",
             finished_at=now_iso(),
             errors="[]",
-            details=f"budget_cap_reached spent_usd={decision.spent_usd:.4f} cap_usd={decision.cap_usd:.2f}",
+            details="inactive_window=60m; signals=0; transactions=0",
         )
         sheets.log_run(result)
         _record_brief_heartbeat(sheets, result)
         return result
 
-    now = datetime.now(timezone.utc)
     since = now - timedelta(hours=24)
     signal_rows = sheets.list_signals(since=since, limit=50)
     signals = [signal for row in signal_rows if (signal := signal_row_to_signal(row))]
@@ -578,6 +591,20 @@ def run_brief_pipeline() -> dict[str, object]:
             fallback_meta["priced"],
             fallback_meta["unpriced"],
         )
+        fallback_payload["input_fingerprint"] = _build_input_fingerprint(
+            prompt_version="fallback_tx",
+            user_content=json.dumps(
+                {
+                    "transactions": fallback_meta["transactions"],
+                    "priced": fallback_meta["priced"],
+                    "unpriced": fallback_meta["unpriced"],
+                    "total_volume_usd": round(float(fallback_meta["total_volume_usd"]), 2),
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        )
         sheets.save_daily_brief(today, [fallback_payload])
         result.update(
             status="completed",
@@ -598,8 +625,104 @@ def run_brief_pipeline() -> dict[str, object]:
         publish_success_event(section="brief", pipeline="brief", result=result)
         return result
 
-    router = build_router_from_env(env)
+    top_items = sorted(
+        (signal_row_to_top_item(row) for row in signal_rows),
+        key=lambda item: safe_float(item.get("importance_score")),
+        reverse=True,
+    )[:5]
+    transaction_rows = sheets.list_transactions(since=since, limit=200)
+    total_volume = sum(safe_float(item.get("amount_usd")) for item in top_items)
+    highlights = _build_brief_highlights(top_items)
+    signal_themes = _build_signal_themes(signals, top_items)
+    market_mood = _build_signal_market_mood(
+        now=now,
+        signals=signals,
+        top_items=top_items,
+        total_volume_usd=total_volume,
+    )
+    note = _encode_brief_note(
+        f"signals_based|signals={len(signals)}|transactions={len(transaction_rows)}",
+        message=(
+            f"최근 저장된 거래 {len(transaction_rows)}건과 시그널 {len(signals)}건을 바탕으로 "
+            "일일 브리핑을 생성했습니다."
+        ),
+        market_mood=market_mood,
+    )
+    today = now.strftime("%Y-%m-%d")
+    guard = MonthlyBudgetGuard(sheets)
+    decision = guard.precheck("brief")
+    if not decision.allowed:
+        logger.info(
+            "brief llm call skipped reason=budget_cap spent_usd=%.4f cap_usd=%.2f",
+            decision.spent_usd,
+            decision.cap_usd,
+        )
+        guard.log_blocked(pipeline="brief")
+        result.update(
+            status="skipped_budget",
+            finished_at=now_iso(),
+            errors="[]",
+            details=f"budget_cap_reached spent_usd={decision.spent_usd:.4f} cap_usd={decision.cap_usd:.2f}",
+        )
+        sheets.log_run(result)
+        _record_brief_heartbeat(sheets, result)
+        return result
+
     system_prompt, user_content, prompt_version = _build_brief_request(signals)
+    input_fingerprint = _build_input_fingerprint(
+        prompt_version=prompt_version,
+        user_content=user_content,
+    )
+    cached_brief = sheets.find_daily_brief_by_fingerprint(input_fingerprint)
+    if cached_brief and str(cached_brief.get("summary", "")).strip():
+        logger.info(
+            "brief llm call skipped reason=cache_hit input_fingerprint=%s",
+            input_fingerprint[:12],
+        )
+        cached_summary = str(cached_brief.get("summary", "")).strip()
+        cached_note = _encode_brief_note(
+            (
+                f"signals_based_cached|signals={len(signals)}|transactions={len(transaction_rows)}|"
+                f"fingerprint={input_fingerprint[:12]}"
+            ),
+            message="동일 입력 fingerprint가 확인되어 기존 브리핑 문안을 재사용했습니다.",
+            market_mood=market_mood,
+        )
+        sheets.save_daily_brief(
+            today,
+            [
+                {
+                    "summary": cached_summary,
+                    "top_transactions": json.dumps(
+                        _serialize_top_transactions(top_items), ensure_ascii=False
+                    ),
+                    "total_volume_usd": total_volume,
+                    "alert_count": len(top_items),
+                    "highlights": highlights,
+                    "signal_themes": signal_themes,
+                    "note": cached_note,
+                    "input_fingerprint": input_fingerprint,
+                }
+            ],
+        )
+        details = (
+            f"mode=cached; signals={len(signals)}; top_items={len(top_items)}; "
+            f"input_fingerprint={input_fingerprint[:12]}"
+        )
+        result.update(
+            status="completed",
+            finished_at=now_iso(),
+            transactions_count=len(transaction_rows),
+            errors="[]",
+            details=details,
+        )
+        sheets.log_run(result)
+        _record_brief_heartbeat(sheets, result)
+        publish_success_event(section="brief", pipeline="brief", result=result)
+        logger.info("brief pipeline finished details=%s", details)
+        return result
+
+    router = build_router_from_env(env)
     signals_preview = _signals_preview(signals)
     logger.info("brief signals_json preview=%s", signals_preview)
     logger.info(
@@ -653,30 +776,6 @@ def run_brief_pipeline() -> dict[str, object]:
         }
     )
 
-    top_items = sorted(
-        (signal_row_to_top_item(row) for row in signal_rows),
-        key=lambda item: safe_float(item.get("importance_score")),
-        reverse=True,
-    )[:5]
-    transaction_rows = sheets.list_transactions(since=since, limit=200)
-    total_volume = sum(safe_float(item.get("amount_usd")) for item in top_items)
-    highlights = _build_brief_highlights(top_items)
-    signal_themes = _build_signal_themes(signals, top_items)
-    market_mood = _build_signal_market_mood(
-        now=now,
-        signals=signals,
-        top_items=top_items,
-        total_volume_usd=total_volume,
-    )
-    note = _encode_brief_note(
-        f"signals_based|signals={len(signals)}|transactions={len(transaction_rows)}",
-        message=(
-            f"최근 저장된 거래 {len(transaction_rows)}건과 시그널 {len(signals)}건을 바탕으로 "
-            "일일 브리핑을 생성했습니다."
-        ),
-        market_mood=market_mood,
-    )
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     sheets.save_daily_brief(
         today,
         [
@@ -690,6 +789,7 @@ def run_brief_pipeline() -> dict[str, object]:
                 "highlights": highlights,
                 "signal_themes": signal_themes,
                 "note": note,
+                "input_fingerprint": input_fingerprint,
             }
         ],
     )

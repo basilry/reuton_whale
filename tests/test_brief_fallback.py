@@ -17,10 +17,12 @@ class _FakeSheets:
         signal_rows: list[dict] | None = None,
         transaction_rows: list[dict] | None = None,
         budget_rows: list[dict] | None = None,
+        cached_briefs: list[dict] | None = None,
     ) -> None:
         self.signal_rows = list(signal_rows or [])
         self.transaction_rows = list(transaction_rows or [])
         self.budget_rows = list(budget_rows or [])
+        self.cached_briefs = list(cached_briefs or [])
         self.saved_briefs: list[tuple[str, list[dict]]] = []
         self.run_logs: list[dict] = []
         self.analysis_logs: list[dict] = []
@@ -38,13 +40,42 @@ class _FakeSheets:
         self.budget_rows.append(dict(entry))
 
     def list_signals(self, since, limit=None) -> list[dict]:
-        return list(self.signal_rows)
+        rows = list(self.signal_rows)
+        if since is not None:
+            filtered: list[dict] = []
+            for row in rows:
+                created_at = datetime.fromisoformat(str(row.get("created_at")).replace("Z", "+00:00"))
+                if created_at >= since:
+                    filtered.append(row)
+            rows = filtered
+        if limit is not None and limit >= 0:
+            rows = rows[-limit:] if limit else []
+        return rows
 
     def list_transactions(self, since, limit=None) -> list[dict]:
-        return list(self.transaction_rows)
+        rows = list(self.transaction_rows)
+        if since is not None:
+            filtered: list[dict] = []
+            for row in rows:
+                created_at = datetime.fromisoformat(
+                    str(row.get("created_at") or row.get("timestamp")).replace("Z", "+00:00")
+                )
+                if created_at >= since:
+                    filtered.append(row)
+            rows = filtered
+        if limit is not None and limit >= 0:
+            rows = rows[-limit:] if limit else []
+        return rows
 
     def save_daily_brief(self, date: str, briefs: list[dict]) -> None:
         self.saved_briefs.append((date, briefs))
+        for brief in briefs:
+            self.cached_briefs.append(
+                {
+                    "date": date,
+                    **dict(brief),
+                }
+            )
 
     def log_run(self, run_data: dict) -> None:
         self.run_logs.append(dict(run_data))
@@ -54,6 +85,13 @@ class _FakeSheets:
 
     def append_service_health(self, entry: dict) -> None:
         self.service_health.append(dict(entry))
+
+    def find_daily_brief_by_fingerprint(self, fingerprint: str) -> dict | None:
+        target = str(fingerprint or "").strip()
+        for row in reversed(self.cached_briefs):
+            if str(row.get("input_fingerprint", "")).strip() == target:
+                return dict(row)
+        return None
 
 
 def _fake_env() -> SimpleNamespace:
@@ -76,8 +114,9 @@ def _recent_tx_row(
     from_owner_type: str = "wallet",
     to_owner: str = "Binance",
     to_owner_type: str = "exchange",
+    created_at: datetime | None = None,
 ) -> dict:
-    now = datetime.now(timezone.utc)
+    now = created_at or datetime.now(timezone.utc)
     return {
         "hash": hash_value or f"{symbol.lower()}-hash",
         "raw_response_hash": hash_value or f"{symbol.lower()}-raw",
@@ -94,8 +133,8 @@ def _recent_tx_row(
     }
 
 
-def _signal_row() -> dict:
-    now = datetime.now(timezone.utc)
+def _signal_row(*, created_at: datetime | None = None) -> dict:
+    now = created_at or datetime.now(timezone.utc)
     return {
         "signal_id": "sig-1",
         "created_at": now.isoformat(),
@@ -189,7 +228,7 @@ def test_run_brief_pipeline_uses_transaction_fallback_when_signals_are_empty():
     assert top_transactions[1]["amount_usd"] == 10000000.0
 
 
-def test_run_brief_pipeline_writes_informative_empty_fallback_when_transactions_are_empty():
+def test_run_brief_pipeline_skips_when_recent_activity_is_empty():
     from src.pipeline.brief import run_brief_pipeline
 
     sheets = _FakeSheets(transaction_rows=[])
@@ -198,14 +237,9 @@ def test_run_brief_pipeline_writes_informative_empty_fallback_when_transactions_
     ):
         result = run_brief_pipeline()
 
-    assert result["status"] == "completed_empty"
-    assert "mode=fallback_empty" in result["details"]
-    brief = sheets.saved_briefs[0][1][0]
-    assert "최근 60분 기준 대형 온체인 이동이 확인되지 않았습니다" in brief["summary"]
-    assert json.loads(brief["top_transactions"]) == []
-    assert "fallback_empty" in brief["note"]
-    note_meta = json.loads(brief["note"].split("||meta:", 1)[1])
-    assert note_meta["market_mood"]["mood"] == "neutral"
+    assert result["status"] == "skipped_inactive"
+    assert "inactive_window=60m" in result["details"]
+    assert sheets.saved_briefs == []
 
 
 def test_run_brief_pipeline_prefers_llm_path_when_signals_exist():
@@ -233,10 +267,49 @@ def test_run_brief_pipeline_prefers_llm_path_when_signals_exist():
     assert result["status"] == "completed"
     assert "model=gemini/gemini-2.5-flash" in result["details"]
     assert sheets.saved_briefs[0][1][0]["summary"] == "LLM generated brief"
+    assert sheets.saved_briefs[0][1][0]["input_fingerprint"]
     assert "||meta:" in sheets.saved_briefs[0][1][0]["note"]
     assert sheets.analysis_logs
     current_month = month_key_for(datetime.now(timezone.utc))
     assert sheets.budget_rows[-1]["month_key"] == current_month
+
+
+def test_run_brief_pipeline_reuses_cached_completion_for_same_fingerprint():
+    from src.pipeline.brief import _build_input_fingerprint, run_brief_pipeline
+
+    prompt_version = "v-test"
+    user_content = "same-user-content"
+    sheets = _FakeSheets(
+        signal_rows=[_signal_row()],
+        transaction_rows=[_recent_tx_row(symbol="USDT", amount="1000000", amount_usd="1000000")],
+        cached_briefs=[
+            {
+                "date": "2026-04-19",
+                "summary": "cached brief",
+                "input_fingerprint": _build_input_fingerprint(
+                    prompt_version=prompt_version,
+                    user_content=user_content,
+                ),
+            }
+        ],
+    )
+    router = MagicMock()
+
+    with patch("src.pipeline.brief.load_pipeline_env", return_value=_fake_env()), patch(
+        "src.pipeline.brief.build_sheets_client", return_value=sheets
+    ), patch(
+        "src.pipeline.brief._build_brief_request",
+        return_value=("sys", user_content, prompt_version),
+    ), patch("src.pipeline.brief.build_router_from_env", return_value=router):
+        result = run_brief_pipeline()
+
+    assert result["status"] == "completed"
+    assert "mode=cached" in result["details"]
+    assert router.call_task.called is False
+    assert sheets.saved_briefs[-1][1][0]["summary"] == "cached brief"
+    assert sheets.saved_briefs[-1][1][0]["input_fingerprint"]
+    assert sheets.analysis_logs == []
+    assert sheets.budget_rows == []
 
 
 def test_run_brief_pipeline_logs_fallback_skip_when_signals_are_empty():

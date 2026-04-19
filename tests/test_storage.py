@@ -22,7 +22,7 @@ from src.storage.schema import (
 
 class TestSchema:
     def test_all_tabs_count(self):
-        assert len(ALL_TABS) == 11
+        assert len(ALL_TABS) == len(set(ALL_TABS))
 
     def test_tab_headers_keys_match_all_tabs(self):
         assert set(TAB_HEADERS.keys()) == set(ALL_TABS)

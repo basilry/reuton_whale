@@ -51,7 +51,15 @@ def append_service_heartbeat(
 
 def pipeline_status_to_health(run_status: object) -> str:
     normalized = str(run_status or "").strip().lower()
-    if normalized in {"completed", "completed_empty", "skipped_window", "skipped_budget"}:
+    if normalized in {
+        "completed",
+        "completed_cached",
+        "completed_empty",
+        "skipped_window",
+        "skipped_budget",
+        "skipped_inactive",
+        "skipped_empty",
+    }:
         return "ok"
     if normalized in {"completed_with_errors", "skipped_duplicate"}:
         return "degraded"
