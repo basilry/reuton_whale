@@ -1403,7 +1403,7 @@
   }
 
   .moodCard > .moodGaugeCol {
-    flex: 0 0 clamp(280px, 32%, 420px);
+    flex: 0 0 clamp(420px, 66.666%, 820px);
   }
 
   .moodCard > .moodSummary {

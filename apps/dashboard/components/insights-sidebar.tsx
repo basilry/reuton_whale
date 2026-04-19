@@ -164,14 +164,6 @@ export function InsightsSidebar({
         <span className={styles.helpTitle}>키보드 단축키</span>
         <dl className={styles.helpList}>
           <div className={styles.helpRow}>
-            <dt><kbd className={styles.kbd}>?</kbd></dt>
-            <dd>전체 단축키</dd>
-          </div>
-          <div className={styles.helpRow}>
-            <dt><kbd className={styles.kbd}>/</kbd></dt>
-            <dd>검색 포커스</dd>
-          </div>
-          <div className={styles.helpRow}>
             <dt><kbd className={styles.kbd}>Esc</kbd></dt>
             <dd>모달 닫기</dd>
           </div>
