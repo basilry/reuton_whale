@@ -9,6 +9,7 @@ export const TAB_WATCHED_ADDRESSES = "watched_addresses" as const;
 export const TAB_WALLET_ALIASES = "wallet_aliases" as const;
 export const TAB_WATCHLIST_OVERRIDES = "watchlist_overrides" as const;
 export const TAB_NEWS_FEED = "news_feed" as const;
+export const TAB_CURATED_WALLET_BALANCES = "curated_wallet_balances" as const;
 
 export const TRANSACTIONS_HEADERS = [
   "raw_response_hash",
@@ -158,6 +159,20 @@ export const NEWS_FEED_HEADERS = [
   "last_seen_at",
 ] as const;
 
+export const CURATED_WALLET_BALANCES_HEADERS = [
+  "wallet_id",
+  "chain",
+  "address",
+  "owner_label",
+  "owner_category",
+  "approx_balance",
+  "source_ref",
+  "source_url",
+  "note",
+  "is_active",
+  "updated_at",
+] as const;
+
 export interface TransactionRow {
   raw_response_hash: string;
   hash: string;
@@ -293,6 +308,20 @@ export interface NewsFeedRow {
   last_seen_at: string;
 }
 
+export interface CuratedWalletBalanceRow {
+  wallet_id: string;
+  chain: string;
+  address: string;
+  owner_label: string;
+  owner_category: string;
+  approx_balance: string;
+  source_ref: string;
+  source_url: string;
+  note: string;
+  is_active: string;
+  updated_at: string;
+}
+
 export interface SubscriberRow {
   chat_id: string;
   username: string;
@@ -315,6 +344,7 @@ export interface SheetRowMap {
   wallet_aliases: WalletAliasRow;
   watchlist_overrides: WatchlistOverrideRow;
   news_feed: NewsFeedRow;
+  curated_wallet_balances: CuratedWalletBalanceRow;
 }
 
 export type SheetTabName = keyof SheetRowMap;
@@ -331,6 +361,7 @@ export const TAB_HEADERS = {
   wallet_aliases: WALLET_ALIASES_HEADERS,
   watchlist_overrides: WATCHLIST_OVERRIDES_HEADERS,
   news_feed: NEWS_FEED_HEADERS,
+  curated_wallet_balances: CURATED_WALLET_BALANCES_HEADERS,
 } as const satisfies Record<SheetTabName, readonly string[]>;
 
 export const DASHBOARD_TABS = [

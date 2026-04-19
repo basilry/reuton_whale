@@ -321,6 +321,10 @@ export type WhaleStory = {
   hash?: string;
   symbol?: string;
   chain?: string;
+  amountToken?: number;
+  amountUsd?: number;
+  explorerUrl?: string;
+  counterpartyNote?: string;
   occurredAt?: string;
   generatedAt?: string;
   priority: number;

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -29,6 +30,39 @@ from src.utils.logger import get_logger
 logger = get_logger("pipeline.brief")
 
 
+def _serialize_brief_signals(signals) -> str:
+    return json.dumps(
+        [
+            {
+                "rule": signal.rule,
+                "severity": signal.severity,
+                "score": signal.score,
+                "summary": signal.summary,
+                "source": signal.source,
+                "confidence": signal.confidence,
+            }
+            for signal in signals
+        ],
+        ensure_ascii=False,
+    )
+
+
+def _signals_preview(signals, *, limit: int = 3, max_chars: int = 320) -> str:
+    preview = _serialize_brief_signals(signals[:limit])
+    if len(signals) > limit:
+        preview = f"{preview} ... (+{len(signals) - limit} more)"
+    if len(preview) > max_chars:
+        return f"{preview[: max_chars - 3]}..."
+    return preview
+
+
+def _signal_rule_summary(signals, *, limit: int = 5) -> str:
+    counts = Counter(str(getattr(signal, "rule", "") or "unknown") for signal in signals)
+    if not counts:
+        return "none"
+    return ",".join(f"{rule}:{count}" for rule, count in counts.most_common(limit))
+
+
 def _record_brief_heartbeat(sheets, result: dict[str, object]) -> None:
     append_service_heartbeat(
         sheets,
@@ -47,20 +81,7 @@ def _record_brief_heartbeat(sheets, result: dict[str, object]) -> None:
 def _build_brief_request(signals) -> tuple[str, str, str]:
     sys_prompt, sys_ver = load_prompt("daily_brief.system")
     user_tmpl, user_ver = load_prompt("daily_brief.user")
-    signals_json = json.dumps(
-        [
-            {
-                "rule": signal.rule,
-                "severity": signal.severity,
-                "score": signal.score,
-                "summary": signal.summary,
-                "source": signal.source,
-                "confidence": signal.confidence,
-            }
-            for signal in signals
-        ],
-        ensure_ascii=False,
-    )
+    signals_json = _serialize_brief_signals(signals)
     today = datetime.now(timezone.utc).date().isoformat()
     user_content = user_tmpl.replace("{{signals_json}}", signals_json).replace(
         "{{date}}", today
@@ -504,6 +525,11 @@ def run_brief_pipeline() -> dict[str, object]:
     guard = MonthlyBudgetGuard(sheets)
     decision = guard.precheck("brief")
     if not decision.allowed:
+        logger.info(
+            "brief llm call skipped reason=budget_cap spent_usd=%.4f cap_usd=%.2f",
+            decision.spent_usd,
+            decision.cap_usd,
+        )
         guard.log_blocked(pipeline="brief")
         result.update(
             status="skipped_budget",
@@ -519,6 +545,13 @@ def run_brief_pipeline() -> dict[str, object]:
     since = now - timedelta(hours=24)
     signal_rows = sheets.list_signals(since=since, limit=50)
     signals = [signal for row in signal_rows if (signal := signal_row_to_signal(row))]
+    logger.info(
+        "brief inputs loaded since=%s signal_rows=%d signals=%d rules=%s",
+        since.isoformat(),
+        len(signal_rows),
+        len(signals),
+        _signal_rule_summary(signals),
+    )
     if not signals:
         fallback_payload, fallback_meta = _build_transaction_fallback_brief(
             sheets=sheets,
@@ -526,6 +559,7 @@ def run_brief_pipeline() -> dict[str, object]:
         )
         today = now.strftime("%Y-%m-%d")
         if fallback_payload is None:
+            logger.info("brief llm call skipped reason=no_signals fallback_mode=empty")
             sheets.save_daily_brief(today, [_empty_fallback_brief(now=now)])
             result.update(
                 status="completed_empty",
@@ -537,6 +571,12 @@ def run_brief_pipeline() -> dict[str, object]:
             _record_brief_heartbeat(sheets, result)
             return result
 
+        logger.info(
+            "brief llm call skipped reason=no_signals fallback_mode=transaction transactions=%s priced=%s unpriced=%s",
+            fallback_meta["transactions"],
+            fallback_meta["priced"],
+            fallback_meta["unpriced"],
+        )
         sheets.save_daily_brief(today, [fallback_payload])
         result.update(
             status="completed",
@@ -558,6 +598,14 @@ def run_brief_pipeline() -> dict[str, object]:
 
     router = build_router_from_env(env)
     system_prompt, user_content, prompt_version = _build_brief_request(signals)
+    signals_preview = _signals_preview(signals)
+    logger.info("brief signals_json preview=%s", signals_preview)
+    logger.info(
+        "brief llm call attempted task=daily_brief signals=%d prompt_version=%s preview=%s",
+        len(signals),
+        prompt_version,
+        signals_preview,
+    )
     try:
         llm_result = router.call_task("daily_brief", system_prompt, user_content)
     except Exception as exc:
@@ -574,6 +622,14 @@ def run_brief_pipeline() -> dict[str, object]:
         logger.error("brief pipeline failed: %s", exc)
         return result
 
+    logger.info(
+        "brief llm call succeeded model=%s tokens_in=%d tokens_out=%d cost_usd=%.6f latency_ms=%s",
+        llm_result.model_id,
+        llm_result.tokens_in,
+        llm_result.tokens_out,
+        llm_result.cost_usd,
+        llm_result.latency_ms,
+    )
     guard.record_usage(
         pipeline="brief",
         model_id=llm_result.model_id,

@@ -118,6 +118,16 @@ def _signal_row() -> dict:
     }
 
 
+def _render_log_messages(mock_logger) -> list[str]:
+    messages: list[str] = []
+    for call in mock_logger.info.call_args_list:
+        message = call.args[0]
+        if len(call.args) > 1:
+            message = message % call.args[1:]
+        messages.append(message)
+    return messages
+
+
 def test_run_brief_pipeline_uses_transaction_fallback_when_signals_are_empty():
     from src.pipeline.brief import run_brief_pipeline
 
@@ -227,3 +237,50 @@ def test_run_brief_pipeline_prefers_llm_path_when_signals_exist():
     assert sheets.analysis_logs
     current_month = month_key_for(datetime.now(timezone.utc))
     assert sheets.budget_rows[-1]["month_key"] == current_month
+
+
+def test_run_brief_pipeline_logs_fallback_skip_when_signals_are_empty():
+    from src.pipeline.brief import run_brief_pipeline
+
+    sheets = _FakeSheets(transaction_rows=[_recent_tx_row(symbol="USDT", amount="100", amount_usd="100")])
+
+    with patch("src.pipeline.brief.load_pipeline_env", return_value=_fake_env()), patch(
+        "src.pipeline.brief.build_sheets_client", return_value=sheets
+    ), patch("src.pipeline.brief.logger") as mock_logger:
+        result = run_brief_pipeline()
+
+    messages = _render_log_messages(mock_logger)
+    assert result["status"] == "completed"
+    assert any(message.startswith("brief inputs loaded ") for message in messages)
+    assert any("brief llm call skipped reason=no_signals fallback_mode=transaction" in message for message in messages)
+
+
+def test_run_brief_pipeline_logs_llm_attempt_and_success():
+    from src.pipeline.brief import run_brief_pipeline
+
+    sheets = _FakeSheets(
+        signal_rows=[_signal_row()],
+        transaction_rows=[_recent_tx_row(symbol="USDT", amount="1000000", amount_usd="1000000")],
+    )
+    router = MagicMock()
+    router.call_task.return_value = LLMResult(
+        text="LLM generated brief",
+        model_id="gemini/gemini-2.5-flash",
+        tokens_in=120,
+        tokens_out=80,
+        cost_usd=0.01,
+        latency_ms=320,
+    )
+
+    with patch("src.pipeline.brief.load_pipeline_env", return_value=_fake_env()), patch(
+        "src.pipeline.brief.build_sheets_client", return_value=sheets
+    ), patch("src.pipeline.brief.build_router_from_env", return_value=router), patch(
+        "src.pipeline.brief.logger"
+    ) as mock_logger:
+        result = run_brief_pipeline()
+
+    messages = _render_log_messages(mock_logger)
+    assert result["status"] == "completed"
+    assert any(message.startswith("brief signals_json preview=") for message in messages)
+    assert any("brief llm call attempted task=daily_brief" in message for message in messages)
+    assert any("brief llm call succeeded model=gemini/gemini-2.5-flash" in message for message in messages)

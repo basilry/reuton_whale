@@ -22,6 +22,15 @@ from src.utils.logger import get_logger
 logger = get_logger("pipeline.signals")
 
 
+def _error_preview(errors: list[str], *, limit: int = 3) -> str:
+    if not errors:
+        return "none"
+    preview = errors[:limit]
+    remaining = len(errors) - len(preview)
+    suffix = f" ... (+{remaining} more)" if remaining > 0 else ""
+    return " | ".join(preview) + suffix
+
+
 def _record_signals_heartbeat(sheets, result: dict[str, object]) -> None:
     append_service_heartbeat(
         sheets,
@@ -54,6 +63,14 @@ def run_signals_pipeline() -> dict[str, object]:
         event_to_dict=_event_to_dict,
     )
     errors.extend(collected.errors)
+    logger.info(
+        "signals collected raw_events=%d chain_events=%d tg_events=%d transactions=%d collect_errors=%d",
+        len(collected.raw_events),
+        len(collected.chain_events),
+        max(0, len(collected.raw_events) - len(collected.chain_events)),
+        len(collected.transactions),
+        len(collected.errors),
+    )
 
     persisted = persist_chain_activity(
         sheets=sheets,
@@ -62,7 +79,19 @@ def run_signals_pipeline() -> dict[str, object]:
         transactions=collected.transactions,
     )
     errors.extend(persisted["errors"])
-    errors.extend(log_unknown_price_symbols(sheets=sheets, price_service=price_service))
+    logger.info(
+        "signals persisted address_activity=%d stored_transactions=%d persist_errors=%d",
+        int(persisted["stored_activity"]),
+        int(persisted["stored_transactions"]),
+        len(persisted["errors"]),
+    )
+    price_log_errors = log_unknown_price_symbols(sheets=sheets, price_service=price_service)
+    errors.extend(price_log_errors)
+    logger.info(
+        "signals price diagnostics unknown_symbol_log_errors=%d cumulative_errors=%d",
+        len(price_log_errors),
+        len(errors),
+    )
 
     if not collected.raw_events:
         result.update(
@@ -74,6 +103,13 @@ def run_signals_pipeline() -> dict[str, object]:
         )
         sheets.log_run(result)
         _record_signals_heartbeat(sheets, result)
+        logger.info(
+            "signals pipeline finished status=%s details=%s error_count=%d error_preview=%s",
+            result["status"],
+            result["details"],
+            len(errors),
+            _error_preview(errors),
+        )
         return result
 
     signals, signal_errors = detect_signals(
@@ -82,12 +118,24 @@ def run_signals_pipeline() -> dict[str, object]:
         raw_events=collected.raw_events,
     )
     errors.extend(signal_errors)
+    logger.info(
+        "signals detected signals=%d detect_errors=%d raw_events=%d",
+        len(signals),
+        len(signal_errors),
+        len(collected.raw_events),
+    )
     stored_signals, persist_signal_errors = persist_signals(
         sheets=sheets,
         signals=signals,
         raw_events=collected.raw_events,
     )
     errors.extend(persist_signal_errors)
+    logger.info(
+        "signals stored stored_signals=%d persist_signal_errors=%d cumulative_errors=%d",
+        stored_signals,
+        len(persist_signal_errors),
+        len(errors),
+    )
 
     details = (
         f"raw_events={len(collected.raw_events)}; "
@@ -105,7 +153,13 @@ def run_signals_pipeline() -> dict[str, object]:
     )
     sheets.log_run(result)
     _record_signals_heartbeat(sheets, result)
-    logger.info("signals pipeline finished status=%s details=%s", result["status"], details)
+    logger.info(
+        "signals pipeline finished status=%s details=%s error_count=%d error_preview=%s",
+        result["status"],
+        details,
+        len(errors),
+        _error_preview(errors),
+    )
     return result
 
 

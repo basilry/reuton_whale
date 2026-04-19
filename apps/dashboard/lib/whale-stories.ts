@@ -73,6 +73,21 @@ function formatCompactUsd(value: number): string {
   }).format(value);
 }
 
+function formatCompactTokenAmount(value: number, symbol: string): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return symbol;
+  }
+
+  const absolute = Math.abs(value);
+  const maximumFractionDigits =
+    absolute >= 1_000 ? 0 : absolute >= 1 ? 2 : absolute >= 0.01 ? 4 : 6;
+
+  return `${new Intl.NumberFormat("en-US", {
+    notation: absolute >= 100_000 ? "compact" : "standard",
+    maximumFractionDigits,
+  }).format(value)} ${symbol}`.trim();
+}
+
 function formatDateTime(value?: string): string {
   if (!value) {
     return "시간 미상";
@@ -136,6 +151,41 @@ function chainLabel(value?: string): string {
     return "Bitcoin";
   }
   return compactString(value);
+}
+
+function buildExplorerUrl(chain: string | undefined, hash: string | undefined): string | undefined {
+  const normalizedChain = normalizeText(chain);
+  const normalizedHash = compactString(hash);
+  if (!normalizedChain || !normalizedHash) {
+    return undefined;
+  }
+
+  if (normalizedChain === "ethereum" || normalizedChain === "eth") {
+    return `https://etherscan.io/tx/${normalizedHash}`;
+  }
+  if (normalizedChain === "arbitrum" || normalizedChain === "arb") {
+    return `https://arbiscan.io/tx/${normalizedHash}`;
+  }
+  if (normalizedChain === "base") {
+    return `https://basescan.org/tx/${normalizedHash}`;
+  }
+  if (normalizedChain === "polygon" || normalizedChain === "matic") {
+    return `https://polygonscan.com/tx/${normalizedHash}`;
+  }
+  if (normalizedChain === "bsc" || normalizedChain === "binance-smart-chain") {
+    return `https://bscscan.com/tx/${normalizedHash}`;
+  }
+  if (normalizedChain === "avalanche" || normalizedChain === "avax") {
+    return `https://snowtrace.io/tx/${normalizedHash}`;
+  }
+  if (normalizedChain === "solana" || normalizedChain === "sol") {
+    return `https://solscan.io/tx/${normalizedHash}`;
+  }
+  if (normalizedChain === "bitcoin" || normalizedChain === "btc") {
+    return `https://mempool.space/tx/${normalizedHash}`;
+  }
+
+  return undefined;
 }
 
 function humanizeRule(rule: string): string {
@@ -250,6 +300,30 @@ function storyPriority(amountUsd: number, signal: SignalLike | null, curatedHits
   return base + signalWeight + curatedHits * 3;
 }
 
+function buildCounterpartyNote(
+  fromParticipant: WhaleStoryParticipant,
+  toParticipant: WhaleStoryParticipant,
+  signal: SignalLike | null,
+): string | undefined {
+  const curatedParticipants = [fromParticipant, toParticipant].filter((item) => item.curatedWallet);
+
+  if (curatedParticipants.length === 2) {
+    return `${fromParticipant.label}과 ${toParticipant.label} 모두 큐레이션 지갑으로 분류되어 있어 직접 비교할 가치가 큽니다.`;
+  }
+
+  if (curatedParticipants.length === 1) {
+    const focusedParticipant = curatedParticipants[0]!;
+    const counterparty = focusedParticipant.role === "from" ? toParticipant : fromParticipant;
+    return `${focusedParticipant.label}이(가) 직접 연관된 이동이며, 반대편 카운터파티는 ${counterparty.label}입니다.`;
+  }
+
+  if (signal) {
+    return `${humanizeRule(signal.rule)} 신호와 같은 해시를 공유해 후속 해석 근거로 쓸 수 있습니다.`;
+  }
+
+  return undefined;
+}
+
 function topSignal(signals: readonly SignalLike[]): SignalLike | null {
   return (
     [...signals].sort((left, right) => {
@@ -267,7 +341,9 @@ function buildTransactionStory(
   curatedWallets?: readonly CuratedWalletEntry[],
 ): WhaleStory {
   const symbol = compactString(transaction.symbol).toUpperCase() || "UNKNOWN";
+  const amountToken = parseFloatSafe(compactString(transaction.amount)) ?? 0;
   const amountUsd = parseFloatSafe(compactString(transaction.amount_usd)) ?? 0;
+  const txHash = compactString(transaction.hash) || undefined;
   const fromParticipant = participant(
     "from",
     transaction.from_owner,
@@ -290,16 +366,24 @@ function buildTransactionStory(
     curatedParticipants[0]?.label ?? fromParticipant.label;
   const title = `${featuredLabel} ${symbol} 이동`;
   const signalSummary = signal ? humanizeRule(signal.rule) : "";
-  const bodyBase = `${fromParticipant.label}에서 ${toParticipant.label}로 ${
-    amountUsd > 0 ? `${formatCompactUsd(amountUsd)} 규모의 ${symbol}` : symbol
-  } 이동이 기록됐습니다.`;
-  const body = signalSummary
-    ? `${bodyBase} ${signalSummary} 신호와 함께 읽을 수 있습니다.`
-    : bodyBase;
+  const amountSummary =
+    amountUsd > 0
+      ? `${formatCompactUsd(amountUsd)} 규모의 ${formatCompactTokenAmount(amountToken, symbol)}`
+      : formatCompactTokenAmount(amountToken, symbol);
+  const bodySegments = [
+    `${fromParticipant.label}에서 ${toParticipant.label}로 ${amountSummary} 이동이 기록됐습니다.`,
+    `체인은 ${chainLabel(transaction.blockchain)} 기준입니다.`,
+    relatedSignals.length > 0
+      ? `같은 해시를 근거로 연결된 보조 시그널 ${relatedSignals.length}건이 있어 맥락 확인이 가능합니다.`
+      : "",
+    signalSummary ? `${signalSummary} 관점에서 함께 읽을 수 있습니다.` : "",
+  ].filter(Boolean);
+  const body = bodySegments.join(" ");
   const occurredAt =
     compactString(transaction.timestamp) ||
     compactString(transaction.created_at) ||
     generatedAt;
+  const counterpartyNote = buildCounterpartyNote(fromParticipant, toParticipant, signal);
   const metaParts = [
     chainLabel(transaction.blockchain),
     formatDateTime(occurredAt),
@@ -313,9 +397,13 @@ function buildTransactionStory(
     body,
     meta: metaParts.join(" · "),
     tone: toneForTransaction(amountUsd, signal),
-    hash: compactString(transaction.hash) || undefined,
+    hash: txHash,
     symbol,
     chain: compactString(transaction.blockchain) || undefined,
+    amountToken: amountToken > 0 ? amountToken : undefined,
+    amountUsd: amountUsd > 0 ? amountUsd : undefined,
+    explorerUrl: buildExplorerUrl(transaction.blockchain, txHash),
+    counterpartyNote,
     occurredAt,
     generatedAt,
     priority: storyPriority(amountUsd, signal, curatedParticipants.length),
