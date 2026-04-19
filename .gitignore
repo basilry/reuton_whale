@@ -25,3 +25,4 @@ apps/dashboard/.playwright/
 apps/dashboard/playwright/.cache/
 .dmux/
 .claude/worktrees/
+data/brief_logs/

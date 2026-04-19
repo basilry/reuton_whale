@@ -1,0 +1,16 @@
+Below is the data collected as of {{date}}.
+
+Whale signal data (JSON):
+{{signals_json}}
+
+Recent 24h news (top {{news_count}} items):
+{{news_context}}
+
+Curated wallet context:
+{{curated_context}}
+
+Analyze the data above and write an English daily briefing following the format specified in the system prompt.
+- Prioritize signals with higher severity and score.
+- Emphasize signals whose source is "both" (detected on-chain AND via telegram), as they have higher reliability.
+- Link news headlines to signal assets (BTC, ETH, USDT, etc.) when relevant.
+- If there are 0 signals, output only "No notable whale movements detected today."

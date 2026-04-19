@@ -3,7 +3,11 @@ from __future__ import annotations
 from collections import Counter
 import hashlib
 import json
+import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Literal
+from zoneinfo import ZoneInfo
 
 from src.enrich.price_resolver import PriceResolver
 from src.analyzer.prompt_loader import load_prompt
@@ -30,6 +34,18 @@ from src.utils.number_utils import safe_float as numeric_safe_float
 from src.utils.logger import get_logger
 
 logger = get_logger("pipeline.brief")
+
+# KST 기준 full 브리핑 실행 슬롯 (09/15/21시)
+_FULL_BRIEF_HOURS_KST = frozenset({9, 15, 21})
+_KST = ZoneInfo("Asia/Seoul")
+
+BriefMode = Literal["full", "incremental"]
+
+# 환경변수로 조정 가능한 뉴스 상위 N건
+_RSS_NEWS_TOP_N = int(os.environ.get("RSS_NEWS_TOP_N", "20"))
+
+# full 브리핑 로그 저장 경로 루트
+_BRIEF_LOG_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "brief_logs"
 
 
 def _build_input_fingerprint(*, prompt_version: str, user_content: str) -> str:
@@ -97,14 +113,147 @@ def _record_brief_heartbeat(sheets, result: dict[str, object]) -> None:
     )
 
 
-def _build_brief_request(signals) -> tuple[str, str, str]:
-    sys_prompt, sys_ver = load_prompt("daily_brief.system")
-    user_tmpl, user_ver = load_prompt("daily_brief.user")
+def _is_full_slot(now: datetime) -> bool:
+    """KST 기준 09/15/21시 대이면 True (full briefing 슬롯)."""
+    kst_hour = now.astimezone(_KST).hour
+    return kst_hour in _FULL_BRIEF_HOURS_KST
+
+
+def _full_brief_log_path(now: datetime) -> Path:
+    """당일 KST 날짜 + 슬롯 번호 기반 JSONL 경로."""
+    kst = now.astimezone(_KST)
+    date_str = kst.strftime("%Y-%m-%d")
+    hour = kst.hour
+    # 슬롯 번호: 09->1, 15->2, 21->3
+    slot_map = {9: 1, 15: 2, 21: 3}
+    slot = slot_map.get(hour, 0)
+    return _BRIEF_LOG_DIR / f"{date_str}-slot{slot}.jsonl"
+
+
+def _save_full_brief_log(now: datetime, payload: dict[str, object]) -> None:
+    """full 브리핑 결과를 JSONL에 append."""
+    try:
+        log_path = _full_brief_log_path(now)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "ts": now.isoformat(),
+            "slot_key": _brief_slot_key(now),
+            **{k: v for k, v in payload.items() if k in ("summary", "highlights", "signal_themes", "note", "input_fingerprint")},
+        }
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        logger.warning("full brief log write failed: %s", exc)
+
+
+def _load_latest_full_brief_log(now: datetime) -> dict[str, object] | None:
+    """당일 가장 최근 full 브리핑 로그를 반환. 없으면 None."""
+    kst = now.astimezone(_KST)
+    date_str = kst.strftime("%Y-%m-%d")
+    log_dir = _BRIEF_LOG_DIR
+    # 슬롯 역순(3->2->1->0) 탐색
+    for slot in (3, 2, 1, 0):
+        path = log_dir / f"{date_str}-slot{slot}.jsonl"
+        if not path.exists():
+            continue
+        try:
+            last_line = ""
+            with path.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    stripped = line.strip()
+                    if stripped:
+                        last_line = stripped
+            if last_line:
+                return json.loads(last_line)
+        except Exception as exc:
+            logger.warning("full brief log read failed path=%s: %s", path, exc)
+    return None
+
+
+def _build_news_context(news_rows: list[dict], *, top_n: int = _RSS_NEWS_TOP_N) -> str:
+    """뉴스 피드 행 목록에서 LLM 주입용 텍스트 블록 생성."""
+    if not news_rows:
+        return "(없음)"
+    selected = news_rows[:top_n]
+    lines: list[str] = []
+    for i, row in enumerate(selected, 1):
+        title = str(row.get("title") or "").strip()
+        summary = str(row.get("summary") or "").strip()
+        source = str(row.get("source") or "").strip()
+        published = str(row.get("published_at") or "").strip()[:16]  # YYYY-MM-DDTHH:MM
+        if not title:
+            continue
+        line = f"{i}. [{source}] {title}"
+        if summary:
+            line += f" — {summary[:120]}"
+        if published:
+            line += f" ({published})"
+        lines.append(line)
+    return "\n".join(lines) if lines else "(없음)"
+
+
+def _build_curated_context(curated_rows: list[dict]) -> str:
+    """큐레이션 지갑 목록에서 LLM 주입용 텍스트 블록 생성."""
+    if not curated_rows:
+        return "(없음)"
+    lines: list[str] = []
+    for row in curated_rows[:30]:  # 최대 30개
+        label = str(row.get("owner_label") or "").strip()
+        category = str(row.get("owner_category") or "").strip()
+        tags = str(row.get("narrative_tags") or "").strip()
+        tier = str(row.get("tier") or "").strip()
+        chain = str(row.get("chain") or "").strip()
+        balance = str(row.get("approx_balance") or "").strip()
+        if not label:
+            continue
+        line = f"- {label} ({category}, {chain}"
+        if tier:
+            line += f", tier={tier}"
+        if balance:
+            line += f", approx={balance}"
+        if tags:
+            line += f", tags=[{tags}]"
+        line += ")"
+        lines.append(line)
+    return "\n".join(lines) if lines else "(없음)"
+
+
+def _build_brief_request(
+    signals,
+    *,
+    mode: BriefMode = "full",
+    news_rows: list[dict] | None = None,
+    curated_rows: list[dict] | None = None,
+    prior_brief: dict[str, object] | None = None,
+) -> tuple[str, str, str]:
+    """시스템/유저 프롬프트와 버전 해시를 반환한다.
+
+    mode에 따라 full/incremental 프롬프트를 선택. 없으면 기존 daily_brief.*로 폴백.
+    """
+    sys_prompt, sys_ver = load_prompt("daily_brief.system", mode=mode)
+    user_tmpl, user_ver = load_prompt("daily_brief.user", mode=mode)
     signals_json = _serialize_brief_signals(signals)
     today = datetime.now(timezone.utc).date().isoformat()
-    user_content = user_tmpl.replace("{{signals_json}}", signals_json).replace(
-        "{{date}}", today
-    )
+
+    if mode == "incremental":
+        prior_summary = str(prior_brief.get("summary") or "") if prior_brief else ""
+        user_content = (
+            user_tmpl
+            .replace("{{date}}", today)
+            .replace("{{prior_brief_summary}}", prior_summary or "(이전 브리핑 없음)")
+            .replace("{{delta_signals_json}}", signals_json)
+        )
+    else:
+        news_context = _build_news_context(news_rows or [], top_n=_RSS_NEWS_TOP_N)
+        curated_context = _build_curated_context(curated_rows or [])
+        user_content = (
+            user_tmpl
+            .replace("{{signals_json}}", signals_json)
+            .replace("{{date}}", today)
+            .replace("{{news_count}}", str(min(len(news_rows or []), _RSS_NEWS_TOP_N)))
+            .replace("{{news_context}}", news_context)
+            .replace("{{curated_context}}", curated_context)
+        )
     return sys_prompt, user_content, f"{sys_ver}+{user_ver}"
 
 
@@ -743,11 +892,40 @@ def run_brief_pipeline() -> dict[str, object]:
         top_items=top_items,
         total_volume_usd=total_volume,
     )
+
+    # --- 브리핑 모드 결정 ---
+    # KST 09/15/21시 슬롯이거나 당일 full 로그가 없으면 full 실행
+    prior_brief = _load_latest_full_brief_log(now)
+    brief_mode: BriefMode = "full" if (_is_full_slot(now) or prior_brief is None) else "incremental"
+    logger.info("brief mode=%s is_full_slot=%s has_prior=%s", brief_mode, _is_full_slot(now), prior_brief is not None)
+
+    # --- 컨텍스트 로드 (full 모드에서만) ---
+    news_rows: list[dict] = []
+    curated_rows: list[dict] = []
+    if brief_mode == "full":
+        news_since = now - timedelta(hours=24)
+        try:
+            news_rows = sheets.list_news_feed(since=news_since, limit=_RSS_NEWS_TOP_N * 3)
+            # published_at 최신순 정렬 후 상위 N
+            news_rows.sort(
+                key=lambda r: str(r.get("published_at") or r.get("fetched_at") or ""),
+                reverse=True,
+            )
+            news_rows = news_rows[:_RSS_NEWS_TOP_N]
+            logger.info("brief news context loaded count=%d", len(news_rows))
+        except Exception as exc:
+            logger.warning("brief news context load failed: %s", exc)
+        try:
+            curated_rows = sheets.list_curated_wallets(active_only=True)
+            logger.info("brief curated wallets loaded count=%d", len(curated_rows))
+        except Exception as exc:
+            logger.warning("brief curated wallets load failed: %s", exc)
+
     note = _encode_brief_note(
-        f"signals_based|signals={len(signals)}|transactions={len(transaction_rows)}",
+        f"signals_based|mode={brief_mode}|signals={len(signals)}|transactions={len(transaction_rows)}",
         message=(
             f"최근 저장된 거래 {len(transaction_rows)}건과 시그널 {len(signals)}건을 바탕으로 "
-            "일일 브리핑을 생성했습니다."
+            f"{brief_mode} 브리핑을 생성했습니다."
         ),
         market_mood=market_mood,
     )
@@ -781,7 +959,13 @@ def run_brief_pipeline() -> dict[str, object]:
         _record_brief_heartbeat(sheets, result)
         return result
 
-    system_prompt, user_content, prompt_version = _build_brief_request(signals)
+    system_prompt, user_content, prompt_version = _build_brief_request(
+        signals,
+        mode=brief_mode,
+        news_rows=news_rows,
+        curated_rows=curated_rows,
+        prior_brief=prior_brief,
+    )
     input_fingerprint = _build_input_fingerprint(
         prompt_version=prompt_version,
         user_content=user_content,
@@ -795,8 +979,8 @@ def run_brief_pipeline() -> dict[str, object]:
         cached_summary = str(cached_brief.get("summary", "")).strip()
         cached_note = _encode_brief_note(
             (
-                f"signals_based_cached|signals={len(signals)}|transactions={len(transaction_rows)}|"
-                f"fingerprint={input_fingerprint[:12]}"
+                f"signals_based_cached|mode={brief_mode}|signals={len(signals)}|"
+                f"transactions={len(transaction_rows)}|fingerprint={input_fingerprint[:12]}"
             ),
             message="동일 입력 fingerprint가 확인되어 기존 브리핑 문안을 재사용했습니다.",
             market_mood=market_mood,
@@ -819,8 +1003,8 @@ def run_brief_pipeline() -> dict[str, object]:
             ],
         )
         details = (
-            f"mode=cached; signals={len(signals)}; top_items={len(top_items)}; "
-            f"input_fingerprint={input_fingerprint[:12]}"
+            f"mode=cached; brief_mode={brief_mode}; signals={len(signals)}; "
+            f"top_items={len(top_items)}; input_fingerprint={input_fingerprint[:12]}"
         )
         result.update(
             status="completed",
@@ -848,8 +1032,10 @@ def run_brief_pipeline() -> dict[str, object]:
     signals_preview = _signals_preview(signals)
     logger.info("brief signals_json preview=%s", signals_preview)
     logger.info(
-        "brief llm call attempted task=daily_brief signals=%d prompt_version=%s preview=%s",
+        "brief llm call attempted task=daily_brief mode=%s signals=%d news=%d prompt_version=%s preview=%s",
+        brief_mode,
         len(signals),
+        len(news_rows),
         prompt_version,
         signals_preview,
     )
@@ -907,27 +1093,27 @@ def run_brief_pipeline() -> dict[str, object]:
         }
     )
 
-    sheets.save_daily_brief(
-        today,
-        [
-            {
-                "summary": llm_result.text,
-                "top_transactions": json.dumps(
-                    _serialize_top_transactions(top_items), ensure_ascii=False
-                ),
-                "total_volume_usd": total_volume,
-                "alert_count": len(top_items),
-                "highlights": highlights,
-                "signal_themes": signal_themes,
-                "note": note,
-                "input_fingerprint": input_fingerprint,
-            }
-        ],
-    )
+    brief_payload = {
+        "summary": llm_result.text,
+        "top_transactions": json.dumps(
+            _serialize_top_transactions(top_items), ensure_ascii=False
+        ),
+        "total_volume_usd": total_volume,
+        "alert_count": len(top_items),
+        "highlights": highlights,
+        "signal_themes": signal_themes,
+        "note": note,
+        "input_fingerprint": input_fingerprint,
+    }
+    sheets.save_daily_brief(today, [brief_payload])
+
+    # full 브리핑은 로컬 JSONL에도 기록해 incremental 사이클의 prior 컨텍스트로 활용
+    if brief_mode == "full":
+        _save_full_brief_log(now, brief_payload)
 
     details = (
-        f"signals={len(signals)}; top_items={len(top_items)}; "
-        f"model={llm_result.model_id}; cost_usd={llm_result.cost_usd:.6f}"
+        f"brief_mode={brief_mode}; signals={len(signals)}; top_items={len(top_items)}; "
+        f"news={len(news_rows)}; model={llm_result.model_id}; cost_usd={llm_result.cost_usd:.6f}"
     )
     result.update(
         status="completed",
@@ -947,7 +1133,7 @@ def run_brief_pipeline() -> dict[str, object]:
         signal_count=len(signals),
         transaction_count=len(transaction_rows),
         input_fingerprint=input_fingerprint,
-        reason="generated",
+        reason=f"generated;brief_mode={brief_mode}",
     )
     sheets.log_run(result)
     _record_brief_heartbeat(sheets, result)

@@ -25,9 +25,12 @@ def _resolve_path(base: Path, name: str, lang: str) -> Path:
 
 
 def load_prompt(
-    name: str, base_dir: "Path | None" = None, lang: str = "ko"
+    name: str, base_dir: "Path | None" = None, lang: str = "ko", mode: str = ""
 ) -> tuple[str, str]:
     """Load a prompt file by name (without .txt extension).
+
+    mode가 지정되면 "name.mode" 형태로 먼저 시도하고, 없으면 name으로 폴백한다.
+    예: name="daily_brief.system", mode="full" -> "daily_brief.full.system" 시도 후 폴백.
 
     Returns (content, sha1[:8]).
     Uses mtime-based cache keyed by resolved path. Because language-specific
@@ -35,7 +38,23 @@ def load_prompt(
     "daily_brief.system.txt"), different languages do not collide.
     """
     base = base_dir if base_dir is not None else _DEFAULT_DIR
-    path = _resolve_path(base, name, lang)
+
+    # mode가 있으면 "a.b" -> "a.{mode}.b" 형태로 먼저 시도 후 원본으로 폴백
+    # 예: name="daily_brief.system", mode="full" -> "daily_brief.full.system"
+    if mode:
+        parts = name.rsplit(".", 1)
+        if len(parts) == 2:
+            mode_name = f"{parts[0]}.{mode}.{parts[1]}"
+        else:
+            mode_name = f"{name}.{mode}"
+        mode_path = _resolve_path(base, mode_name, lang)
+        if mode_path.exists():
+            path = mode_path
+        else:
+            path = _resolve_path(base, name, lang)
+    else:
+        path = _resolve_path(base, name, lang)
+
     path_str = str(path)
 
     try:

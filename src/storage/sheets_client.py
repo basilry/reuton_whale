@@ -1285,6 +1285,44 @@ class SheetsClient:
             except gspread.exceptions.APIError as e:
                 raise StorageError(f"Failed to append news_feed: {e}") from e
 
+    @retry(max_retries=3, base_delay=2.0)
+    def list_news_feed(
+        self,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
+        """최근 뉴스 피드 행 반환. since 기준 published_at 필터 적용."""
+        try:
+            ws = self._worksheet(TAB_NEWS_FEED)
+            all_values = ws.get_all_values()
+            if len(all_values) <= 1:
+                return []
+
+            headers = all_values[0] if all_values else NEWS_FEED_HEADERS
+            # 실제 시트 헤더가 NEWS_FEED_HEADERS와 다를 수 있으므로 실제 헤더 사용
+            rows = [row_to_dict(row, headers) for row in all_values[1:]]
+            if since is not None:
+                filtered: list[dict] = []
+                for row in rows:
+                    raw = str(row.get("published_at") or row.get("fetched_at") or "").strip()
+                    if not raw:
+                        continue
+                    try:
+                        row_time = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                    except ValueError:
+                        continue
+                    if row_time.tzinfo is None and since.tzinfo is not None:
+                        row_time = row_time.replace(tzinfo=since.tzinfo)
+                    if row_time >= since:
+                        filtered.append(row)
+                rows = filtered
+
+            if limit is not None and limit >= 0:
+                rows = rows[-limit:] if limit else []
+            return rows
+        except gspread.exceptions.APIError as e:
+            raise StorageError(f"Failed to list news_feed: {e}") from e
+
     def _ensure_news_feed_schema(
         self,
         ws: "gspread.Worksheet",

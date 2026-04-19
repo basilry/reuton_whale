@@ -1,0 +1,12 @@
+Below is the incremental briefing data as of {{date}}.
+
+[Previous full briefing summary]
+{{prior_brief_summary}}
+
+[Newly detected signal delta (JSON, additions since last briefing)]
+{{delta_signals_json}}
+
+Write an English incremental briefing focused only on what changed since the previous briefing, following the format in the system prompt.
+- Do not repeat or re-summarize the previous briefing. Focus on new changes.
+- If there are 0 new signals, output only "No notable changes since the last briefing."
+- Prioritize new signals with higher severity and score.
