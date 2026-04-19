@@ -138,6 +138,22 @@ export type AdminChainRolloutObservability = {
   flagEnabledButNoSeed: string[];
 };
 
+export type AdminTgMirrorChannelEntry = {
+  channel: string;
+  count: number;
+};
+
+export type AdminTgMirrorObservability = {
+  windowHours: number;
+  totalObserved: number;
+  latestObservedAt?: string;
+  high: AdminObservabilityRatioSummary;
+  medium: AdminObservabilityRatioSummary;
+  low: AdminObservabilityRatioSummary;
+  unknown: AdminObservabilityRatioSummary;
+  channels: AdminTgMirrorChannelEntry[];
+};
+
 export type AdminTelegramObservability = {
   subscriberCountActive: number;
   subscriberCountPaused: number;
@@ -286,6 +302,7 @@ export type AdminObservabilitySummary = {
   marketSources: AdminMarketSourceObservability[];
   chainCoverage: AdminChainCoverageObservability | null;
   chainRollout: AdminChainRolloutObservability;
+  tgMirror: AdminTgMirrorObservability;
   telegram: AdminTelegramObservability;
   render: AdminRenderObservability;
 };

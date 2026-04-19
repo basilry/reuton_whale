@@ -49,6 +49,7 @@ import type {
   AdminRenderObservability,
   AdminObservabilitySummary,
   AdminLiveUpdateSectionObservability,
+  AdminTgMirrorObservability,
   AdminTelegramObservability,
   BriefMarketMood,
   CuratedWalletEntry,
@@ -2523,6 +2524,73 @@ function subscriberStatusChangedAt(row: SubscriberRow): string | undefined {
   return compactString((row as { status_changed_at?: string }).status_changed_at) || undefined;
 }
 
+function tgMirrorTimestampMs(row: TgWhaleEventRow): number | null {
+  return (
+    parseDateTimeSafe(compactString(row.collected_at)) ??
+    parseDateTimeSafe(compactString(row.tg_date))
+  );
+}
+
+function tgMirrorObservedAt(row: TgWhaleEventRow): string | undefined {
+  return compactString(row.collected_at) || compactString(row.tg_date) || undefined;
+}
+
+function tgMirrorConfidence(row: TgWhaleEventRow): "high" | "medium" | "low" | "unknown" {
+  const value = compactString(row.external_confidence || row.parsed_confidence).toLowerCase();
+  if (value === "high" || value === "medium" || value === "low") {
+    return value;
+  }
+  return "unknown";
+}
+
+function tgMirrorChannel(row: TgWhaleEventRow): string {
+  return (
+    compactString(row.external_display_name) ||
+    compactString(row.external_channel) ||
+    "미지정 채널"
+  );
+}
+
+function buildTgMirrorObservability(args: {
+  tgWhaleEventRows: TgWhaleEventRow[];
+}): AdminTgMirrorObservability {
+  const sinceMs = Date.now() - ADMIN_OBSERVABILITY_WINDOW_MS;
+  const rows24h = args.tgWhaleEventRows.filter((row) => {
+    const timestamp = tgMirrorTimestampMs(row);
+    return timestamp != null && timestamp >= sinceMs;
+  });
+  const totalObserved = rows24h.length;
+  const highCount = rows24h.filter((row) => tgMirrorConfidence(row) === "high").length;
+  const mediumCount = rows24h.filter((row) => tgMirrorConfidence(row) === "medium").length;
+  const lowCount = rows24h.filter((row) => tgMirrorConfidence(row) === "low").length;
+  const unknownCount = rows24h.filter((row) => tgMirrorConfidence(row) === "unknown").length;
+  const channelCounts = new Map<string, number>();
+  for (const row of rows24h) {
+    const channel = tgMirrorChannel(row);
+    channelCounts.set(channel, (channelCounts.get(channel) ?? 0) + 1);
+  }
+  const latestRow =
+    newestFirst(rows24h, (row) => tgMirrorTimestampMs(row) ?? 0)[0] ?? null;
+
+  return {
+    windowHours: ADMIN_OBSERVABILITY_WINDOW_HOURS,
+    totalObserved,
+    latestObservedAt: latestRow ? tgMirrorObservedAt(latestRow) : undefined,
+    high: ratioSummary(highCount, totalObserved),
+    medium: ratioSummary(mediumCount, totalObserved),
+    low: ratioSummary(lowCount, totalObserved),
+    unknown: ratioSummary(unknownCount, totalObserved),
+    channels: Array.from(channelCounts.entries())
+      .map(([channel, count]) => ({ channel, count }))
+      .sort((left, right) => {
+        if (right.count !== left.count) {
+          return right.count - left.count;
+        }
+        return left.channel.localeCompare(right.channel, "ko");
+      }),
+  };
+}
+
 function buildTelegramObservability(args: {
   subscriberRows: SubscriberRow[];
   channelHealthRows: OptionalSheetRow[];
@@ -2720,6 +2788,7 @@ async function buildAdminObservabilitySummary(args: {
   broadcastRows: OptionalSheetRow[];
   subscriberRows: SubscriberRow[];
   watchedAddressRows: WatchedAddressRow[];
+  tgWhaleEventRows: TgWhaleEventRow[];
   channelHealthRows: OptionalSheetRow[];
   systemLogRows: SystemLogRow[];
   latestBrief: DashboardBrief | null;
@@ -2732,6 +2801,9 @@ async function buildAdminObservabilitySummary(args: {
   const chainRollout = buildChainRolloutObservability({
     watchedAddressRows: args.watchedAddressRows,
     chainCoverage,
+  });
+  const tgMirror = buildTgMirrorObservability({
+    tgWhaleEventRows: args.tgWhaleEventRows,
   });
   const briefRows24h = rowsWithinWindow(args.briefLedgerRows, ["ts", "created_at", "updated_at"], sinceMs);
   const briefTotalRuns = briefRows24h.length;
@@ -2823,6 +2895,7 @@ async function buildAdminObservabilitySummary(args: {
     marketSources,
     chainCoverage,
     chainRollout,
+    tgMirror,
     telegram,
     render: args.render,
   };
@@ -2895,6 +2968,7 @@ export async function getDashboardData(options?: {
     broadcastRows: broadcastLogRows,
     subscriberRows: snapshot.subscribers,
     watchedAddressRows,
+    tgWhaleEventRows: snapshot.tg_whale_events,
     channelHealthRows,
     systemLogRows: snapshot.system_log,
     latestBrief: normalizedBrief,

@@ -262,6 +262,25 @@ function formatCount(value: number | null | undefined, suffix = "건"): string {
   return `${formatCompactCount(value)}${suffix}`;
 }
 
+function formatTgMirrorChannels(
+  channels: AdminObservabilitySummary["tgMirror"]["channels"],
+): string {
+  if (channels.length === 0) {
+    return "채널 기록 없음";
+  }
+  return channels
+    .slice(0, 4)
+    .map((entry) => `${entry.channel} ${formatCount(entry.count, "건")}`)
+    .join(" · ");
+}
+
+function tgMirrorTone(summary: AdminObservabilitySummary["tgMirror"]): AdminTone {
+  if (summary.totalObserved <= 0) {
+    return "warn";
+  }
+  return freshnessTone(summary.latestObservedAt, 30);
+}
+
 function formatChainRolloutFlag(
   entry: AdminObservabilitySummary["chainRollout"]["entries"][number],
 ): string {
@@ -461,12 +480,18 @@ function buildDataSection(data: NormalizedDashboard, rawData: DashboardData | nu
     {
       key: "tg-whale-events",
       label: "tg_whale_events",
-      source: "Listener",
-      status: freshnessStatus(data.listenerHealth.updatedAt, 30),
-      tone: freshnessTone(data.listenerHealth.updatedAt, 30),
-      count: "행 수 미제공",
-      observedAt: formatObservedTime(data.listenerHealth.updatedAt),
-      detail: data.listenerHealth.message,
+      source: summary ? "TG mirror" : "Listener",
+      status: freshnessStatus(summary?.tgMirror.latestObservedAt ?? data.listenerHealth.updatedAt, 30),
+      tone: summary
+        ? tgMirrorTone(summary.tgMirror)
+        : freshnessTone(data.listenerHealth.updatedAt, 30),
+      count: summary
+        ? `${formatCompactCount(summary.tgMirror.totalObserved)}건 / ${summary.tgMirror.windowHours}h`
+        : "행 수 미제공",
+      observedAt: formatObservedTime(summary?.tgMirror.latestObservedAt ?? data.listenerHealth.updatedAt),
+      detail: summary
+        ? `high ${formatCount(summary.tgMirror.high.count, "건")} · medium ${formatCount(summary.tgMirror.medium.count, "건")} · low ${formatCount(summary.tgMirror.low.count, "건")} · ${formatTgMirrorChannels(summary.tgMirror.channels)}`
+        : data.listenerHealth.message,
     },
     {
       key: "broadcast-log",
@@ -683,6 +708,20 @@ function buildWorkerInsights(summary: AdminObservabilitySummary | null): AdminIn
         `채널 멤버 ${summary.telegram.channelMemberCountLatest == null ? "기록 없음" : formatCompactCount(summary.telegram.channelMemberCountLatest)} · 24h 변화 ${formatSignedCount(summary.telegram.channelMemberDelta24h)}`,
       ],
       hint: `최근 channel_health ${formatObservedTime(summary.telegram.lastChannelHealthAt)} · 최근 발송 ${formatObservedTime(summary.telegram.lastBroadcastAt)}`,
+    },
+    {
+      key: "tg-mirror",
+      title: "TG mirror 외부 관측",
+      tone: tgMirrorTone(summary.tgMirror),
+      lines: [
+        `최근 ${summary.tgMirror.windowHours}h 외부 관측 ${formatCount(summary.tgMirror.totalObserved, "건")} · 최신 ${formatObservedTime(summary.tgMirror.latestObservedAt)}`,
+        `신뢰도 high ${formatCount(summary.tgMirror.high.count, "건")} · medium ${formatCount(summary.tgMirror.medium.count, "건")} · low ${formatCount(summary.tgMirror.low.count, "건")}${summary.tgMirror.unknown.count > 0 ? ` · unknown ${formatCount(summary.tgMirror.unknown.count, "건")}` : ""}`,
+        `외부 채널 ${formatTgMirrorChannels(summary.tgMirror.channels)}`,
+      ],
+      hint:
+        summary.tgMirror.totalObserved > 0
+          ? `lane 상태 ${freshnessStatus(summary.tgMirror.latestObservedAt, 30)} · 최근 관측 ${ageLabel(summary.tgMirror.latestObservedAt)}`
+          : "최근 window에서 tg_whale_events 외부 관측이 없습니다. Telethon listener와 외부 채널 미러 설정을 확인하세요.",
     },
     {
       key: "chain-coverage",
