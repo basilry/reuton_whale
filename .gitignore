@@ -25,4 +25,5 @@ apps/dashboard/.playwright/
 apps/dashboard/playwright/.cache/
 .dmux/
 .claude/worktrees/
+.claude/settings.local.json
 data/brief_logs/
