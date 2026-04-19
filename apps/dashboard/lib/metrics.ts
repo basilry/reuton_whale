@@ -27,10 +27,11 @@ import {
   persistCuratedWalletEnabled,
   toLegacyWatchlistEntries,
 } from "./curated-wallets";
-import { getDashboardEnv, getLiveUpdatesEnv, SHEETS_SCOPES } from "./env";
+import { getDashboardEnv, getLiveUpdatesEnv, getRenderEnvState, SHEETS_SCOPES } from "./env";
 import { getFearGreedData } from "./fear-greed";
 import { getLiveUpdateStatus } from "./live-updates";
 import { fetchLiveUpdateEvents } from "./live-updates.server";
+import { loadRenderObservability } from "./render";
 import {
   readDashboardSnapshot,
   readSheetRows,
@@ -38,6 +39,7 @@ import {
 import { buildWhaleStories, buildWhaleStoryCards } from "./whale-stories";
 import type {
   AdminMarketSourceObservability,
+  AdminRenderObservability,
   AdminObservabilitySummary,
   AdminLiveUpdateSectionObservability,
   AdminTelegramObservability,
@@ -50,6 +52,9 @@ import type {
   OpsServiceName,
   OpsServiceStatus,
   OpsSummary,
+  RenderApiError,
+  RenderServiceKey,
+  ServiceHealthRow,
   SourceFailureKind,
   SourceHealth,
   WhaleStory,
@@ -365,6 +370,126 @@ function rowValue(row: OptionalSheetRow | null | undefined, keys: string[]): str
   return "";
 }
 
+function parseServiceHealthStatus(value: string): ServiceHealthRow["status"] {
+  switch (value.trim().toLowerCase()) {
+    case "healthy":
+    case "ok":
+    case "live":
+      return "healthy";
+    case "degraded":
+    case "warn":
+    case "warning":
+    case "stale":
+      return "degraded";
+    case "waiting":
+    case "idle":
+      return "waiting";
+    case "down":
+    case "error":
+    case "failed":
+      return "down";
+    case "config_required":
+    case "missing_config":
+    case "auth_required":
+      return "config_required";
+    default:
+      return "unknown";
+  }
+}
+
+function parseServiceHealthRow(row: OptionalSheetRow | null | undefined): ServiceHealthRow | null {
+  if (!row) {
+    return null;
+  }
+
+  const ts = rowValue(row, ["ts", "updated_at", "created_at"]);
+  const service = rowValue(row, ["service", "service_name"]);
+  const component = rowValue(row, ["component", "name"]);
+
+  if (!ts && !service && !component) {
+    return null;
+  }
+
+  const processedCount = rowNumber(row, ["processed_count"]);
+  const lagSeconds = rowNumber(row, ["lag_seconds"]);
+  const durationMs = rowNumber(row, ["duration_ms"]);
+
+  return {
+    ts,
+    service,
+    component,
+    status: parseServiceHealthStatus(rowValue(row, ["status", "state"])),
+    heartbeatKey: rowValue(row, ["heartbeat_key"]) || undefined,
+    details: rowValue(row, ["details", "detail", "message"]) || undefined,
+    error: rowValue(row, ["error", "hint"]) || undefined,
+    instanceId: rowValue(row, ["instance_id"]) || undefined,
+    jobName: rowValue(row, ["job_name"]) || undefined,
+    lastSuccessAt: rowValue(row, ["last_success_at"]) || undefined,
+    lastFailureAt: rowValue(row, ["last_failure_at"]) || undefined,
+    ...(processedCount == null ? {} : { processedCount }),
+    ...(lagSeconds == null ? {} : { lagSeconds }),
+    ...(durationMs == null ? {} : { durationMs }),
+    sourceName: rowValue(row, ["source_name", "source", "origin"]) || undefined,
+  };
+}
+
+function serviceHealthAliases(row: ServiceHealthRow | null): string[] {
+  if (!row) {
+    return [];
+  }
+
+  const tokens = [
+    row.service,
+    row.component,
+    row.service && row.component ? `${row.service}.${row.component}` : "",
+    row.heartbeatKey,
+    row.jobName,
+    row.sourceName,
+  ];
+
+  return tokens
+    .map((value) => compactString(value).toLowerCase())
+    .filter(Boolean);
+}
+
+function describeServiceHealthMetrics(row: ServiceHealthRow | null): string | undefined {
+  if (!row) {
+    return undefined;
+  }
+
+  const segments: string[] = [];
+
+  if (row.lastSuccessAt) {
+    segments.push(`최근 성공: ${row.lastSuccessAt}`);
+  }
+
+  if (row.lastFailureAt) {
+    segments.push(`최근 실패: ${row.lastFailureAt}`);
+  }
+
+  if (row.processedCount != null) {
+    segments.push(`처리 ${row.processedCount}건`);
+  }
+
+  if (row.lagSeconds != null) {
+    segments.push(`지연 ${row.lagSeconds}s`);
+  }
+
+  if (row.durationMs != null) {
+    segments.push(`소요 ${row.durationMs}ms`);
+  }
+
+  if (row.instanceId) {
+    segments.push(`인스턴스 ${row.instanceId}`);
+  }
+
+  if (row.sourceName) {
+    segments.push(`소스 ${row.sourceName}`);
+  }
+
+  return segments.length > 0 ? segments.join(" · ") : undefined;
+}
+
 function latestSystemLog(rows: SystemLogRow[]): SystemLogRow | null {
   if (rows.length === 0) {
     return null;
@@ -438,10 +563,10 @@ function findServiceHealthOverride(
 ): OptionalSheetRow | null {
   const normalizedAliases = aliases.map((alias) => alias.toLowerCase());
   const candidates = rows.filter((row) => {
-    const name = rowValue(row, ["service", "service_name", "component", "name"]).toLowerCase();
-    return normalizedAliases.includes(name);
+    const parsed = parseServiceHealthRow(row);
+    return serviceHealthAliases(parsed).some((alias) => normalizedAliases.includes(alias));
   });
-  return latestOptionalRow(candidates, ["checked_at", "updated_at", "ts", "created_at"]);
+  return latestOptionalRow(candidates, ["last_success_at", "checked_at", "updated_at", "ts", "created_at"]);
 }
 
 function parseSourceFailureKind(errorMessage: string): SourceFailureKind | null {
@@ -937,7 +1062,23 @@ function withOptionalServiceOverride(
     return fallback;
   }
 
-  const updatedAt = rowValue(overrideRow, ["checked_at", "updated_at", "ts", "created_at"]);
+  const parsed = parseServiceHealthRow(overrideRow);
+  const updatedAt = latestTimestamp(
+    parsed?.lastSuccessAt,
+    parsed?.lastFailureAt,
+    parsed?.ts,
+    rowValue(overrideRow, ["checked_at", "updated_at", "created_at"]),
+  );
+  const metricsDetail = describeServiceHealthMetrics(parsed);
+  const summaryOverride =
+    rowValue(overrideRow, ["summary", "message", "detail"]) ||
+    parsed?.details ||
+    fallback.summary;
+  const detailSegments = [
+    rowValue(overrideRow, ["detail", "error", "hint"]) || parsed?.error || fallback.detail,
+    metricsDetail,
+  ].filter(Boolean);
+
   return {
     ...fallback,
     name,
@@ -946,10 +1087,220 @@ function withOptionalServiceOverride(
       rowValue(overrideRow, ["status", "state"]),
       fallback.status,
     ),
-    summary: rowValue(overrideRow, ["summary", "message", "detail"]) || fallback.summary,
-    detail: rowValue(overrideRow, ["detail", "error", "hint"]) || fallback.detail,
+    summary: summaryOverride,
+    detail: detailSegments.join(" · "),
     updatedAt: updatedAt || fallback.updatedAt,
-    source: rowValue(overrideRow, ["source", "origin"]) || fallback.source,
+    source:
+      rowValue(overrideRow, ["source", "origin"]) ||
+      parsed?.sourceName ||
+      fallback.source,
+  };
+}
+
+function renderApiErrorMessage(error: RenderApiError | undefined): string {
+  if (!error) {
+    return "Render API 상태를 아직 확인하지 못했습니다.";
+  }
+
+  switch (error.code) {
+    case "config_missing":
+      return `Render API 연동에 필요한 env가 누락되었습니다: ${error.missingEnv.join(", ")}`;
+    case "auth_failed":
+      return "Render API 인증에 실패했습니다. RENDER_API_KEY 만료 또는 삭제 가능성이 있습니다.";
+    case "forbidden":
+      return "Render API 권한이 부족합니다. key scope 또는 owner 접근 권한을 확인하세요.";
+    case "not_found":
+      return "Render 리소스를 찾지 못했습니다. 서비스 ID 또는 owner 연결을 확인하세요.";
+    case "bad_request":
+      return "Render API 요청 형식 오류가 발생했습니다. 서비스 식별자와 요청 파라미터를 확인하세요.";
+    case "rate_limited":
+      return error.retryAfterMs != null
+        ? `Render API rate limit에 도달했습니다. 약 ${Math.ceil(error.retryAfterMs / 1000)}초 후 재시도합니다.`
+        : "Render API rate limit에 도달했습니다. 잠시 후 다시 조회하세요.";
+    case "upstream":
+      return `Render API 상류 오류(${error.httpStatus})가 발생했습니다.`;
+    case "network":
+      return "Render API 네트워크 오류가 발생했습니다. 일시적 연결 문제일 수 있습니다.";
+    case "timeout":
+      return `Render API 응답이 ${error.afterMs}ms 안에 도착하지 않았습니다.`;
+    case "internal":
+      return "Render 통합 내부 오류가 발생했습니다. 서버 로그에서 상세 원인을 확인하세요.";
+    default:
+      return "Render API 상태를 아직 확인하지 못했습니다.";
+  }
+}
+
+function renderDeployStatusLabel(
+  status: AdminRenderObservability["deploys"][number]["status"] | undefined,
+): string | undefined {
+  switch (status) {
+    case "live":
+      return "배포 live";
+    case "deploying":
+      return "배포 진행 중";
+    case "failed":
+      return "배포 실패";
+    case "inactive":
+      return "배포 비활성";
+    default:
+      return undefined;
+  }
+}
+
+function renderServiceStatusLabel(
+  service: AdminRenderObservability["services"][number],
+): string {
+  switch (service.status.kind) {
+    case "live":
+      return "Render live";
+    case "deploying":
+      return "Render 배포 중";
+    case "failed":
+      return `Render 배포 실패 (${service.status.reason})`;
+    case "suspended":
+      return service.status.suspenders.length > 0
+        ? `Render suspended (${service.status.suspenders.join(", ")})`
+        : "Render suspended";
+    case "unknown":
+    default:
+      return "Render 상태 확인 필요";
+  }
+}
+
+function renderServiceStatusToOpsStatus(args: {
+  service: AdminRenderObservability["services"][number];
+  instances: AdminRenderObservability["instances"];
+  logs: AdminRenderObservability["logs"];
+}): OpsServiceStatus | null {
+  switch (args.service.status.kind) {
+    case "failed":
+    case "suspended":
+      return "down";
+    case "deploying":
+      return "degraded";
+    case "unknown":
+      return null;
+    case "live": {
+      const runningInstances = args.instances.filter((instance) => instance.state === "running");
+      const errorLogs = args.logs.filter((log) => log.level === "error");
+      if (args.service.type === "worker" && args.instances.length > 0 && runningInstances.length === 0) {
+        return "degraded";
+      }
+      if (errorLogs.length > 0) {
+        return "degraded";
+      }
+      return "healthy";
+    }
+    default:
+      return null;
+  }
+}
+
+function opsStatusPriority(status: OpsServiceStatus): number {
+  switch (status) {
+    case "healthy":
+      return 0;
+    case "waiting":
+      return 1;
+    case "degraded":
+      return 2;
+    case "config_required":
+      return 3;
+    case "down":
+      return 4;
+    default:
+      return 0;
+  }
+}
+
+function chooseMoreSevereStatus(
+  current: OpsServiceStatus,
+  candidate: OpsServiceStatus | null,
+): OpsServiceStatus {
+  if (!candidate) {
+    return current;
+  }
+
+  return opsStatusPriority(candidate) > opsStatusPriority(current) ? candidate : current;
+}
+
+function renderStatusLabelForOpsStatus(
+  status: OpsServiceStatus,
+  fallback: string,
+): string {
+  switch (status) {
+    case "down":
+      return fallback.includes("실패") || fallback.includes("suspended") ? fallback : "플랫폼 주의";
+    case "degraded":
+      return fallback.includes("배포") ? fallback : "플랫폼 주의";
+    default:
+      return fallback;
+  }
+}
+
+function mergeRenderServiceHealth(args: {
+  base: OpsServiceHealth;
+  render: AdminRenderObservability;
+  serviceKey: RenderServiceKey;
+}): OpsServiceHealth {
+  if (args.render.state !== "ready" && args.render.state !== "degraded") {
+    return args.base;
+  }
+
+  const service = args.render.services.find((item) => item.key === args.serviceKey);
+
+  if (!service) {
+    return args.base;
+  }
+
+  const relatedInstances = args.render.instances.filter((item) => item.serviceKey === args.serviceKey);
+  const relatedLogs = args.render.logs.filter((item) => item.serviceKey === args.serviceKey);
+  const platformStatus = renderServiceStatusToOpsStatus({
+    service,
+    instances: relatedInstances,
+    logs: relatedLogs,
+  });
+  const mergedStatus = chooseMoreSevereStatus(args.base.status, platformStatus);
+  const runningInstances = relatedInstances.filter((item) => item.state === "running").length;
+  const errorLogs = relatedLogs.filter((item) => item.level === "error").length;
+  const warnLogs = relatedLogs.filter((item) => item.level === "warn").length;
+  const detailSegments = [
+    args.base.detail,
+    renderServiceStatusLabel(service),
+    renderDeployStatusLabel(service.lastDeployStatus),
+    relatedInstances.length > 0
+      ? `인스턴스 ${relatedInstances.length}개 (running ${runningInstances})`
+      : undefined,
+    errorLogs > 0 ? `최근 ${args.render.logWindowMinutes}분 오류 ${errorLogs}건` : undefined,
+    warnLogs > 0 ? `warn ${warnLogs}건` : undefined,
+    service.lastDeployAt ? `최근 배포: ${service.lastDeployAt}` : undefined,
+    service.schedule ? `스케줄: ${service.schedule}` : undefined,
+  ].filter(Boolean);
+  const summary = [
+    args.base.summary,
+    renderServiceStatusLabel(service),
+    renderDeployStatusLabel(service.lastDeployStatus),
+    errorLogs > 0 ? `오류 로그 ${errorLogs}건` : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return {
+    ...args.base,
+    status: mergedStatus,
+    label:
+      mergedStatus !== args.base.status
+        ? renderStatusLabelForOpsStatus(mergedStatus, renderServiceStatusLabel(service))
+        : args.base.label,
+    summary,
+    detail: detailSegments.join(" · "),
+    updatedAt: latestTimestamp(
+      args.base.updatedAt,
+      service.updatedAt,
+      service.lastDeployAt,
+      args.render.lastLogAt,
+    ),
+    source: args.base.source ? `${args.base.source} + render` : "render",
   };
 }
 
@@ -1286,6 +1637,7 @@ function buildOperatorChecks(args: {
   sourceHealth: SourceHealth;
   services: Record<OpsServiceName, OpsServiceHealth>;
   curatedRegistryMeta: ReturnType<typeof getCuratedWalletRegistryMeta>;
+  render: AdminRenderObservability;
 }): OperatorCheck[] {
   const checks: OperatorCheck[] = [];
   const sheetId = envText("GOOGLE_SHEET_ID");
@@ -1296,6 +1648,7 @@ function buildOperatorChecks(args: {
     envText("ANTHROPIC_API_KEY") || envText("GEMINI_API_KEY") || envText("GROQ_API_KEY"),
   );
   const liveUpdatesEnv = getLiveUpdatesEnv();
+  const renderEnv = getRenderEnvState();
 
   checks.push({
     key: "google_sheets",
@@ -1365,6 +1718,27 @@ function buildOperatorChecks(args: {
           ? "WHALESCOPE_SSE_ENABLED는 켜져 있지만 WHALESCOPE_REDIS_REST_URL이 없어 /api/stream이 disabled 상태가 됩니다."
           : "WHALESCOPE_SSE_ENABLED는 켜져 있지만 WHALESCOPE_REDIS_REST_TOKEN이 없어 /api/stream이 disabled 상태가 됩니다."
       : "실시간 자동 새로고침이 비활성화되어 있어 배포 검증은 수동 새로고침 기준으로만 가능합니다.",
+  });
+  checks.push({
+    key: "render_platform",
+    label: "Render platform",
+    status: renderEnv.configured
+      ? args.render.state === "error" || args.render.state === "degraded"
+        ? "warn"
+        : "ok"
+      : "missing",
+    detail: !renderEnv.configured
+      ? `Render API env가 누락되었습니다: ${renderEnv.missingEnv.join(", ")}`
+      : args.render.state === "error"
+        ? renderApiErrorMessage(args.render.error)
+        : args.render.errors.length > 0
+          ? [
+              `Render 일부 엔드포인트가 degraded 상태입니다.`,
+              ...args.render.errors
+                .slice(0, 2)
+                .map((item) => `${item.endpoint}: ${renderApiErrorMessage(item.error)}`),
+            ].join(" ")
+          : `${args.render.services.length}개 Render 서비스와 최근 ${args.render.logWindowMinutes}분 플랫폼 로그를 관측 중입니다.`,
   });
   checks.push({
     key: "telegram_bot",
@@ -1582,19 +1956,19 @@ function buildLiveUpdateSections(args: {
   serviceHealthRows: OptionalSheetRow[];
   liveEventsBySection: Map<string, { ts: string; meta?: Record<string, string | number | boolean> }>;
 }): AdminLiveUpdateSectionObservability[] {
-  const latestStoriesHeartbeat = findServiceHealthOverride(args.serviceHealthRows, [
+  const latestStoriesHeartbeat = parseServiceHealthRow(findServiceHealthOverride(args.serviceHealthRows, [
     "pipeline.stories",
     "stories",
-  ]);
-  const latestWatchlistHeartbeat = findServiceHealthOverride(args.serviceHealthRows, [
+  ]));
+  const latestWatchlistHeartbeat = parseServiceHealthRow(findServiceHealthOverride(args.serviceHealthRows, [
     "pipeline.curated_balance",
     "curated_balance",
     "watchlist",
-  ]);
-  const latestBriefHeartbeat = findServiceHealthOverride(args.serviceHealthRows, [
+  ]));
+  const latestBriefHeartbeat = parseServiceHealthRow(findServiceHealthOverride(args.serviceHealthRows, [
     "pipeline.brief",
     "brief",
-  ]);
+  ]));
 
   const sections: Array<{
     section: AdminLiveUpdateSectionObservability["section"];
@@ -1608,11 +1982,13 @@ function buildLiveUpdateSections(args: {
       lastUpdatedAt: latestTimestamp(
         args.liveEventsBySection.get("brief")?.ts,
         args.latestBrief?.generatedAt,
-        rowValue(latestBriefHeartbeat, ["ts", "updated_at", "created_at"]),
+        latestBriefHeartbeat?.lastSuccessAt,
+        latestBriefHeartbeat?.ts,
       ),
       lastRevalidatedAt: latestTimestamp(
         eventMetaString(args.liveEventsBySection.get("brief"), "updatedAt"),
         args.latestBrief?.generatedAt,
+        latestBriefHeartbeat?.lastSuccessAt,
       ),
     },
     {
@@ -1634,12 +2010,14 @@ function buildLiveUpdateSections(args: {
       lastUpdatedAt:
         latestTimestamp(
           args.liveEventsBySection.get("watchlist")?.ts,
-          rowValue(latestWatchlistHeartbeat, ["ts", "updated_at", "created_at"]) || undefined,
+          latestWatchlistHeartbeat?.lastSuccessAt,
+          latestWatchlistHeartbeat?.ts,
         ) || undefined,
       lastRevalidatedAt:
         latestTimestamp(
           eventMetaString(args.liveEventsBySection.get("watchlist"), "updatedAt"),
-          rowValue(latestWatchlistHeartbeat, ["ts", "updated_at", "created_at"]) || undefined,
+          latestWatchlistHeartbeat?.lastSuccessAt,
+          latestWatchlistHeartbeat?.ts,
         ) || undefined,
     },
     {
@@ -1648,12 +2026,14 @@ function buildLiveUpdateSections(args: {
       lastUpdatedAt:
         latestTimestamp(
           args.liveEventsBySection.get("stories")?.ts,
-          rowValue(latestStoriesHeartbeat, ["ts", "updated_at", "created_at"]) || undefined,
+          latestStoriesHeartbeat?.lastSuccessAt,
+          latestStoriesHeartbeat?.ts,
         ) || undefined,
       lastRevalidatedAt:
         latestTimestamp(
           eventMetaString(args.liveEventsBySection.get("stories"), "updatedAt"),
-          rowValue(latestStoriesHeartbeat, ["ts", "updated_at", "created_at"]) || undefined,
+          latestStoriesHeartbeat?.lastSuccessAt,
+          latestStoriesHeartbeat?.ts,
         ) || undefined,
     },
   ];
@@ -1952,6 +2332,7 @@ async function buildAdminObservabilitySummary(args: {
   latestBrief: DashboardBrief | null;
   latestNewsRssLog: SystemLogRow | null;
   serviceHealthRows: OptionalSheetRow[];
+  render: AdminRenderObservability;
 }): Promise<AdminObservabilitySummary> {
   const sinceMs = Date.now() - ADMIN_OBSERVABILITY_WINDOW_MS;
   const briefRows24h = rowsWithinWindow(args.briefLedgerRows, ["ts", "created_at", "updated_at"], sinceMs);
@@ -2043,6 +2424,7 @@ async function buildAdminObservabilitySummary(args: {
     liveUpdates,
     marketSources,
     telegram,
+    render: args.render,
   };
 }
 
@@ -2063,6 +2445,7 @@ export async function getDashboardData(options?: {
     briefCostLedgerRows,
     broadcastLogRows,
     llmBudgetRows,
+    renderObservability,
   ] = await Promise.all([
     readDashboardSnapshot(),
     loadCuratedWalletEntriesWithMeta(),
@@ -2071,6 +2454,7 @@ export async function getDashboardData(options?: {
     readOptionalSheetRows("brief_cost_ledger"),
     readOptionalSheetRows("broadcast_log"),
     readOptionalSheetRows("llm_budget_log"),
+    loadRenderObservability(),
   ]);
   const curatedWallets = curatedWalletBundle.wallets;
   const curatedRegistryMeta = curatedWalletBundle.meta;
@@ -2113,6 +2497,7 @@ export async function getDashboardData(options?: {
     latestBrief: normalizedBrief,
     latestNewsRssLog,
     serviceHealthRows,
+    render: renderObservability,
   });
   const latestRunErrorCount = errorCountForRun(currentLatestRunRow);
   const latestRunStatus = currentLatestRun?.status ?? "unknown";
@@ -2128,6 +2513,7 @@ export async function getDashboardData(options?: {
     subscribers: snapshot.subscribers.length,
   };
   const dataSourceOverrideRow = findServiceHealthOverride(serviceHealthRows, ["data_source", "google_sheets", "sheets"]);
+  const dataSourceOverride = parseServiceHealthRow(dataSourceOverrideRow);
   const sourceHealthBase = buildSourceHealth({
     source: "google_sheets",
     generatedAt,
@@ -2138,7 +2524,9 @@ export async function getDashboardData(options?: {
     latestNewsRssRow: latestNewsRssLog,
     rowCounts,
   });
-  const dataSourceOverrideError = rowValue(dataSourceOverrideRow, ["error", "detail", "message"]);
+  const dataSourceOverrideError =
+    dataSourceOverride?.error ||
+    rowValue(dataSourceOverrideRow, ["error", "detail", "message"]);
   const sourceHealth: SourceHealth = {
     ...sourceHealthBase,
     failureKind: sourceHealthBase.failureKind ?? parseSourceFailureKind(dataSourceOverrideError),
@@ -2159,7 +2547,7 @@ export async function getDashboardData(options?: {
   const whaleStories = buildDashboardWhaleStories(dataShape, {
     wallets: curatedWallets,
   });
-  const serviceHealth: Record<OpsServiceName, OpsServiceHealth> = {
+  const baseServiceHealth: Record<OpsServiceName, OpsServiceHealth> = {
     pipeline: buildPipelineService({
       latestRun: currentLatestRun
         ? {
@@ -2194,10 +2582,29 @@ export async function getDashboardData(options?: {
       overrideRow: dataSourceOverrideRow,
     }),
   };
+  const serviceHealth: Record<OpsServiceName, OpsServiceHealth> = {
+    ...baseServiceHealth,
+    pipeline: mergeRenderServiceHealth({
+      base: baseServiceHealth.pipeline,
+      render: renderObservability,
+      serviceKey: "pipeline",
+    }),
+    listener: mergeRenderServiceHealth({
+      base: baseServiceHealth.listener,
+      render: renderObservability,
+      serviceKey: "listener",
+    }),
+    bot: mergeRenderServiceHealth({
+      base: baseServiceHealth.bot,
+      render: renderObservability,
+      serviceKey: "bot",
+    }),
+  };
   const operatorChecks = buildOperatorChecks({
     sourceHealth,
     services: serviceHealth,
     curatedRegistryMeta,
+    render: renderObservability,
   });
   const opsSummary = buildOpsSummary(serviceHealth);
 

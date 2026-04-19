@@ -174,6 +174,24 @@ export const CURATED_WALLET_BALANCES_HEADERS = [
   "updated_at",
 ] as const;
 
+export const SERVICE_HEALTH_V2_HEADERS = [
+  "ts",
+  "service",
+  "component",
+  "status",
+  "heartbeat_key",
+  "details",
+  "error",
+  "instance_id",
+  "job_name",
+  "last_success_at",
+  "last_failure_at",
+  "processed_count",
+  "lag_seconds",
+  "duration_ms",
+  "source_name",
+] as const;
+
 export interface TransactionRow {
   raw_response_hash: string;
   hash: string;
@@ -332,6 +350,24 @@ export interface SubscriberRow {
   updated_at: string;
   last_brief_at: string;
   status_changed_at: string;
+}
+
+export interface ServiceHealthSheetRow {
+  ts: string;
+  service: string;
+  component: string;
+  status: string;
+  heartbeat_key: string;
+  details: string;
+  error: string;
+  instance_id: string;
+  job_name: string;
+  last_success_at: string;
+  last_failure_at: string;
+  processed_count: string;
+  lag_seconds: string;
+  duration_ms: string;
+  source_name: string;
 }
 
 export interface SheetRowMap {

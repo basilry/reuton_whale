@@ -31,6 +31,33 @@ export interface LiveUpdatesEnv {
   restToken?: string;
 }
 
+export type RenderServiceEnvMap = {
+  pipeline: string;
+  listener: string;
+  bot: string;
+};
+
+export type RenderEnvKey =
+  | "RENDER_API_KEY"
+  | "RENDER_OWNER_ID"
+  | "RENDER_SERVICE_ID_PIPELINE"
+  | "RENDER_SERVICE_ID_LISTENER"
+  | "RENDER_SERVICE_ID_BOT";
+
+export interface RenderEnv {
+  apiKey: string;
+  ownerId: string;
+  serviceIds: RenderServiceEnvMap;
+}
+
+export interface RenderEnvState {
+  configured: boolean;
+  missingEnv: RenderEnvKey[];
+  apiKey?: string;
+  ownerId?: string;
+  serviceIds: Partial<RenderServiceEnvMap>;
+}
+
 type EnvMap = Record<string, string>;
 
 function missingEnvError(keys: string[]): DashboardConfigError {
@@ -231,6 +258,72 @@ export function getLiveUpdatesEnv(): LiveUpdatesEnv {
     configurationReason,
     restUrl: configured ? restUrl : undefined,
     restToken: configured ? restToken : undefined,
+  };
+}
+
+export function getRenderEnvState(): RenderEnvState {
+  const apiKey = readEnvValue("RENDER_API_KEY");
+  const ownerId = readEnvValue("RENDER_OWNER_ID");
+  const pipeline = readEnvValue("RENDER_SERVICE_ID_PIPELINE");
+  const listener = readEnvValue("RENDER_SERVICE_ID_LISTENER");
+  const bot = readEnvValue("RENDER_SERVICE_ID_BOT");
+  const missingEnv: RenderEnvKey[] = [];
+
+  if (!apiKey) {
+    missingEnv.push("RENDER_API_KEY");
+  }
+
+  if (!ownerId) {
+    missingEnv.push("RENDER_OWNER_ID");
+  }
+
+  if (!pipeline) {
+    missingEnv.push("RENDER_SERVICE_ID_PIPELINE");
+  }
+
+  if (!listener) {
+    missingEnv.push("RENDER_SERVICE_ID_LISTENER");
+  }
+
+  if (!bot) {
+    missingEnv.push("RENDER_SERVICE_ID_BOT");
+  }
+
+  return {
+    configured: missingEnv.length === 0,
+    missingEnv,
+    apiKey: apiKey || undefined,
+    ownerId: ownerId || undefined,
+    serviceIds: {
+      pipeline: pipeline || undefined,
+      listener: listener || undefined,
+      bot: bot || undefined,
+    },
+  };
+}
+
+export function getRenderEnv(): RenderEnv {
+  const state = getRenderEnvState();
+
+  if (
+    !state.configured ||
+    !state.apiKey ||
+    !state.ownerId ||
+    !state.serviceIds.pipeline ||
+    !state.serviceIds.listener ||
+    !state.serviceIds.bot
+  ) {
+    throw missingEnvError(state.missingEnv);
+  }
+
+  return {
+    apiKey: state.apiKey,
+    ownerId: state.ownerId,
+    serviceIds: {
+      pipeline: state.serviceIds.pipeline,
+      listener: state.serviceIds.listener,
+      bot: state.serviceIds.bot,
+    },
   };
 }
 

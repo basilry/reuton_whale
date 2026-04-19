@@ -109,12 +109,165 @@ export type AdminTelegramObservability = {
   lastBroadcastStatus?: string;
 };
 
+export type RenderServiceKey = "pipeline" | "listener" | "bot";
+
+export type RenderServiceType =
+  | "cron"
+  | "worker"
+  | "web"
+  | "private"
+  | "unknown";
+
+export type RenderDeployStatus =
+  | "live"
+  | "deploying"
+  | "failed"
+  | "inactive";
+
+export type RenderServiceStatus =
+  | { kind: "live" }
+  | { kind: "deploying"; deployId: string; startedAt: string }
+  | { kind: "failed"; deployId: string; reason: string }
+  | { kind: "suspended"; suspenders: string[] }
+  | { kind: "unknown" };
+
+export type AdminRenderService = {
+  key?: RenderServiceKey;
+  id: string;
+  name: string;
+  type: RenderServiceType;
+  status: RenderServiceStatus;
+  lastDeployAt?: string;
+  lastDeployStatus?: RenderDeployStatus;
+  lastDeployId?: string;
+  schedule?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type AdminRenderDeploy = {
+  serviceId: string;
+  serviceKey?: RenderServiceKey;
+  deployId: string;
+  status: RenderDeployStatus;
+  rawStatus: string;
+  commitSha?: string;
+  commitMessage?: string;
+  trigger?: string;
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  durationMs?: number;
+};
+
+export type RenderInstanceState =
+  | "starting"
+  | "running"
+  | "stopped"
+  | "failed"
+  | "succeeded"
+  | "unknown";
+
+export type AdminRenderInstance = {
+  serviceId: string;
+  serviceKey?: RenderServiceKey;
+  instanceId: string;
+  state: RenderInstanceState;
+  startedAt?: string;
+  finishedAt?: string;
+};
+
+export type RenderLogLevel =
+  | "debug"
+  | "info"
+  | "warn"
+  | "error"
+  | "unknown";
+
+export type RenderLogType = "app" | "build" | "system";
+
+export type AdminRenderLogLine = {
+  serviceId: string;
+  serviceKey?: RenderServiceKey;
+  serviceName: string;
+  timestamp: string;
+  level: RenderLogLevel;
+  message: string;
+  instanceId?: string;
+  type?: RenderLogType;
+};
+
+export type RenderApiError =
+  | { code: "config_missing"; missingEnv: string[] }
+  | { code: "auth_failed" }
+  | { code: "forbidden" }
+  | { code: "not_found"; resource: string }
+  | { code: "bad_request"; detail: string }
+  | { code: "rate_limited"; retryAfterMs?: number }
+  | { code: "upstream"; httpStatus: number }
+  | { code: "network"; cause: string }
+  | { code: "timeout"; afterMs: number }
+  | { code: "internal"; errId: string };
+
+export type AdminRenderEndpoint = "services" | "deploys" | "instances" | "logs";
+
+export type AdminRenderEndpointError = {
+  endpoint: AdminRenderEndpoint;
+  serviceId?: string;
+  serviceKey?: RenderServiceKey;
+  error: RenderApiError;
+};
+
+export type AdminRenderObservability = {
+  provider: "render";
+  state: "ready" | "disabled" | "degraded" | "error";
+  enabled: boolean;
+  configured: boolean;
+  missingEnv: string[];
+  fetchedAt?: string;
+  lastLogAt?: string;
+  logWindowMinutes: number;
+  services: AdminRenderService[];
+  deploys: AdminRenderDeploy[];
+  instances: AdminRenderInstance[];
+  logs: AdminRenderLogLine[];
+  error?: RenderApiError;
+  errors: AdminRenderEndpointError[];
+};
+
 export type AdminObservabilitySummary = {
   brief: AdminBriefObservability;
   periodic: AdminBroadcastObservability;
   liveUpdates: AdminLiveUpdatesObservability;
   marketSources: AdminMarketSourceObservability[];
   telegram: AdminTelegramObservability;
+  render: AdminRenderObservability;
+};
+
+export type ServiceHealthStatus =
+  | "healthy"
+  | "degraded"
+  | "waiting"
+  | "down"
+  | "config_required"
+  | "unknown";
+
+export type ServiceHealthRow = {
+  ts: string;
+  service: string;
+  component: string;
+  status: ServiceHealthStatus;
+  heartbeatKey?: string;
+  details?: string;
+  error?: string;
+  instanceId?: string;
+  jobName?: string;
+  lastSuccessAt?: string;
+  lastFailureAt?: string;
+  processedCount?: number;
+  lagSeconds?: number;
+  durationMs?: number;
+  sourceName?: string;
 };
 
 export type SourceFailureKind =
