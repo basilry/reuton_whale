@@ -9,9 +9,14 @@ import styles from "./admin-session-panel.module.css";
 type AdminSessionPanelProps = {
   message?: string;
   mode: "locked" | "login" | "session";
+  logoutDisabled?: boolean;
 };
 
-export function AdminSessionPanel({ message, mode }: AdminSessionPanelProps) {
+export function AdminSessionPanel({
+  message,
+  mode,
+  logoutDisabled = false,
+}: AdminSessionPanelProps) {
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -91,10 +96,11 @@ export function AdminSessionPanel({ message, mode }: AdminSessionPanelProps) {
           <button
             className={styles.secondaryButton}
             type="button"
-            onClick={() => void syncSession("logout")}
-            disabled={busy}
+            onClick={logoutDisabled ? undefined : () => void syncSession("logout")}
+            disabled={busy || logoutDisabled}
+            aria-disabled={busy || logoutDisabled}
           >
-            {busy ? "처리 중..." : "로그아웃"}
+            {busy ? "처리 중..." : logoutDisabled ? "로그아웃 비활성화" : "로그아웃"}
           </button>
         </div>
         <p className={styles.copy}>

@@ -9,6 +9,7 @@ type AuthResult = {
   authorized: boolean;
   passwordConfigured: boolean;
   productionLocked: boolean;
+  publicPreview: boolean;
 };
 
 type DashboardAuthInput = {
@@ -21,6 +22,14 @@ type DashboardAuthInput = {
 function getDashboardPassword(): string | undefined {
   const value = process.env.DASHBOARD_PASSWORD?.trim();
   return value ? value : undefined;
+}
+
+function isPublicAdminPreviewEnabled(): boolean {
+  const raw = process.env.WHALESCOPE_PUBLIC_ADMIN_PREVIEW?.trim().toLowerCase();
+  if (!raw) {
+    return true;
+  }
+  return ["1", "true", "yes", "on"].includes(raw);
 }
 
 function extractBearerPassword(headerValue: string | null): string | undefined {
@@ -134,6 +143,15 @@ export function verifyDashboardSessionToken(
 }
 
 export function getDashboardAuthResult(input: DashboardAuthInput): AuthResult {
+  if (isPublicAdminPreviewEnabled()) {
+    return {
+      authorized: true,
+      passwordConfigured: isDashboardPasswordConfigured(),
+      productionLocked: false,
+      publicPreview: true,
+    };
+  }
+
   const expectedPassword = getDashboardPassword();
 
   if (!expectedPassword) {
@@ -142,6 +160,7 @@ export function getDashboardAuthResult(input: DashboardAuthInput): AuthResult {
         authorized: false,
         passwordConfigured: false,
         productionLocked: true,
+        publicPreview: false,
       };
     }
 
@@ -149,6 +168,7 @@ export function getDashboardAuthResult(input: DashboardAuthInput): AuthResult {
       authorized: true,
       passwordConfigured: false,
       productionLocked: false,
+      publicPreview: false,
     };
   }
 
@@ -164,6 +184,7 @@ export function getDashboardAuthResult(input: DashboardAuthInput): AuthResult {
       timingSafePasswordEquals(expectedPassword, suppliedPassword) || sessionAuthorized,
     passwordConfigured: true,
     productionLocked: false,
+    publicPreview: false,
   };
 }
 
@@ -172,6 +193,10 @@ export function getDashboardSessionAuthState(sessionCookie: string | null | unde
 }
 
 export function requireDashboardAuth(request: Request): NextResponse | null {
+  if (isPublicAdminPreviewEnabled()) {
+    return null;
+  }
+
   const { authorized, passwordConfigured, productionLocked } = getDashboardAuthResult({
     authorization: request.headers.get("authorization"),
     headerPassword: request.headers.get("x-dashboard-password"),
