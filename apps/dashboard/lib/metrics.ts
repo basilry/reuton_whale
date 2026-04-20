@@ -3012,15 +3012,13 @@ export async function getDashboardData(options?: {
   const latestRunErrorCount = errorCountForRun(currentLatestRunRow);
   const latestRunStatus = currentLatestRun?.status ?? "unknown";
   const latestRunUpdatedAt = currentLatestRun?.finished_at || currentLatestRun?.started_at || undefined;
-  const transactionUpdatedAt = latestTimestampFromIterable(
-    snapshot.transactions.map((row) => row.created_at || row.timestamp),
-  );
+  const transactionUpdatedAt = snapshot.transactionsLatestAt ?? undefined;
   const signalUpdatedAt = latestTimestampFromIterable(
     snapshot.signals.map((row) => row.created_at),
   );
   const briefUpdatedAt = currentLatestBrief?.created_at || currentLatestBrief?.date || undefined;
   const rowCounts: RowCounts = {
-    transactions: snapshot.transactions.length,
+    transactions: snapshot.transactionsTotal,
     daily_brief: snapshot.daily_brief.length,
     signals: snapshot.signals.length,
     system_log: snapshot.system_log.length,
@@ -3169,7 +3167,7 @@ export async function getDashboardData(options?: {
     opsSummary,
     systemLogs: normalizeSystemLogRows(systemLogs),
     metrics: {
-      transactionCount: snapshot.transactions.length,
+      transactionCount: snapshot.transactionsTotal,
       signalCount: snapshot.signals.length,
       dailyBriefCount: snapshot.daily_brief.length,
       subscriberCount: snapshot.subscribers.length,

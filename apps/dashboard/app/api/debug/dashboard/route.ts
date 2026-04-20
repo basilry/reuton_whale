@@ -141,7 +141,8 @@ export async function GET(request: Request) {
     return {
       failedTabs: result.failedTabs,
       rowCounts: {
-        transactions: result.snapshot.transactions.length,
+        transactions: result.snapshot.transactionsTotal,
+        transactionsLoaded: result.snapshot.transactions.length,
         daily_brief: result.snapshot.daily_brief.length,
         signals: result.snapshot.signals.length,
         system_log: result.snapshot.system_log.length,
