@@ -34,14 +34,15 @@ async function timed<T>(label: string, fn: () => Promise<T>) {
 }
 
 export async function GET(request: Request) {
-  if (!tokenMatches(request)) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
-
-  const client = getSheetsReadClient();
-
   const url = new URL(request.url);
   const mode = url.searchParams.get("mode") ?? "full";
+
+  // mode=env / redisPing는 boolean/status-only라 인증 불필요.
+  // 그 외 모드는 DASHBOARD_PASSWORD 필요.
+  const publicModes = new Set(["env", "redisPing"]);
+  if (!publicModes.has(mode) && !tokenMatches(request)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
 
   if (mode === "env") {
     const present = (key: string) => {
@@ -105,6 +106,8 @@ export async function GET(request: Request) {
     });
     return NextResponse.json(result, { status: 200, headers: { "Cache-Control": "no-store" } });
   }
+
+  const client = getSheetsReadClient();
 
   if (mode === "getDashboardData") {
     const result = await timed("getDashboardData", async () => {
