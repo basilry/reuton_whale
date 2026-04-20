@@ -27,6 +27,19 @@ const SHEETS_WRITE_SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets",
 ] as const;
 
+// Google Sheets API quota: 60 reads/min per user. Cache aggressively so a
+// single dashboard page load doesn't consume the entire quota.
+const SHEET_CACHE_TTL_MS = 45_000;
+const SHEET_STALE_TTL_MS = 10 * 60_000;
+
+type TabCacheEntry = { at: number; rows: unknown[] };
+const tabCache = new Map<SheetTabName, TabCacheEntry>();
+const tabInflight = new Map<SheetTabName, Promise<unknown[]>>();
+
+type BatchCacheEntry = { at: number; snapshot: DashboardSheetSnapshot };
+let batchCache: BatchCacheEntry | null = null;
+let batchInflight: Promise<DashboardSheetSnapshot> | null = null;
+
 type SheetValuesResponse = {
   spreadsheetId?: string;
   valueRanges?: Array<{
@@ -145,12 +158,37 @@ class SheetsReadClient {
   }
 
   async readTab<T extends SheetTabName>(tab: T): Promise<SheetRowMap[T][]> {
-    const url = new URL(`${SHEETS_API_BASE}/${this.sheetId}/values/${encodeURIComponent(this.rangeFor(tab))}`);
-    url.searchParams.set("majorDimension", "ROWS");
-    url.searchParams.set("valueRenderOption", "FORMATTED_VALUE");
+    const now = Date.now();
+    const cached = tabCache.get(tab);
+    if (cached && now - cached.at < SHEET_CACHE_TTL_MS) {
+      return cached.rows as SheetRowMap[T][];
+    }
 
-    const payload = await this.requestJson<SheetSingleValuesResponse>(url.toString());
-    return this.valuesToRows(tab, payload.values);
+    const existing = tabInflight.get(tab);
+    if (existing) {
+      return existing as Promise<SheetRowMap[T][]>;
+    }
+
+    const promise = (async () => {
+      try {
+        const url = new URL(`${SHEETS_API_BASE}/${this.sheetId}/values/${encodeURIComponent(this.rangeFor(tab))}`);
+        url.searchParams.set("majorDimension", "ROWS");
+        url.searchParams.set("valueRenderOption", "FORMATTED_VALUE");
+        const payload = await this.requestJson<SheetSingleValuesResponse>(url.toString());
+        const rows = this.valuesToRows(tab, payload.values);
+        tabCache.set(tab, { at: Date.now(), rows });
+        return rows;
+      } catch (error) {
+        if (cached && now - cached.at < SHEET_STALE_TTL_MS) {
+          return cached.rows as SheetRowMap[T][];
+        }
+        throw error;
+      } finally {
+        tabInflight.delete(tab);
+      }
+    })();
+    tabInflight.set(tab, promise as Promise<unknown[]>);
+    return promise;
   }
 
   async readTabs<T extends readonly DashboardTabName[]>(
@@ -160,23 +198,68 @@ class SheetsReadClient {
       return {} as { [K in T[number]]: SheetRowMap[K][] };
     }
 
-    const url = new URL(`${SHEETS_API_BASE}/${this.sheetId}/values:batchGet`);
-    for (const tab of tabs) {
-      url.searchParams.append("ranges", this.rangeFor(tab));
+    const isDashboardBatch =
+      tabs.length === DASHBOARD_TABS.length &&
+      tabs.every((tab, index) => tab === DASHBOARD_TABS[index]);
+    const now = Date.now();
+    if (isDashboardBatch) {
+      if (batchCache && now - batchCache.at < SHEET_CACHE_TTL_MS) {
+        return batchCache.snapshot as unknown as { [K in T[number]]: SheetRowMap[K][] };
+      }
+      if (batchInflight) {
+        return batchInflight as unknown as Promise<{ [K in T[number]]: SheetRowMap[K][] }>;
+      }
     }
-    url.searchParams.set("majorDimension", "ROWS");
-    url.searchParams.set("valueRenderOption", "FORMATTED_VALUE");
 
-    const payload = await this.requestJson<SheetValuesResponse>(url.toString());
-    const valueRanges = payload.valueRanges ?? [];
+    const run = async (): Promise<{ [K in T[number]]: SheetRowMap[K][] }> => {
+      const url = new URL(`${SHEETS_API_BASE}/${this.sheetId}/values:batchGet`);
+      for (const tab of tabs) {
+        url.searchParams.append("ranges", this.rangeFor(tab));
+      }
+      url.searchParams.set("majorDimension", "ROWS");
+      url.searchParams.set("valueRenderOption", "FORMATTED_VALUE");
 
-    const result = {} as { [K in T[number]]: SheetRowMap[K][] };
-    for (let index = 0; index < tabs.length; index += 1) {
-      const tab = tabs[index];
-      const typedTab = tab as T[number];
-      result[typedTab] = this.valuesToRows(typedTab, valueRanges[index]?.values);
+      const payload = await this.requestJson<SheetValuesResponse>(url.toString());
+      const valueRanges = payload.valueRanges ?? [];
+
+      const result = {} as { [K in T[number]]: SheetRowMap[K][] };
+      for (let index = 0; index < tabs.length; index += 1) {
+        const tab = tabs[index];
+        const typedTab = tab as T[number];
+        const rows = this.valuesToRows(typedTab, valueRanges[index]?.values);
+        result[typedTab] = rows;
+        tabCache.set(tab, { at: Date.now(), rows });
+      }
+      return result;
+    };
+
+    if (!isDashboardBatch) {
+      return run();
     }
-    return result;
+
+    batchInflight = (async () => {
+      try {
+        const result = await run();
+        const snapshot: DashboardSheetSnapshot = {
+          transactions: (result as unknown as DashboardSheetSnapshot).transactions,
+          daily_brief: (result as unknown as DashboardSheetSnapshot).daily_brief,
+          signals: (result as unknown as DashboardSheetSnapshot).signals,
+          system_log: (result as unknown as DashboardSheetSnapshot).system_log,
+          subscribers: (result as unknown as DashboardSheetSnapshot).subscribers,
+          tg_whale_events: (result as unknown as DashboardSheetSnapshot).tg_whale_events,
+        };
+        batchCache = { at: Date.now(), snapshot };
+        return snapshot;
+      } catch (error) {
+        if (batchCache && now - batchCache.at < SHEET_STALE_TTL_MS) {
+          return batchCache.snapshot;
+        }
+        throw error;
+      } finally {
+        batchInflight = null;
+      }
+    })();
+    return batchInflight as unknown as Promise<{ [K in T[number]]: SheetRowMap[K][] }>;
   }
 
   async listRows<T extends SheetTabName>(
