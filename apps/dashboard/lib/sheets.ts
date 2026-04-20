@@ -36,9 +36,36 @@ const SHEETS_WRITE_SCOPES = [
 
 // Google Sheets API quota: 60 reads/min per user. Cache aggressively so a
 // single dashboard page load doesn't consume the entire quota.
-const SHEET_CACHE_TTL_MS = 45_000;
-const SHEET_STALE_TTL_MS = 10 * 60_000;
-const SHEET_CACHE_TTL_SECONDS = Math.ceil(SHEET_CACHE_TTL_MS / 1000);
+// Tab hotness tiers: hot tabs refresh frequently (live signals/whale events),
+// warm tabs change a few times per hour (briefs, news), cold tabs are
+// reference data that changes maybe daily.
+const HOT_TTL_MS = 45_000;          // 45s — live streams
+const WARM_TTL_MS = 120_000;        // 2m — briefs / news / aggregates
+const COLD_TTL_MS = 10 * 60_000;    // 10m — config / reference lists
+const SHEET_STALE_TTL_MS = 15 * 60_000;
+
+const TAB_TTLS: Record<SheetTabName, number> = {
+  transactions:             HOT_TTL_MS,
+  signals:                  HOT_TTL_MS,
+  tg_whale_events:          HOT_TTL_MS,
+  daily_brief:              WARM_TTL_MS,
+  system_log:               WARM_TTL_MS,
+  subscribers:              WARM_TTL_MS,
+  news_feed:                WARM_TTL_MS,
+  curated_wallet_balances:  WARM_TTL_MS,
+  curated_wallets:          COLD_TTL_MS,
+  watched_addresses:        COLD_TTL_MS,
+  wallet_aliases:           COLD_TTL_MS,
+  watchlist_overrides:      COLD_TTL_MS,
+};
+
+const tabTtlMs = (tab: SheetTabName) => TAB_TTLS[tab] ?? WARM_TTL_MS;
+const tabTtlSeconds = (tab: SheetTabName) => Math.ceil(tabTtlMs(tab) / 1000);
+
+// Batch aggregate contains hot tabs (signals, transactions) so we keep the
+// batch cache at hot cadence to avoid serving stale signals.
+const BATCH_CACHE_TTL_MS = HOT_TTL_MS;
+const BATCH_CACHE_TTL_SECONDS = Math.ceil(BATCH_CACHE_TTL_MS / 1000);
 const TRANSACTIONS_RECENT_LIMIT = 200;
 
 type TabCacheEntry = { at: number; rows: unknown[] };
@@ -187,8 +214,9 @@ class SheetsReadClient {
 
   async readTab<T extends SheetTabName>(tab: T): Promise<SheetRowMap[T][]> {
     const now = Date.now();
+    const ttl = tabTtlMs(tab);
     const cached = tabCache.get(tab);
-    if (cached && now - cached.at < SHEET_CACHE_TTL_MS) {
+    if (cached && now - cached.at < ttl) {
       return cached.rows as SheetRowMap[T][];
     }
 
@@ -212,7 +240,7 @@ class SheetsReadClient {
         const payload = await this.requestJson<SheetSingleValuesResponse>(url.toString());
         const rows = this.valuesToRows(tab, payload.values);
         tabCache.set(tab, { at: Date.now(), rows });
-        void redisCacheSet(l2Key, rows, SHEET_CACHE_TTL_SECONDS);
+        void redisCacheSet(l2Key, rows, tabTtlSeconds(tab));
         return rows;
       } catch (error) {
         if (cached && now - cached.at < SHEET_STALE_TTL_MS) {
@@ -309,7 +337,7 @@ class SheetsReadClient {
 
   async readDashboardAggregate(): Promise<DashboardSheetSnapshot> {
     const now = Date.now();
-    if (batchCache && now - batchCache.at < SHEET_CACHE_TTL_MS) {
+    if (batchCache && now - batchCache.at < BATCH_CACHE_TTL_MS) {
       return batchCache.snapshot;
     }
     if (batchInflight) {
@@ -360,7 +388,7 @@ class SheetsReadClient {
         void redisCacheSet(
           SHEET_CACHE_BATCH_DASHBOARD_KEY,
           snapshot,
-          SHEET_CACHE_TTL_SECONDS,
+          BATCH_CACHE_TTL_SECONDS,
         );
         return snapshot;
       } catch (error) {
