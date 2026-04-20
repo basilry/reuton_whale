@@ -456,6 +456,7 @@ async function loadInsightState(): Promise<InsightState> {
       transactionLimit: 6,
       signalLimit: 6,
       systemLogLimit: 4,
+      includeAdminExtras: false,
     });
 
     return {
@@ -476,10 +477,12 @@ async function loadInsightState(): Promise<InsightState> {
 }
 
 export default async function InsightsPage() {
-  const dictionary = await getCurrentDashboardDictionary();
-  const language = await getCurrentDashboardLanguage();
-  const state = await loadInsightState();
-  const fearGreed = await getFearGreedData();
+  const [dictionary, language, state, fearGreed] = await Promise.all([
+    getCurrentDashboardDictionary(),
+    getCurrentDashboardLanguage(),
+    loadInsightState(),
+    getFearGreedData(),
+  ]);
   const data = state.data;
   const brief = buildBriefCopy(data, dictionary);
   const mood = buildMarketMood(data, dictionary, language);
