@@ -364,6 +364,63 @@ export async function readDashboardSnapshot(): Promise<DashboardSheetSnapshot> {
   };
 }
 
+export async function readDashboardSnapshotSafe(): Promise<{
+  snapshot: DashboardSheetSnapshot;
+  failedTabs: Array<{ tab: DashboardTabName; error: string }>;
+}> {
+  const client = getSheetsReadClient();
+  const failedTabs: Array<{ tab: DashboardTabName; error: string }> = [];
+
+  try {
+    const tabs = await client.readTabs(DASHBOARD_TABS);
+    return {
+      snapshot: {
+        transactions: tabs.transactions,
+        daily_brief: tabs.daily_brief,
+        signals: tabs.signals,
+        system_log: tabs.system_log,
+        subscribers: tabs.subscribers,
+        tg_whale_events: tabs.tg_whale_events,
+      },
+      failedTabs,
+    };
+  } catch (error) {
+    const batchMessage = error instanceof Error ? error.message : String(error);
+    console.error("[sheets/readDashboardSnapshotSafe] batchGet failed, falling back per-tab:", batchMessage);
+  }
+
+  const results = await Promise.all(
+    DASHBOARD_TABS.map(async (tab) => {
+      try {
+        const rows = await client.readTab(tab);
+        return { tab, rows };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[sheets/readDashboardSnapshotSafe] tab ${tab} failed: ${message}`);
+        failedTabs.push({ tab, error: message });
+        return { tab, rows: [] };
+      }
+    })
+  );
+
+  const byTab = Object.create(null) as Record<string, unknown[]>;
+  for (const { tab, rows } of results) {
+    byTab[tab] = rows;
+  }
+
+  return {
+    snapshot: {
+      transactions: (byTab.transactions ?? []) as DashboardSheetSnapshot["transactions"],
+      daily_brief: (byTab.daily_brief ?? []) as DashboardSheetSnapshot["daily_brief"],
+      signals: (byTab.signals ?? []) as DashboardSheetSnapshot["signals"],
+      system_log: (byTab.system_log ?? []) as DashboardSheetSnapshot["system_log"],
+      subscribers: (byTab.subscribers ?? []) as DashboardSheetSnapshot["subscribers"],
+      tg_whale_events: (byTab.tg_whale_events ?? []) as DashboardSheetSnapshot["tg_whale_events"],
+    },
+    failedTabs,
+  };
+}
+
 export async function upsertWatchlistOverride(
   row: Omit<WatchlistOverrideRow, "enabled"> & { enabled: boolean }
 ): Promise<void> {

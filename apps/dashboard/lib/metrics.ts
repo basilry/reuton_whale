@@ -35,6 +35,7 @@ import { fetchLiveUpdateEvents } from "./live-updates.server";
 import { loadRenderObservability } from "./render";
 import {
   readDashboardSnapshot,
+  readDashboardSnapshotSafe,
   readSheetRows,
 } from "./sheets";
 import { buildWhaleStories, buildWhaleStoryCards } from "./whale-stories";
@@ -2911,7 +2912,7 @@ export async function getDashboardData(options?: {
   const signalLimit = options?.signalLimit ?? 20;
   const systemLogLimit = options?.systemLogLimit ?? 25;
   const [
-    snapshot,
+    snapshotResult,
     curatedWalletBundle,
     serviceHealthRows,
     channelHealthRows,
@@ -2921,7 +2922,7 @@ export async function getDashboardData(options?: {
     watchedAddressRows,
     renderObservability,
   ] = await Promise.all([
-    readDashboardSnapshot(),
+    readDashboardSnapshotSafe(),
     loadCuratedWalletEntriesWithMeta(),
     readOptionalSheetRows("service_health"),
     readOptionalSheetRows("channel_health"),
@@ -2929,8 +2930,34 @@ export async function getDashboardData(options?: {
     readOptionalSheetRows("broadcast_log"),
     readOptionalSheetRows("llm_budget_log"),
     readWatchedAddressRows(),
-    loadRenderObservability(),
+    loadRenderObservability().catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[metrics/getDashboardData] loadRenderObservability failed:", message);
+      const fallback: AdminRenderObservability = {
+        provider: "render",
+        state: "error",
+        enabled: false,
+        configured: false,
+        missingEnv: [],
+        fetchedAt: new Date().toISOString(),
+        logWindowMinutes: 0,
+        services: [],
+        deploys: [],
+        instances: [],
+        logs: [],
+        error: { code: "internal", errId: message.slice(0, 120) },
+        errors: [],
+      };
+      return fallback;
+    }),
   ]);
+  const snapshot = snapshotResult.snapshot;
+  if (snapshotResult.failedTabs.length > 0) {
+    console.error(
+      "[metrics/getDashboardData] sheet tabs degraded:",
+      snapshotResult.failedTabs.map((item) => `${item.tab}: ${item.error}`).join(" | "),
+    );
+  }
   const curatedWallets = curatedWalletBundle.wallets;
   const curatedRegistryMeta = curatedWalletBundle.meta;
 
