@@ -39,6 +39,7 @@ const SHEETS_WRITE_SCOPES = [
 const SHEET_CACHE_TTL_MS = 45_000;
 const SHEET_STALE_TTL_MS = 10 * 60_000;
 const SHEET_CACHE_TTL_SECONDS = Math.ceil(SHEET_CACHE_TTL_MS / 1000);
+const TRANSACTIONS_RECENT_LIMIT = 200;
 
 type TabCacheEntry = { at: number; rows: unknown[] };
 const tabCache = new Map<SheetTabName, TabCacheEntry>();
@@ -63,8 +64,27 @@ type SheetSingleValuesResponse = {
   values?: string[][];
 };
 
+type SheetMetadataResponse = {
+  sheets?: Array<{
+    properties?: {
+      title?: string;
+      gridProperties?: {
+        rowCount?: number;
+      };
+    };
+  }>;
+};
+
+export type TransactionsAggregate = {
+  rows: TransactionRow[];
+  total: number;
+  latestAt: string | null;
+};
+
 export type DashboardSheetSnapshot = {
   transactions: TransactionRow[];
+  transactionsTotal: number;
+  transactionsLatestAt: string | null;
   daily_brief: DailyBriefRow[];
   signals: SignalRow[];
   system_log: SystemLogRow[];
@@ -207,56 +227,101 @@ class SheetsReadClient {
     return promise;
   }
 
-  async readTabs<T extends readonly DashboardTabName[]>(
+  async readTabs<T extends readonly SheetTabName[]>(
     tabs: T
   ): Promise<{ [K in T[number]]: SheetRowMap[K][] }> {
     if (tabs.length === 0) {
       return {} as { [K in T[number]]: SheetRowMap[K][] };
     }
 
-    const isDashboardBatch =
-      tabs.length === DASHBOARD_TABS.length &&
-      tabs.every((tab, index) => tab === DASHBOARD_TABS[index]);
-    const now = Date.now();
-    if (isDashboardBatch) {
-      if (batchCache && now - batchCache.at < SHEET_CACHE_TTL_MS) {
-        return batchCache.snapshot as unknown as { [K in T[number]]: SheetRowMap[K][] };
-      }
-      if (batchInflight) {
-        return batchInflight as unknown as Promise<{ [K in T[number]]: SheetRowMap[K][] }>;
+    const url = new URL(`${SHEETS_API_BASE}/${this.sheetId}/values:batchGet`);
+    for (const tab of tabs) {
+      url.searchParams.append("ranges", this.rangeFor(tab));
+    }
+    url.searchParams.set("majorDimension", "ROWS");
+    url.searchParams.set("valueRenderOption", "FORMATTED_VALUE");
+
+    const payload = await this.requestJson<SheetValuesResponse>(url.toString());
+    const valueRanges = payload.valueRanges ?? [];
+
+    const result = {} as { [K in T[number]]: SheetRowMap[K][] };
+    for (let index = 0; index < tabs.length; index += 1) {
+      const tab = tabs[index];
+      const typedTab = tab as T[number];
+      const rows = this.valuesToRows(typedTab, valueRanges[index]?.values);
+      result[typedTab] = rows;
+      tabCache.set(tab, { at: Date.now(), rows });
+    }
+    return result;
+  }
+
+  async readTransactionsAggregate(): Promise<TransactionsAggregate> {
+    const metaUrl = new URL(`${SHEETS_API_BASE}/${this.sheetId}`);
+    metaUrl.searchParams.set(
+      "fields",
+      "sheets.properties(title,gridProperties(rowCount))",
+    );
+    const meta = await this.requestJson<SheetMetadataResponse>(metaUrl.toString());
+    const txSheet = (meta.sheets ?? []).find(
+      (sheet) => sheet?.properties?.title === "transactions",
+    );
+    const rowCount = txSheet?.properties?.gridProperties?.rowCount ?? 0;
+    const total = Math.max(0, rowCount - 1);
+
+    let rows: TransactionRow[] = [];
+    if (rowCount > 1) {
+      const headers = TAB_HEADERS["transactions"];
+      const endCol = columnLabel(headers.length);
+      const start = Math.max(2, rowCount - TRANSACTIONS_RECENT_LIMIT + 1);
+      const range = `transactions!A${start}:${endCol}${rowCount}`;
+      const rangeUrl = new URL(
+        `${SHEETS_API_BASE}/${this.sheetId}/values/${encodeURIComponent(range)}`,
+      );
+      rangeUrl.searchParams.set("majorDimension", "ROWS");
+      rangeUrl.searchParams.set("valueRenderOption", "FORMATTED_VALUE");
+      const payload = await this.requestJson<SheetSingleValuesResponse>(
+        rangeUrl.toString(),
+      );
+      const values = payload.values ?? [];
+      rows = [];
+      for (const raw of values) {
+        const row = this.rowToObject("transactions", raw) as TransactionRow;
+        if (rowHasContent(row)) {
+          rows.push(row);
+        }
       }
     }
 
-    const run = async (): Promise<{ [K in T[number]]: SheetRowMap[K][] }> => {
-      const url = new URL(`${SHEETS_API_BASE}/${this.sheetId}/values:batchGet`);
-      for (const tab of tabs) {
-        url.searchParams.append("ranges", this.rangeFor(tab));
+    let latestAt: string | null = null;
+    let latestMs = -Infinity;
+    for (const row of rows) {
+      const ts = row.created_at || row.timestamp;
+      if (!ts) continue;
+      const parsed = parseDateTimeSafe(ts);
+      if (parsed != null && parsed > latestMs) {
+        latestMs = parsed;
+        latestAt = ts;
       }
-      url.searchParams.set("majorDimension", "ROWS");
-      url.searchParams.set("valueRenderOption", "FORMATTED_VALUE");
+    }
 
-      const payload = await this.requestJson<SheetValuesResponse>(url.toString());
-      const valueRanges = payload.valueRanges ?? [];
+    return { rows, total, latestAt };
+  }
 
-      const result = {} as { [K in T[number]]: SheetRowMap[K][] };
-      for (let index = 0; index < tabs.length; index += 1) {
-        const tab = tabs[index];
-        const typedTab = tab as T[number];
-        const rows = this.valuesToRows(typedTab, valueRanges[index]?.values);
-        result[typedTab] = rows;
-        tabCache.set(tab, { at: Date.now(), rows });
-      }
-      return result;
-    };
-
-    if (!isDashboardBatch) {
-      return run();
+  async readDashboardAggregate(): Promise<DashboardSheetSnapshot> {
+    const now = Date.now();
+    if (batchCache && now - batchCache.at < SHEET_CACHE_TTL_MS) {
+      return batchCache.snapshot;
+    }
+    if (batchInflight) {
+      return batchInflight;
     }
 
     batchInflight = (async () => {
       try {
-        const l2Cached = await redisCacheGet<DashboardSheetSnapshot>(SHEET_CACHE_BATCH_DASHBOARD_KEY);
-        if (l2Cached) {
+        const l2Cached = await redisCacheGet<DashboardSheetSnapshot>(
+          SHEET_CACHE_BATCH_DASHBOARD_KEY,
+        );
+        if (l2Cached && typeof l2Cached.transactionsTotal === "number") {
           const hydratedAt = Date.now();
           batchCache = { at: hydratedAt, snapshot: l2Cached };
           for (const tab of DASHBOARD_TABS) {
@@ -268,17 +333,35 @@ class SheetsReadClient {
           return l2Cached;
         }
 
-        const result = await run();
+        const nonTxTabs = DASHBOARD_TABS.filter(
+          (tab): tab is Exclude<DashboardTabName, "transactions"> =>
+            tab !== "transactions",
+        );
+        const [nonTxResult, txAggregate] = await Promise.all([
+          this.readTabs(nonTxTabs),
+          this.readTransactionsAggregate(),
+        ]);
+
         const snapshot: DashboardSheetSnapshot = {
-          transactions: (result as unknown as DashboardSheetSnapshot).transactions,
-          daily_brief: (result as unknown as DashboardSheetSnapshot).daily_brief,
-          signals: (result as unknown as DashboardSheetSnapshot).signals,
-          system_log: (result as unknown as DashboardSheetSnapshot).system_log,
-          subscribers: (result as unknown as DashboardSheetSnapshot).subscribers,
-          tg_whale_events: (result as unknown as DashboardSheetSnapshot).tg_whale_events,
+          transactions: txAggregate.rows,
+          transactionsTotal: txAggregate.total,
+          transactionsLatestAt: txAggregate.latestAt,
+          daily_brief: nonTxResult.daily_brief,
+          signals: nonTxResult.signals,
+          system_log: nonTxResult.system_log,
+          subscribers: nonTxResult.subscribers,
+          tg_whale_events: nonTxResult.tg_whale_events,
         };
         batchCache = { at: Date.now(), snapshot };
-        void redisCacheSet(SHEET_CACHE_BATCH_DASHBOARD_KEY, snapshot, SHEET_CACHE_TTL_SECONDS);
+        tabCache.set("transactions", {
+          at: Date.now(),
+          rows: snapshot.transactions,
+        });
+        void redisCacheSet(
+          SHEET_CACHE_BATCH_DASHBOARD_KEY,
+          snapshot,
+          SHEET_CACHE_TTL_SECONDS,
+        );
         return snapshot;
       } catch (error) {
         if (batchCache && now - batchCache.at < SHEET_STALE_TTL_MS) {
@@ -289,7 +372,7 @@ class SheetsReadClient {
         batchInflight = null;
       }
     })();
-    return batchInflight as unknown as Promise<{ [K in T[number]]: SheetRowMap[K][] }>;
+    return batchInflight;
   }
 
   async listRows<T extends SheetTabName>(
@@ -466,15 +549,7 @@ export async function listDailyBriefs(): Promise<DailyBriefRow[]> {
 }
 
 export async function readDashboardSnapshot(): Promise<DashboardSheetSnapshot> {
-  const tabs = await getSheetsReadClient().readTabs(DASHBOARD_TABS);
-  return {
-    transactions: tabs.transactions,
-    daily_brief: tabs.daily_brief,
-    signals: tabs.signals,
-    system_log: tabs.system_log,
-    subscribers: tabs.subscribers,
-    tg_whale_events: tabs.tg_whale_events,
-  };
+  return getSheetsReadClient().readDashboardAggregate();
 }
 
 export async function readDashboardSnapshotSafe(): Promise<{
@@ -485,25 +560,27 @@ export async function readDashboardSnapshotSafe(): Promise<{
   const failedTabs: Array<{ tab: DashboardTabName; error: string }> = [];
 
   try {
-    const tabs = await client.readTabs(DASHBOARD_TABS);
-    return {
-      snapshot: {
-        transactions: tabs.transactions,
-        daily_brief: tabs.daily_brief,
-        signals: tabs.signals,
-        system_log: tabs.system_log,
-        subscribers: tabs.subscribers,
-        tg_whale_events: tabs.tg_whale_events,
-      },
-      failedTabs,
-    };
+    const snapshot = await client.readDashboardAggregate();
+    return { snapshot, failedTabs };
   } catch (error) {
     const batchMessage = error instanceof Error ? error.message : String(error);
-    console.error("[sheets/readDashboardSnapshotSafe] batchGet failed, falling back per-tab:", batchMessage);
+    console.error("[sheets/readDashboardSnapshotSafe] aggregate failed, falling back per-tab:", batchMessage);
   }
 
+  let txAggregate: TransactionsAggregate = { rows: [], total: 0, latestAt: null };
+  try {
+    txAggregate = await client.readTransactionsAggregate();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[sheets/readDashboardSnapshotSafe] tab transactions failed: ${message}`);
+    failedTabs.push({ tab: "transactions", error: message });
+  }
+
+  const nonTxTabs = DASHBOARD_TABS.filter(
+    (tab): tab is Exclude<DashboardTabName, "transactions"> => tab !== "transactions",
+  );
   const results = await Promise.all(
-    DASHBOARD_TABS.map(async (tab) => {
+    nonTxTabs.map(async (tab) => {
       try {
         const rows = await client.readTab(tab);
         return { tab, rows };
@@ -523,7 +600,9 @@ export async function readDashboardSnapshotSafe(): Promise<{
 
   return {
     snapshot: {
-      transactions: (byTab.transactions ?? []) as DashboardSheetSnapshot["transactions"],
+      transactions: txAggregate.rows,
+      transactionsTotal: txAggregate.total,
+      transactionsLatestAt: txAggregate.latestAt,
       daily_brief: (byTab.daily_brief ?? []) as DashboardSheetSnapshot["daily_brief"],
       signals: (byTab.signals ?? []) as DashboardSheetSnapshot["signals"],
       system_log: (byTab.system_log ?? []) as DashboardSheetSnapshot["system_log"],
