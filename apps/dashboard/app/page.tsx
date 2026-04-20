@@ -10,7 +10,7 @@ import { NewsWidget } from "@/components/news-widget";
 import { SignalSection } from "@/components/signal-section";
 import { TelegramConnectModal } from "@/components/telegram-connect-modal";
 import { WhaleStoryPanel } from "@/components/whale-story-panel";
-import { cleanGeneratedBrief } from "@/lib/format";
+import { cleanGeneratedBrief, truncateBriefHeadline } from "@/lib/format";
 import { humanizeSourceFailureKind } from "@/lib/humanize";
 import { formatDashboardMessage } from "@/lib/i18n/get-dictionary";
 import { getCurrentDashboardDictionary, getCurrentDashboardLanguage } from "@/lib/i18n/server";
@@ -635,7 +635,7 @@ export default async function InsightsPage() {
                   <span className={styles.dateMuted}>{nextBriefLabel}</span>
                 </div>
                 <h2 className={styles.heroTitle}>{dictionary.home.briefTitle}</h2>
-                <p className={styles.heroSummary}>&ldquo;{brief.summary}&rdquo;</p>
+                <p className={styles.heroSummary}>&ldquo;{truncateBriefHeadline(brief.summary)}&rdquo;</p>
 
                 <div className={styles.analysisItems}>
                   {briefAnalysis.map((item, i) => (

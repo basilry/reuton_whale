@@ -250,6 +250,18 @@ export function cleanGeneratedBrief(value: string): string {
     .trim();
 }
 
+export function truncateBriefHeadline(value: string, maxChars = 110): string {
+  const clean = value.trim();
+  if (clean.length <= maxChars) return clean;
+  const boundaryMatch = clean.slice(0, maxChars).match(/^(.*?[.!?。！？])(\s|$)/);
+  if (boundaryMatch && boundaryMatch[1].length >= maxChars * 0.5) {
+    return boundaryMatch[1].trim();
+  }
+  const softBreak = clean.lastIndexOf(" ", maxChars);
+  const sliceEnd = softBreak > maxChars - 25 ? softBreak : maxChars;
+  return `${clean.slice(0, sliceEnd).trim()}…`;
+}
+
 export function rowHasContent(row: object): boolean {
   return Object.values(row as Record<string, unknown>).some((value) => compactString(value) !== "");
 }
