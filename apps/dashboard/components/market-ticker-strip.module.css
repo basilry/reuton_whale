@@ -387,6 +387,11 @@
     flex-direction: column;
     align-items: flex-start;
   }
+
+  .detailButton,
+  .mobileToggleButton {
+    min-height: 44px;
+  }
 }
 
 @media (max-width: 767px) {
