@@ -61,6 +61,7 @@ function formatPublishedAt(value: string, fallback: string, language: "ko" | "en
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    timeZone: "Asia/Seoul",
   }).format(date);
 }
 

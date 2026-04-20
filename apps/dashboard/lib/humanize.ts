@@ -77,7 +77,10 @@ export function formatTime(value: string, options?: Intl.DateTimeFormatOptions):
     return value || "Unknown";
   }
 
-  return new Intl.DateTimeFormat("ko-KR", options ?? { dateStyle: "medium", timeStyle: "short" }).format(date);
+  return new Intl.DateTimeFormat(
+    "ko-KR",
+    options ?? { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Seoul" },
+  ).format(date);
 }
 
 // NB5 fix: the old `if (!value)` branch classified a legitimate $0 as missing
