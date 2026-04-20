@@ -760,7 +760,7 @@ async function fetchUpbitTickerSnapshot(
   try {
     const markets = definitions.map((item) => item.upbitMarket).join(",");
     const response = await fetch(
-      `https://api.upbit.com/v1/ticker?markets=${encodeURIComponent(markets)}`,
+      `/api/proxy/upbit/ticker?markets=${encodeURIComponent(markets)}`,
       {
         method: "GET",
         cache: "no-store",
@@ -818,7 +818,7 @@ export async function fetchBitflyerTickerSnapshot(
 
       try {
         const response = await fetch(
-          `https://api.bitflyer.com/v1/ticker?product_code=${definition.bitflyerProductCode}`,
+          `/api/proxy/bitflyer/ticker?product_code=${definition.bitflyerProductCode}`,
           {
             method: "GET",
             cache: "no-store",
@@ -1024,8 +1024,8 @@ async function fetchUpbitChartPoints(
     });
     const baseUrl =
       config.upbitEndpoint === "days"
-        ? "https://api.upbit.com/v1/candles/days"
-        : `https://api.upbit.com/v1/candles/minutes/${config.upbitUnit}`;
+        ? "/api/proxy/upbit/candles/days"
+        : `/api/proxy/upbit/candles/minutes/${config.upbitUnit}`;
     const response = await fetch(`${baseUrl}?${params.toString()}`, {
       method: "GET",
       cache: "no-store",

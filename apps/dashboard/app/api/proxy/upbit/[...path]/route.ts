@@ -1,0 +1,35 @@
+import { NextResponse } from "next/server";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const ALLOWED_PATH_RE = /^(ticker|candles\/days|candles\/minutes\/(1|3|5|10|15|30|60|240))$/;
+
+export async function GET(
+  request: Request,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  const { path } = await context.params;
+  const joined = path.join("/");
+  if (!ALLOWED_PATH_RE.test(joined)) {
+    return NextResponse.json({ error: "path_not_allowed" }, { status: 400 });
+  }
+
+  const url = new URL(request.url);
+  const target = `https://api.upbit.com/v1/${joined}?${url.searchParams.toString()}`;
+
+  try {
+    const upstream = await fetch(target, { cache: "no-store" });
+    const body = await upstream.text();
+    return new NextResponse(body, {
+      status: upstream.status,
+      headers: {
+        "content-type": upstream.headers.get("content-type") ?? "application/json",
+        "cache-control": "public, max-age=5",
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "upstream_failed";
+    return NextResponse.json({ error: message }, { status: 502 });
+  }
+}

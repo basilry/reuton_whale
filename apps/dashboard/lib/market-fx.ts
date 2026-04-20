@@ -103,7 +103,7 @@ async function fetchUsdKrwFromOpenErApi(timeoutMs: number): Promise<UsdKrwFxQuot
 
 async function fetchUsdKrwFromUpbitUsdt(timeoutMs: number): Promise<UsdKrwFxQuote | null> {
   const payload = await fetchJsonWithTimeout<UpbitUsdtTickerResponse>(
-    "https://api.upbit.com/v1/ticker?markets=KRW-USDT",
+    "/api/proxy/upbit/ticker?markets=KRW-USDT",
     timeoutMs,
   );
   const row = Array.isArray(payload) ? payload[0] : null;
