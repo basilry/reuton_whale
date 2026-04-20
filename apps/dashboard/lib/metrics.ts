@@ -307,7 +307,9 @@ function envEnabled(name: string, fallback = false): boolean {
   return ["1", "true", "yes", "on"].includes(value);
 }
 
-function latestTimestamp(...values: Array<string | undefined | null>): string | undefined {
+function latestTimestampFromIterable(
+  values: Iterable<string | undefined | null>,
+): string | undefined {
   let latest: { value: string; time: number } | null = null;
   for (const value of values) {
     if (!value) {
@@ -322,6 +324,10 @@ function latestTimestamp(...values: Array<string | undefined | null>): string | 
     }
   }
   return latest?.value;
+}
+
+function latestTimestamp(...values: Array<string | undefined | null>): string | undefined {
+  return latestTimestampFromIterable(values);
 }
 
 function minutesSince(value: string | undefined, nowMs = Date.now()): number | null {
@@ -724,8 +730,8 @@ function buildChainRolloutObservability(args: {
       .map((chain) => canonicalWatchChain(chain))
       .filter(Boolean),
   );
-  const latestWatchedSeedAt = latestTimestamp(
-    ...args.watchedAddressRows
+  const latestWatchedSeedAt = latestTimestampFromIterable(
+    args.watchedAddressRows
       .map((row) => compactString(row.added_at) || undefined)
       .filter((value): value is string => Boolean(value)),
   );
@@ -2227,7 +2233,7 @@ function buildOpsSummary(
     headline,
     detail,
     impactedServices,
-    updatedAt: latestTimestamp(...entries.map((item) => item.updatedAt)),
+    updatedAt: latestTimestampFromIterable(entries.map((item) => item.updatedAt)),
   };
 }
 
@@ -2474,10 +2480,10 @@ async function buildLiveUpdatesObservability(args: {
     reason: status.reason,
     pollIntervalMs: status.pollIntervalMs,
     heartbeatIntervalMs: status.heartbeatIntervalMs,
-    latestActivityAt: latestTimestamp(
+    latestActivityAt: latestTimestampFromIterable([
       latestEvent?.ts,
       ...sections.map((section) => section.lastUpdatedAt),
-    ),
+    ]),
     lastEventId: latestEvent?.version,
     latestLatencyMs:
       latestEvent?.ts != null && parseDateTimeSafe(latestEvent.ts) != null
@@ -3006,8 +3012,12 @@ export async function getDashboardData(options?: {
   const latestRunErrorCount = errorCountForRun(currentLatestRunRow);
   const latestRunStatus = currentLatestRun?.status ?? "unknown";
   const latestRunUpdatedAt = currentLatestRun?.finished_at || currentLatestRun?.started_at || undefined;
-  const transactionUpdatedAt = latestTimestamp(...snapshot.transactions.map((row) => row.created_at || row.timestamp));
-  const signalUpdatedAt = latestTimestamp(...snapshot.signals.map((row) => row.created_at));
+  const transactionUpdatedAt = latestTimestampFromIterable(
+    snapshot.transactions.map((row) => row.created_at || row.timestamp),
+  );
+  const signalUpdatedAt = latestTimestampFromIterable(
+    snapshot.signals.map((row) => row.created_at),
+  );
   const briefUpdatedAt = currentLatestBrief?.created_at || currentLatestBrief?.date || undefined;
   const rowCounts: RowCounts = {
     transactions: snapshot.transactions.length,
