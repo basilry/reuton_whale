@@ -1,16 +1,19 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { formatStoryTimestamp } from "@/lib/story-time";
 import type { WhaleStory } from "@/lib/types";
 import styles from "./whale-story-detail-modal.module.css";
 
-const WhaleStoryDetailModal = dynamic(
-  () => import("./whale-story-detail-modal").then((mod) => mod.WhaleStoryDetailModal),
-  { ssr: false, loading: () => null },
-);
+const loadWhaleStoryDetailModal = () =>
+  import("./whale-story-detail-modal").then((mod) => mod.WhaleStoryDetailModal);
+
+const WhaleStoryDetailModal = dynamic(loadWhaleStoryDetailModal, {
+  ssr: false,
+  loading: () => null,
+});
 
 type WhaleStoryPanelProps = {
   stories: readonly WhaleStory[];
@@ -37,6 +40,22 @@ export function WhaleStoryPanel({
   const selectedStory = stories.find((story) => story.id === selectedId) ?? null;
   const visibleStories = stories.slice(0, 4);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || stories.length === 0) return;
+    const schedule =
+      (window as typeof window & { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback ??
+      ((cb: () => void) => window.setTimeout(cb, 1500));
+    const handle = schedule(() => {
+      loadWhaleStoryDetailModal().catch(() => undefined);
+    });
+    return () => {
+      const cancel =
+        (window as typeof window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback ??
+        window.clearTimeout;
+      cancel(handle as number);
+    };
+  }, [stories.length]);
+
   if (stories.length === 0) {
     return <p className={styles.emptyState}>{emptyMessage}</p>;
   }
@@ -58,6 +77,9 @@ export function WhaleStoryPanel({
               type="button"
               className={styles.storyButton}
               onClick={() => setSelectedId(story.id)}
+              onPointerEnter={() => loadWhaleStoryDetailModal().catch(() => undefined)}
+              onFocus={() => loadWhaleStoryDetailModal().catch(() => undefined)}
+              onTouchStart={() => loadWhaleStoryDetailModal().catch(() => undefined)}
             >
               <div className={styles.storyCard}>
                 <div className={styles.storyDot} data-tone={story.tone} />

@@ -2,16 +2,19 @@
 
 import dynamic from "next/dynamic";
 import type { CSSProperties } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { DashboardLanguage } from "@/lib/i18n/config";
 import { useDashboardI18n } from "@/lib/i18n/client";
 import type { CuratedWatchlistItem } from "@/lib/types";
 
-const CuratedWalletDetailModal = dynamic(
-  () => import("@/components/curated-wallet-detail-modal").then((mod) => mod.CuratedWalletDetailModal),
-  { ssr: false, loading: () => null },
-);
+const loadCuratedWalletDetailModal = () =>
+  import("@/components/curated-wallet-detail-modal").then((mod) => mod.CuratedWalletDetailModal);
+
+const CuratedWalletDetailModal = dynamic(loadCuratedWalletDetailModal, {
+  ssr: false,
+  loading: () => null,
+});
 
 type CuratedWatchlistPanelProps = {
   items: CuratedWatchlistItem[];
@@ -110,6 +113,22 @@ export function CuratedWatchlistPanel({
   const overflowItems = items.slice(collapsedCount);
   const selectedWalletKey = selectedItem?.entityId ?? selectedItem?.id ?? selectedItem?.address ?? null;
 
+  useEffect(() => {
+    if (typeof window === "undefined" || items.length === 0) return;
+    const schedule =
+      (window as typeof window & { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback ??
+      ((cb: () => void) => window.setTimeout(cb, 1500));
+    const handle = schedule(() => {
+      loadCuratedWalletDetailModal().catch(() => undefined);
+    });
+    return () => {
+      const cancel =
+        (window as typeof window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback ??
+        window.clearTimeout;
+      cancel(handle as number);
+    };
+  }, [items.length]);
+
   const copy = useMemo(
     () =>
       language === "ko"
@@ -138,6 +157,9 @@ export function CuratedWatchlistPanel({
             borderColor: isHighlight ? "var(--accent-strong, #0f6db5)" : "var(--line)",
           }}
           onClick={() => setSelectedItem(item)}
+          onPointerEnter={() => loadCuratedWalletDetailModal().catch(() => undefined)}
+          onFocus={() => loadCuratedWalletDetailModal().catch(() => undefined)}
+          onTouchStart={() => loadCuratedWalletDetailModal().catch(() => undefined)}
           aria-label={`${item.title} ${humanizeChain(item.chain, language)} ${copy.detailCta}`}
         >
           <div style={itemCopyStyle}>
