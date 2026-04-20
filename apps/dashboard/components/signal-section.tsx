@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import styles from "@/app/insights/insights.module.css";
 import type { DashboardLanguage } from "@/lib/i18n/config";
@@ -9,10 +9,13 @@ import { useDashboardI18n } from "@/lib/i18n/client";
 import { formatDashboardMessage } from "@/lib/i18n/get-dictionary";
 import { getSignalRuleDoc } from "@/lib/signal-rule-docs";
 
-const SignalDetailModal = dynamic(
-  () => import("./signal-detail-modal").then((mod) => mod.SignalDetailModal),
-  { ssr: false, loading: () => null },
-);
+const loadSignalDetailModal = () =>
+  import("./signal-detail-modal").then((mod) => mod.SignalDetailModal);
+
+const SignalDetailModal = dynamic(loadSignalDetailModal, {
+  ssr: false,
+  loading: () => null,
+});
 
 type SignalTone = "critical" | "watch" | "positive" | "neutral";
 
@@ -120,6 +123,22 @@ export function SignalSection({ initialLanguage, signals }: SignalSectionProps) 
     [activeSignalId, signals],
   );
 
+  useEffect(() => {
+    if (typeof window === "undefined" || signals.length === 0) return;
+    const schedule =
+      (window as typeof window & { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback ??
+      ((cb: () => void) => window.setTimeout(cb, 1500));
+    const handle = schedule(() => {
+      loadSignalDetailModal().catch(() => undefined);
+    });
+    return () => {
+      const cancel =
+        (window as typeof window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback ??
+        window.clearTimeout;
+      cancel(handle as number);
+    };
+  }, [signals.length]);
+
   const signalIcons: Record<SignalTone, string> = {
     critical: "trending_up",
     watch: "waves",
@@ -153,6 +172,9 @@ export function SignalSection({ initialLanguage, signals }: SignalSectionProps) 
                     type="button"
                     className={styles.signalCardLink}
                     onClick={() => setActiveSignalId(signalId)}
+                    onPointerEnter={() => loadSignalDetailModal().catch(() => undefined)}
+                    onFocus={() => loadSignalDetailModal().catch(() => undefined)}
+                    onTouchStart={() => loadSignalDetailModal().catch(() => undefined)}
                   >
                     {dictionary.signals.cardCtaOpenDetail} →
                   </button>

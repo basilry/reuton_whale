@@ -39,10 +39,13 @@ import dynamic from "next/dynamic";
 
 import { MarketMiniChart } from "./market-mini-chart";
 
-const MarketDetailChartModal = dynamic(
-  () => import("./market-detail-chart-modal").then((mod) => mod.MarketDetailChartModal),
-  { ssr: false, loading: () => null },
-);
+const loadMarketDetailChartModal = () =>
+  import("./market-detail-chart-modal").then((mod) => mod.MarketDetailChartModal);
+
+const MarketDetailChartModal = dynamic(loadMarketDetailChartModal, {
+  ssr: false,
+  loading: () => null,
+});
 import {
   MarketTickerSourceChips,
   type MarketTickerSourceChip,
@@ -1274,6 +1277,9 @@ export function MarketTickerStrip({
                         className={styles.detailButton}
                         aria-haspopup="dialog"
                         onClick={() => setSelectedItemId(item.id)}
+                        onPointerEnter={() => loadMarketDetailChartModal().catch(() => undefined)}
+                        onFocus={() => loadMarketDetailChartModal().catch(() => undefined)}
+                        onTouchStart={() => loadMarketDetailChartModal().catch(() => undefined)}
                       >
                         {copy.detailChart}
                       </button>
