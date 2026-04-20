@@ -91,6 +91,7 @@
   gap: var(--space-xs);
   overflow-x: auto;
   flex: 1;
+  min-width: 0;
   justify-content: center;
   scroll-snap-type: x mandatory;
   scroll-padding-inline: var(--space-md);
