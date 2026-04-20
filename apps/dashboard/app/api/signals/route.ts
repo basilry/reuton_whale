@@ -7,6 +7,7 @@ import { getSignalsData } from "@/lib/metrics";
 import { API_RATE_LIMIT, clientKey, rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
+export const preferredRegion = "icn1";
 export const revalidate = 60;
 
 export async function GET(request: Request) {
