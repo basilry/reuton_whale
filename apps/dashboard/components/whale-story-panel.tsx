@@ -1,11 +1,16 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useState } from "react";
 
 import { formatStoryTimestamp } from "@/lib/story-time";
 import type { WhaleStory } from "@/lib/types";
-import { WhaleStoryDetailModal } from "./whale-story-detail-modal";
 import styles from "./whale-story-detail-modal.module.css";
+
+const WhaleStoryDetailModal = dynamic(
+  () => import("./whale-story-detail-modal").then((mod) => mod.WhaleStoryDetailModal),
+  { ssr: false, loading: () => null },
+);
 
 type WhaleStoryPanelProps = {
   stories: readonly WhaleStory[];
