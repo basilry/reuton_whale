@@ -89,6 +89,9 @@ const CSP_CONNECT_SRC = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  experimental: {
+    optimizePackageImports: ["lightweight-charts", "lucide-react"],
+  },
   async redirects() {
     return [
       {
