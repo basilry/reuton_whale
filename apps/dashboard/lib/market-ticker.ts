@@ -504,12 +504,14 @@ function parseIsoTimestamp(value: string | undefined): number | null {
     return null;
   }
 
-  const parsed = Date.parse(value);
-  if (Number.isFinite(parsed)) {
-    return parsed;
-  }
-
-  return parseUtcDateString(value);
+  // Bitflyer returns naked ISO strings ("2026-04-20T14:45:08.947") with no
+  // timezone designator. Date.parse() treats those as LOCAL time per the
+  // ECMAScript spec, which shifts the moment by the user's UTC offset (e.g.
+  // -9h in KST) and falsely flags the source as "down".
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(value);
+  const normalized = hasTimezone ? value : `${value}Z`;
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function normalizeKrakenPairKey(value: string): string {
