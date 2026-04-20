@@ -16,7 +16,7 @@ export const koDictionary = {
     telegram: "텔레그램",
   },
   home: {
-    title: "시장 인텔리전스",
+    title: "WhaleScope : 고래의 흐름으로 읽는 시장 인텔리전스",
     subtitle: "전략적 통찰을 위한 연구 중심 큐레이션",
     marketTickerEyebrow: "공개 시장 피드",
     marketTickerTitle: "실시간 시장 티커",
@@ -108,6 +108,9 @@ export const koDictionary = {
       "WhaleScope는 대규모 블록체인 이동에 대한 통찰을 제공하는 AI 기반 큐레이션 서비스입니다. 우리는 자연어 해석을 통해 정교한 데이터를 대중화하는 것을 목표로 합니다.",
     footerWarning:
       "WhaleScope는 투자 조언을 제공하지 않습니다. 암호화폐 투자는 상당한 위험을 수반합니다. 손실을 감당할 수 있는 금액 내에서만 거래해야 합니다.",
+    footerCompanyLabel: "운영사",
+    footerCompanyName: "북해 (Bukhae)",
+    footerCopyright: "© {year} 뤼튼테크놀로지스 (Wrtn Technologies). 본 저작물에 대한 모든 권리는 뤼튼테크놀로지스에 귀속됩니다.",
     telegramAudienceTemplate: "현재 구독자 수는 {count}명입니다.",
   },
   languageSelector: {

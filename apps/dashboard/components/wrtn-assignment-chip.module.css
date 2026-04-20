@@ -1,0 +1,91 @@
+.chip {
+  position: fixed;
+  right: var(--space-lg);
+  bottom: var(--space-lg);
+  z-index: var(--z-sticky, 80);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 10px 18px;
+  border-radius: var(--radius-full);
+  background: var(--panel-strong);
+  backdrop-filter: blur(14px);
+  border: 1.5px solid var(--line-strong);
+  color: var(--on-surface);
+  box-shadow: var(--elev-4);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  text-decoration: none;
+  user-select: none;
+  cursor: pointer;
+  animation: wrtnChipFloat 4.5s ease-in-out infinite;
+  transition: var(--transition-bg), var(--transition-border), var(--transition-transform), var(--transition-color);
+}
+
+.chip:hover,
+.chip:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  transform: translateY(-2px);
+}
+
+.chip:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.arrow {
+  font-size: 0.85em;
+  opacity: 0.75;
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #4f7bff 0%, #8c5bff 50%, #d35bff 100%);
+  color: white;
+  font-family: var(--font-display, "Manrope", system-ui, sans-serif);
+  font-weight: 900;
+  font-size: 14px;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  text-transform: lowercase;
+  flex-shrink: 0;
+  box-shadow:
+    0 2px 6px rgba(79, 123, 255, 0.45),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+}
+
+.label {
+  white-space: nowrap;
+}
+
+@keyframes wrtnChipFloat {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .chip {
+    right: var(--space-md);
+    bottom: var(--space-md);
+    padding: var(--space-3xs) var(--space-sm);
+    font-size: var(--text-2xs);
+  }
+}

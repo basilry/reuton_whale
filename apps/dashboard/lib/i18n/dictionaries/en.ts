@@ -16,7 +16,7 @@ export const enDictionary = {
     telegram: "Telegram",
   },
   home: {
-    title: "Market Intelligence",
+    title: "WhaleScope : Market Intelligence Read Through Whale Flows",
     subtitle: "Research-led curation for strategic insight",
     marketTickerEyebrow: "Public market feed",
     marketTickerTitle: "Live market ticker",
@@ -108,6 +108,9 @@ export const enDictionary = {
       "WhaleScope is an AI-powered curation service that turns large blockchain movements into readable market intelligence for humans.",
     footerWarning:
       "WhaleScope does not provide investment advice. Crypto investing carries substantial risk. Only trade with capital you can afford to lose.",
+    footerCompanyLabel: "Operated by",
+    footerCompanyName: "Bukhae",
+    footerCopyright: "© {year} Wrtn Technologies. All rights to this work are reserved by Wrtn Technologies.",
     telegramAudienceTemplate: "Current subscribers: {count}.",
   },
   languageSelector: {

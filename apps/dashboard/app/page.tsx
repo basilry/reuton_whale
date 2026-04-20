@@ -789,6 +789,25 @@ export default async function InsightsPage() {
             <p className={styles.footerDesc}>
               {dictionary.home.footerDescription}
             </p>
+            <p className={styles.footerCompany}>
+              <span className={styles.footerCompanyLabel}>
+                {dictionary.home.footerCompanyLabel}
+              </span>
+              <a
+                className={styles.footerCompanyLink}
+                href="https://bukhae.com"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {dictionary.home.footerCompanyName}
+                <span aria-hidden="true">↗</span>
+              </a>
+            </p>
+            <p className={styles.footerCopyright}>
+              {formatDashboardMessage(dictionary.home.footerCopyright, {
+                year: new Date().getFullYear(),
+              })}
+            </p>
           </div>
           <div className={styles.footerRight}>
             <p>
