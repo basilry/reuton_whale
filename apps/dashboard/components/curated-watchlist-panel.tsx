@@ -45,7 +45,8 @@ const itemButtonStyle: CSSProperties = {
   padding: "16px",
   borderRadius: "20px",
   border: "1px solid var(--line)",
-  background: "color-mix(in srgb, white 88%, var(--surface-2, #f3f8fc))",
+  background: "var(--surface-container-low)",
+  color: "var(--on-surface)",
   textAlign: "left",
   cursor: "pointer",
 };
@@ -68,16 +69,16 @@ const avatarStyle: CSSProperties = {
   fontWeight: 700,
   fontSize: "12px",
   letterSpacing: "0.04em",
-  background: "color-mix(in srgb, var(--accent-soft, #d9f0ff) 65%, white)",
-  color: "var(--accent-strong, #0f6db5)",
+  background: "var(--accent-soft)",
+  color: "var(--accent-strong)",
   flexShrink: 0,
 };
 
 const badgeStyle: CSSProperties = {
   padding: "7px 10px",
   borderRadius: "999px",
-  background: "color-mix(in srgb, var(--surface-2, #f3f8fc) 72%, white)",
-  color: "var(--on-surface, #09253a)",
+  background: "var(--surface-container)",
+  color: "var(--on-surface)",
   fontSize: "12px",
   fontWeight: 700,
   flexShrink: 0,
@@ -243,7 +244,7 @@ export function CuratedWatchlistPanel({
             padding: "18px",
             borderRadius: "20px",
             border: "1px dashed var(--line)",
-            background: "color-mix(in srgb, white 90%, var(--surface-2, #f3f8fc))",
+            background: "var(--surface-container-low)",
           }}
         >
           <h4 style={{ margin: 0, color: "var(--on-surface)" }}>
