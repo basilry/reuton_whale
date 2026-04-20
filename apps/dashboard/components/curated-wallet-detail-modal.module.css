@@ -484,6 +484,10 @@
   .walletRow {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .pill {
+    min-height: 44px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

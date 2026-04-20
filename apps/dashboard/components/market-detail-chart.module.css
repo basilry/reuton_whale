@@ -97,4 +97,8 @@
   .summaryGrid {
     grid-template-columns: 1fr;
   }
+
+  .chip {
+    min-height: 44px;
+  }
 }
