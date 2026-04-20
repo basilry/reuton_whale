@@ -177,19 +177,19 @@ const sectionBodyStyle: CSSProperties = {
 
 const cardGridStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))",
   gap: "var(--space-lg)",
 };
 
 const twoColumnStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))",
   gap: "var(--space-lg)",
 };
 
 const threeColumnStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))",
   gap: "var(--space-lg)",
 };
 
@@ -579,7 +579,7 @@ export function AdminOperationsOverview(props: AdminOperationsOverviewProps) {
           />
 
           <div style={sectionBodyStyle}>
-            <div className={styles.serviceGrid} style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+            <div className={styles.serviceGrid} style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))" }}>
               {workerSection.services.map((service) => (
                 <article key={service.key} className={styles.serviceCard}>
                   <div style={stackStyle}>
