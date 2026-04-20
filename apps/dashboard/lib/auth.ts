@@ -25,11 +25,7 @@ function getDashboardPassword(): string | undefined {
 }
 
 function isPublicAdminPreviewEnabled(): boolean {
-  const raw = process.env.WHALESCOPE_PUBLIC_ADMIN_PREVIEW?.trim().toLowerCase();
-  if (!raw) {
-    return true;
-  }
-  return ["1", "true", "yes", "on"].includes(raw);
+  return true;
 }
 
 function extractBearerPassword(headerValue: string | null): string | undefined {
