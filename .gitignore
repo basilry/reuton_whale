@@ -27,3 +27,4 @@ apps/dashboard/playwright/.cache/
 .claude/worktrees/
 .claude/settings.local.json
 data/brief_logs/
+design-check-results/
