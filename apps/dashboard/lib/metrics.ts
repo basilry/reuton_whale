@@ -2912,11 +2912,28 @@ export async function getDashboardData(options?: {
   transactionLimit?: number;
   signalLimit?: number;
   systemLogLimit?: number;
+  includeAdminExtras?: boolean;
 }): Promise<DashboardData> {
   const generatedAt = new Date().toISOString();
   const transactionLimit = options?.transactionLimit ?? 20;
   const signalLimit = options?.signalLimit ?? 20;
   const systemLogLimit = options?.systemLogLimit ?? 25;
+  const includeAdminExtras = options?.includeAdminExtras ?? true;
+  const emptyRenderObservability = (): AdminRenderObservability => ({
+    provider: "render",
+    state: "error",
+    enabled: false,
+    configured: false,
+    missingEnv: [],
+    fetchedAt: new Date().toISOString(),
+    logWindowMinutes: 0,
+    services: [],
+    deploys: [],
+    instances: [],
+    logs: [],
+    error: { code: "internal", errId: "admin_extras_skipped" },
+    errors: [],
+  });
   const [
     snapshotResult,
     curatedWalletBundle,
@@ -2932,30 +2949,19 @@ export async function getDashboardData(options?: {
     loadCuratedWalletEntriesWithMeta(),
     readOptionalSheetRows("service_health"),
     readOptionalSheetRows("channel_health"),
-    readOptionalSheetRows("brief_cost_ledger"),
-    readOptionalSheetRows("broadcast_log"),
-    readOptionalSheetRows("llm_budget_log"),
-    readWatchedAddressRows(),
-    loadRenderObservability().catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error("[metrics/getDashboardData] loadRenderObservability failed:", message);
-      const fallback: AdminRenderObservability = {
-        provider: "render",
-        state: "error",
-        enabled: false,
-        configured: false,
-        missingEnv: [],
-        fetchedAt: new Date().toISOString(),
-        logWindowMinutes: 0,
-        services: [],
-        deploys: [],
-        instances: [],
-        logs: [],
-        error: { code: "internal", errId: message.slice(0, 120) },
-        errors: [],
-      };
-      return fallback;
-    }),
+    includeAdminExtras ? readOptionalSheetRows("brief_cost_ledger") : Promise.resolve([]),
+    includeAdminExtras ? readOptionalSheetRows("broadcast_log") : Promise.resolve([]),
+    includeAdminExtras ? readOptionalSheetRows("llm_budget_log") : Promise.resolve([]),
+    includeAdminExtras ? readWatchedAddressRows() : Promise.resolve([]),
+    includeAdminExtras
+      ? loadRenderObservability().catch((error) => {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error("[metrics/getDashboardData] loadRenderObservability failed:", message);
+          const fallback = emptyRenderObservability();
+          fallback.error = { code: "internal", errId: message.slice(0, 120) };
+          return fallback;
+        })
+      : Promise.resolve(emptyRenderObservability()),
   ]);
   const snapshot = snapshotResult.snapshot;
   if (snapshotResult.failedTabs.length > 0) {
@@ -2995,20 +3001,22 @@ export async function getDashboardData(options?: {
   );
   const currentLatestBrief = latestBrief(snapshot.daily_brief);
   const normalizedBrief = normalizeBrief(currentLatestBrief);
-  const adminObservability = await buildAdminObservabilitySummary({
-    briefLedgerRows: briefCostLedgerRows,
-    llmBudgetRows,
-    broadcastRows: broadcastLogRows,
-    subscriberRows: snapshot.subscribers,
-    watchedAddressRows,
-    tgWhaleEventRows: snapshot.tg_whale_events,
-    channelHealthRows,
-    systemLogRows: snapshot.system_log,
-    latestBrief: normalizedBrief,
-    latestNewsRssLog,
-    serviceHealthRows,
-    render: renderObservability,
-  });
+  const adminObservability = includeAdminExtras
+    ? await buildAdminObservabilitySummary({
+        briefLedgerRows: briefCostLedgerRows,
+        llmBudgetRows,
+        broadcastRows: broadcastLogRows,
+        subscriberRows: snapshot.subscribers,
+        watchedAddressRows,
+        tgWhaleEventRows: snapshot.tg_whale_events,
+        channelHealthRows,
+        systemLogRows: snapshot.system_log,
+        latestBrief: normalizedBrief,
+        latestNewsRssLog,
+        serviceHealthRows,
+        render: renderObservability,
+      })
+    : null;
   const latestRunErrorCount = errorCountForRun(currentLatestRunRow);
   const latestRunStatus = currentLatestRun?.status ?? "unknown";
   const latestRunUpdatedAt = currentLatestRun?.finished_at || currentLatestRun?.started_at || undefined;
