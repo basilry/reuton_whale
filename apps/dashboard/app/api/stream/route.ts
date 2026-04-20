@@ -10,6 +10,7 @@ import { fetchLiveUpdateEvents } from "@/lib/live-updates.server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const maxDuration = 60;
 
 const STREAM_HEADERS = {
   "Content-Type": "text/event-stream; charset=utf-8",
