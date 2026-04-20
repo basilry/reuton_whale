@@ -65,6 +65,7 @@
   gap: var(--space-sm);
   overflow-x: auto;
   flex: 1;
+  min-width: 0;
   justify-content: center;
 }
 

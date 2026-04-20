@@ -225,6 +225,7 @@
   backdrop-filter: blur(20px);
   border: 1px solid var(--line);
   box-shadow: var(--elev-3);
+  overflow-wrap: anywhere;
 }
 
 .briefHeader {
@@ -460,6 +461,8 @@
   backdrop-filter: blur(20px);
   border: 1px solid var(--line);
   box-shadow: var(--elev-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .timelineCardTitle {
@@ -548,6 +551,8 @@
   backdrop-filter: blur(20px);
   border: 1px solid var(--line);
   box-shadow: var(--elev-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .oplogCardTitle {
