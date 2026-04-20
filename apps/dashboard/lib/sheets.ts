@@ -8,6 +8,13 @@ import {
   parseDateTimeSafe,
 } from "./format";
 import {
+  SHEET_CACHE_BATCH_DASHBOARD_KEY,
+  redisCacheDeleteMany,
+  redisCacheGet,
+  redisCacheSet,
+  sheetTabCacheKey,
+} from "./redis-cache";
+import {
   DASHBOARD_TABS,
   TAB_HEADERS,
   type DashboardTabName,
@@ -31,6 +38,7 @@ const SHEETS_WRITE_SCOPES = [
 // single dashboard page load doesn't consume the entire quota.
 const SHEET_CACHE_TTL_MS = 45_000;
 const SHEET_STALE_TTL_MS = 10 * 60_000;
+const SHEET_CACHE_TTL_SECONDS = Math.ceil(SHEET_CACHE_TTL_MS / 1000);
 
 type TabCacheEntry = { at: number; rows: unknown[] };
 const tabCache = new Map<SheetTabName, TabCacheEntry>();
@@ -169,14 +177,22 @@ class SheetsReadClient {
       return existing as Promise<SheetRowMap[T][]>;
     }
 
+    const l2Key = sheetTabCacheKey(tab);
     const promise = (async () => {
       try {
+        const l2Cached = await redisCacheGet<SheetRowMap[T][]>(l2Key);
+        if (l2Cached) {
+          tabCache.set(tab, { at: Date.now(), rows: l2Cached });
+          return l2Cached;
+        }
+
         const url = new URL(`${SHEETS_API_BASE}/${this.sheetId}/values/${encodeURIComponent(this.rangeFor(tab))}`);
         url.searchParams.set("majorDimension", "ROWS");
         url.searchParams.set("valueRenderOption", "FORMATTED_VALUE");
         const payload = await this.requestJson<SheetSingleValuesResponse>(url.toString());
         const rows = this.valuesToRows(tab, payload.values);
         tabCache.set(tab, { at: Date.now(), rows });
+        void redisCacheSet(l2Key, rows, SHEET_CACHE_TTL_SECONDS);
         return rows;
       } catch (error) {
         if (cached && now - cached.at < SHEET_STALE_TTL_MS) {
@@ -239,6 +255,19 @@ class SheetsReadClient {
 
     batchInflight = (async () => {
       try {
+        const l2Cached = await redisCacheGet<DashboardSheetSnapshot>(SHEET_CACHE_BATCH_DASHBOARD_KEY);
+        if (l2Cached) {
+          const hydratedAt = Date.now();
+          batchCache = { at: hydratedAt, snapshot: l2Cached };
+          for (const tab of DASHBOARD_TABS) {
+            const rows = l2Cached[tab] as unknown[] | undefined;
+            if (Array.isArray(rows)) {
+              tabCache.set(tab, { at: hydratedAt, rows });
+            }
+          }
+          return l2Cached;
+        }
+
         const result = await run();
         const snapshot: DashboardSheetSnapshot = {
           transactions: (result as unknown as DashboardSheetSnapshot).transactions,
@@ -249,6 +278,7 @@ class SheetsReadClient {
           tg_whale_events: (result as unknown as DashboardSheetSnapshot).tg_whale_events,
         };
         batchCache = { at: Date.now(), snapshot };
+        void redisCacheSet(SHEET_CACHE_BATCH_DASHBOARD_KEY, snapshot, SHEET_CACHE_TTL_SECONDS);
         return snapshot;
       } catch (error) {
         if (batchCache && now - batchCache.at < SHEET_STALE_TTL_MS) {
@@ -514,4 +544,10 @@ export async function upsertWatchlistOverride(
     reason: row.reason,
     updated_at: row.updated_at,
   });
+  tabCache.delete("watchlist_overrides");
+  batchCache = null;
+  await redisCacheDeleteMany([
+    sheetTabCacheKey("watchlist_overrides"),
+    SHEET_CACHE_BATCH_DASHBOARD_KEY,
+  ]);
 }
