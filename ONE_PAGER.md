@@ -4,6 +4,7 @@
 
 - **선택 도메인**: C. AI 요약/큐레이션 서비스
 - **문서 목적**: Wrtn Technologies Product Engineer 과제 전형 제출 문서
+- **배포 URL**: [https://whalescope.6esk.com](https://whalescope.6esk.com) · 공개 채널 [@whalescope_alertz](https://t.me/whalescope_alertz)
 - **관련 문서**: [README.md](README.md) · [docs/one-pager.md](docs/one-pager.md) (요약본) · [docs/03_Architecture_WhaleScope.md](docs/) (초기 설계) · [docs/changelog.md](docs/changelog.md)
 - **면책 고지**: 본 서비스는 투자 자문 서비스가 아닙니다. 모든 브리핑은 정보 제공 목적이며, 투자 판단과 그에 따른 책임은 사용자에게 있습니다.
 
@@ -124,7 +125,9 @@ MVP 단계에서 구현하지 않은 항목과 그 근거는 다음과 같습니
 | 멀티유저 회원 가입 및 결제 시스템 | MVP에서 검증해야 할 가설은 "브리핑의 일일 열람 지속성"이며 결제 전환이 아닙니다. 회원/결제 레이어는 핵심 가설 검증 이후 단계에서 도입합니다. |
 | 모바일 네이티브 애플리케이션 | Telegram 우선 전략과 상충합니다. 네이티브 앱은 DAU가 0에서 시작하나 Telegram은 기존 사용 관성에 기대어 초기 마찰을 최소화할 수 있습니다. |
 | 자체 블록체인 노드 운영 | 비용 및 구축 시간 대비 효용이 낮습니다. 공개 API(Etherscan, Solscan)로 MVP 요구사항이 충분히 충족됩니다. |
-| BTC/XRP/DOGE/TRX 등 추가 체인 수집기 | Phase 2 이후로 명시적으로 이관하였습니다. ETH와 SOL만으로도 수집 파이프라인 및 시그널 규칙의 아키텍처 타당성 검증이 가능합니다. 상세 설계는 후속 계획 문서에 별도 정리되어 있습니다. |
+| UTXO cluster 기반 BTC/DOGE 보유량 정밀 추적 | Phase 3.5 고도화 과제로 명시적으로 이관하였습니다. 현재는 대표 주소 seed 기준 partial view로 시작하며, 운영 데이터 누적 이후 우선순위를 재판단합니다. |
+
+초기 제출 시 Phase 2로 이관했던 **BTC/XRP/DOGE/TRX 수집기**는 2026-04-20 사이클에서 구현 완료 상태로 전환되었습니다. `ChainCollectorRegistry` + feature flag 구조로 XRP / TRX / BTC (mempool.space primary + Blockchair secondary fallback) / DOGE collector를 추가했고, `/admin`에 rollout mismatch 진단과 TG mirror observability lane을 붙였습니다. 상세 QA는 Obsidian `Projects/02015-WhaleScope/2026-04-20-01-WhaleScope-체인-커버리지-적용완료-QA-종합보고서.md`에 정리되어 있습니다.
 
 ---
 
@@ -192,7 +195,7 @@ MVP 단계에서 구현하지 않은 항목과 그 근거는 다음과 같습니
 - `SignalEngine`의 8개 규칙 및 `LLMRouter`의 3-provider fallback 구현.
 - Telegram bot 및 listener 구현.
 - MVP 저장소로 Google Sheets 채택. 근거: 운영진의 직접 편집 가능성 및 스키마 마이그레이션 비용 최소화.
-- 계약·단위·통합 테스트 329건 작성.
+- 계약·단위·통합 테스트를 본격적으로 축적하기 시작 (이후 사이클에서 누적 402건까지 확장).
 
 ### Day 6 — 운영 레이어 구성
 
@@ -205,6 +208,29 @@ MVP 단계에서 구현하지 않은 항목과 그 근거는 다음과 같습니
 - 단순히 CSV에 주소를 추가하는 방식은 파이프라인의 2분기 dispatch 구조상 효과가 없음을 확인. 근본 원인이 데이터가 아닌 아키텍처에 있음을 식별.
 - 후속 개선안을 `ChainCollector` ABC와 Registry 패턴 기반으로 재설계하는 상세 문서 작성 (Obsidian 볼트: `2026-04-19-26-WhaleScope-감시지갑-체인-커버리지-확장-개선안-상세설계.md`).
 - 해당 개선안은 MVP 스코프 외이나, 제품의 한계를 명시적으로 드러내고 구조적 해결 경로를 함께 제출하는 것이 평가 문서로서 적합하다고 판단.
+
+### Day 8 — v6 개선 사이클 (2026-04-19)
+
+과제 제출 이후 운영 사이클에서 실측된 문제를 기반으로 v6 개선을 수행. 6개 커밋이 `origin/main`에 반영되었으며, 402건의 pytest 및 dashboard typecheck/lint/build가 모두 통과한 상태에서 마감되었다.
+
+- **Service Health v2**: heartbeat 스키마에 `instance_id`, `job_name`, `processed_count`, `lag_seconds`, `duration_ms`, `source_name` 등을 추가하여 9개 job의 개별 생존/처리량을 단일 시트에서 관측 가능하게 함.
+- **Render observability 대시보드**: `/admin`에 Render REST 기반 서비스/배포/인스턴스/로그 패널 통합. pipeline / bot / listener 3개 worker의 상태를 운영자가 단일 화면에서 판단 가능.
+- **Batch A UX 폴리싱**: 큐레이션 watchlist pill 정렬, whale story 카드 높이 정규화, live updates standby 상태 분리. 공포탐욕 mood strip을 hero 위 full-width 레이아웃으로 승격.
+- **하이브리드 브리핑 (B.2)**: KST 09/15/21 slot은 full brief, 그 외 slot은 이전 brief 기반 incremental brief로 분기. RSS top N + curated watchlist를 full slot에만 주입. Sonnet 기준 월 비용이 약 $21 → $9 수준으로 감소.
+- **Suspense 경계 (B.3)**: `/admin` 비동기 데이터 로딩에 Suspense 경계를 명시화하여 React DevTools v6.x 경고를 구조적으로 해소.
+
+### Day 9 — 체인 커버리지 확장 및 운영 진단 (2026-04-20)
+
+Day 7에서 후속 과제로 분리했던 체인 커버리지 구조적 확장을 구현 완료하고, 운영 중 발견된 3건의 근본 원인을 분석하였다.
+
+- **체인 커버리지**: `ChainCollectorRegistry` 기반으로 silent drop guard를 구조화하고, XRP (XRPSCAN-compatible), TRX (TronGrid native + TRC20), BTC (mempool.space primary + Blockchair secondary fallback), DOGE (Blockchair) collector를 feature flag 기반으로 추가. BTC/DOGE는 UTXO 특성상 대표 주소 seed 기준 partial view로 시작하며 UI에 `부분 관측 · cluster 미적용` 배지를 노출.
+- **TG mirror observability**: 공개 Telegram 채널 수신 이벤트를 `observation_source=tg_mirror`로 모델링하여 `external_only_observation` / `corroborated_move` 두 흐름으로 signal 규칙과 whale story UI에 반영. `/admin`에서 최근 24h 건수, 신뢰도 분포, 상위 채널, 최신 관측 시각을 확인 가능.
+- **Watched-address import validation**: header 검증, chain canonicalization, duplicate 차단, enabled/confidence validation, dry-run summary를 `scripts/import_watched_addresses.py`에 추가하고, canary rollout 순서를 운영 runbook에 정리.
+- **운영 진단 3건**:
+  - **프로덕션 Upbit API 중단**: WebSocket idle disconnect 시 keepalive ping/reconnect backoff 부재가 주원인으로 식별. CSP `connect-src` allowlist가 production에서만 강제되는 구조도 함께 문서화.
+  - **프로덕션 Redis 실시간 비활성**: Vercel Production 스코프에 `WHALESCOPE_SSE_ENABLED` / REST URL / REST TOKEN 3-gate 변수가 누락되어 있었음 (Preview 스코프에만 등록). 로컬은 `.env`를 직접 읽기 때문에 라이브로 동작.
+  - **Telegram bot 미발송**: `render.yaml`에 `TELEGRAM_BROADCAST_ENABLED` / `TELEGRAM_BROADCAST_DRY_RUN`이 명시 선언되지 않아 코드 기본값(disabled + dry_run)이 유지. 파이프라인은 정상 실행되지만 실제 발송은 없이 `broadcast_log`에 skip 상태만 누적됨.
+  - 세 건 모두 Obsidian `Projects/02015-WhaleScope/`에 별도 노트로 정리하고 대응 가이드를 README 트러블슈팅 섹션과 운영 runbook에 반영.
 
 ### 가설 수정 기록
 
@@ -241,7 +267,7 @@ MVP 단계에서 구현하지 않은 항목과 그 근거는 다음과 같습니
 - **AI에 판단이 아닌 실행을 위임**: 탐지 규칙은 결정론적 Python 함수로 구현하며, LLM은 해설 역할에 한정.
 - **프롬프트의 버전 관리**: `prompts/` 디렉토리에 브리핑 생성 및 요약 프롬프트를 파일로 유지하고 git으로 추적.
 - **AI 출력의 직접 신뢰 금지**: LLM 응답은 Pydantic 모델로 스키마 검증을 수행하고, 검증 실패 시 fallback provider로 재시도.
-- **AI 생성 코드의 사전 검증**: 329개의 pytest 케이스가 회귀 방지 역할을 수행하며, 리뷰 없는 머지를 구조적으로 차단.
+- **AI 생성 코드의 사전 검증**: 402개의 pytest 케이스가 회귀 방지 역할을 수행하며, 리뷰 없는 머지를 구조적으로 차단. dashboard 영역은 `npm run dashboard:typecheck`, `dashboard:lint`, `dashboard:build`, `dashboard:e2e`로 정적·동적 검증을 분리 수행.
 
 ---
 
@@ -249,20 +275,35 @@ MVP 단계에서 구현하지 않은 항목과 그 근거는 다음과 같습니
 
 ### 7-1. 현재 제약 사항
 
-1. **체인 커버리지 편향**: `watched_addresses.csv` 81개 항목 중 78개가 Ethereum 계열입니다. BTC/XRP/DOGE/TRX 등의 수집기가 미구현 상태이며, 현 MVP는 실질적으로 ETH 및 SOL 중심의 서비스입니다. 이는 타겟 페르소나의 포트폴리오 구성(BTC 비중 30~50%)과 구조적으로 정렬되지 않습니다. 관련 구조적 해결안은 후속 설계 문서에 정리되어 있으며(`ChainCollector` ABC 리팩터링 + 체인별 feature flag, 약 108시간 규모 추정), Phase 2a부터 단계적으로 적용 예정입니다.
+1. **체인 커버리지 편향 — 구조적으로 해소됨, UTXO 고도화는 후속 과제**: Day 7에서 식별한 ETH/SOL 중심 편향은 Day 9 사이클에서 `ChainCollectorRegistry` + feature flag 구조로 해소되었습니다. 현재 XRP / TRX / BTC / DOGE collector가 구현되어 있으며 BTC는 primary 실패 시 Blockchair secondary로 fallback합니다. 다만 BTC/DOGE는 UTXO 특성상 현재 대표 주소 seed 기준 partial view로 동작하며, UTXO cluster 기반 보유량 정밀 추적은 Phase 3.5 고도화 과제로 분리되어 있습니다.
 2. **사용자 피드백 루프 미구현**: 브리핑 내 긍정/부정 피드백 버튼이 설계 단계에는 반영되었으나 MVP에는 포함되지 않았습니다. 북극성 지표와 가장 근접한 정성적 신호로서, 런칭 직후 최우선 구현 대상입니다.
-3. **가격 및 시장 맥락 결합의 제한**: 현재 브리핑은 온체인 이벤트 중심으로 구성되어 있으며, 토큰 가격 수준 및 거시 시장 상황과의 결합 수준이 제한적입니다.
+3. **가격 및 시장 맥락 결합의 제한**: 현재 사용자 홈에 Binance/Upbit/Bitflyer/Kraken 멀티소스 티커, 김치 프리미엄, Fear & Greed 게이지가 별도 섹션으로 존재하지만, 브리핑 본문이 이 맥락을 LLM 프롬프트에서 적극 활용하지는 않습니다. 가격 수준 및 거시 시장 상황과 온체인 이벤트의 결합 수준은 아직 제한적이며, full brief 컨텍스트에 시장 지표를 추가 주입하는 것이 다음 개선 대상입니다.
 4. **개인화 강도의 한계**: Watchlist는 토큰 단위 필터만 지원하며, 사용자별 위험 선호도, 선호 시간대 등의 차원은 반영되지 않습니다.
+5. **RSS news context 선택 로직**: 현재 `published_at` 기준 최신 N건만 full brief 컨텍스트에 주입하며, 고래 이벤트와의 relevance 점수 기반 정렬은 미구현 상태입니다. 결과적으로 주제와 무관한 최신 기사가 컨텍스트에 포함될 여지가 남아 있습니다.
 
 ### 7-2. 향후 2주 로드맵
 
-우선순위 순으로 정리합니다.
+Day 8~9 사이클에서 초기 로드맵의 Phase 0 / 1 / 2a / 2b / 3 / 4가 구현 완료 상태로 전환되었습니다. 현재 기준 남은 우선순위는 아래와 같습니다.
 
-1. Phase 0 — Silent drop 가드 구현 (약 4시간 추정): 수집 실패 상황을 `service_health`에 가시화.
-2. Phase 1 — Telegram 미러링 레인의 공식화 (약 8시간 추정): 외부 관측을 1급 데이터 레인으로 승격.
-3. Phase 2a — XRP 체인 확장 (약 12시간 추정): XRPSCAN 기반 수집기 도입으로 3번째 체인 추가.
-4. 브리핑 피드백 버튼 구현 (약 4시간 추정): 북극성 지표와 근접한 사용자 정성 신호의 확보.
-5. 가격 API 결합 (약 12시간 추정): CoinGecko 무료 티어를 활용한 가격 맥락 보강.
+완료 항목 (참고):
+
+- ✅ Phase 0 — Silent drop 가드 구현: `ChainCollectorRegistry`와 Service Health v2로 구조화.
+- ✅ Phase 1 — Telegram 미러링 레인의 공식화: `observation_source=tg_mirror`, `external_only_observation` / `corroborated_move` 흐름 반영.
+- ✅ Phase 2a — XRP 체인 확장: XRPSCAN-compatible collector 구현, feature flag로 canary.
+- ✅ Phase 2b — TRX 체인 확장: TronGrid native + TRC20 collector 구현.
+- ✅ Phase 3 — BTC 체인 확장: mempool.space primary + Blockchair secondary fallback 구조.
+- ✅ Phase 4 — DOGE + per-chain signal override 구현.
+- ✅ 하이브리드 브리핑: full / incremental 분기로 월 비용 약 $21 → $9.
+- ✅ Render observability: `/admin`에서 서비스/배포/인스턴스/로그 통합 관측.
+
+남은 우선순위 (2주 단위):
+
+1. 브리핑 피드백 버튼 구현 (약 4시간 추정): 북극성 지표와 근접한 사용자 정성 신호 확보. 런칭 이후 가장 먼저 필요한 데이터 축.
+2. 시장 맥락의 브리핑 결합 고도화 (약 8~12시간 추정): 이미 사용자 홈에 존재하는 티커/Fear&Greed 신호를 full brief 프롬프트에 구조화된 컨텍스트로 주입.
+3. RSS news relevance scoring (약 6시간 추정): published_at 기준 단순 최신 정렬을 고래 이벤트 키워드 매칭 기반 relevance 점수로 교체.
+4. UTXO cluster 고도화 (Phase 3.5, 약 16~24시간 추정): BTC/DOGE partial view를 cluster 기반 보유량 정밀 추적으로 확장. 운영 데이터 누적 이후 우선순위 재판단.
+5. Haiku 혼합 라우팅 실측 (약 4시간): 하이브리드 브리핑 비용을 추가로 절감할 수 있는지 incremental slot을 Haiku로 라우팅하여 정량 평가.
+6. `chain_contract.yml` 주간 스케줄 승격 여부 결정 (약 2시간): 현재 manual-only인 live contract test를 주기적 실행으로 전환할지 판단.
 
 ### 7-3. 6개월 관점의 지향점
 
@@ -294,31 +335,58 @@ npm install && npm run dashboard:dev   # Next.js 대시보드 (사용자: /, 운
 
 ### 8-2. 검증 결과
 
-- `pytest -q`: **329 passed** (계약·단위·통합 테스트)
+- `pytest -q`: **402 passed** (계약·단위·통합·체인 커버리지·TG mirror 회귀 포함)
 - `scripts/smoke_pipeline.py`: **SMOKE OK** (외부 의존성 없이 파이프라인 정합성 검증)
-- Next.js 대시보드 E2E: `npm run dashboard:e2e` 명령으로 실행 가능
+- Next.js 대시보드 정적·동적 검증 전부 통과:
+  - `npm run dashboard:typecheck` — TypeScript 타입 검사 통과
+  - `npm run dashboard:lint` — ESLint / stylelint 통과
+  - `npm run dashboard:build` — 프로덕션 빌드 성공
+  - `npm run dashboard:e2e` — Playwright 기반 E2E 통과
 
 ### 8-3. 아키텍처 개관
 
 ```text
-                  [Etherscan]  [Solscan]  [Telegram @whale_alert_io]
-                       │           │              │
-                       └─────┬─────┴──────┬───────┘
-                             ▼            ▼
-                       [Ingestion]   [TG Listener]
-                             │            │
-                             └──────┬─────┘
-                                    ▼
-                          [SignalEngine (8 rules)]
-                                    │
-                                    ▼
-                          [LLMRouter: Anthropic → Gemini → Groq]
-                                    │
-                                    ▼
-                    [Google Sheets (MVP storage)]
-                         │                   │
-                         ▼                   ▼
-                  [Telegram Bot]     [Next.js /admin + /]
+  ┌───────────── ChainCollectorRegistry (feature-flag 기반) ─────────────┐
+  │                                                                       │
+  │  [Etherscan] [Solscan] [XRPSCAN] [TronGrid] [mempool.space]  [Dogechain] │
+  │    (ETH)      (SOL)     (XRP)    (TRX/TRC20)   (BTC primary)    (DOGE)   │
+  │                                                    │                     │
+  │                                             ┌──────┴──────┐              │
+  │                                             ▼  (primary 실패 시)          │
+  │                                        [Blockchair]                       │
+  │                                        (BTC/DOGE secondary fallback)      │
+  └───────┬──────────────────────────────┬─────────────────────┬──────────┘
+          │                              │                     │
+          ▼                              ▼                     ▼
+   [Telegram Listener]              [Ingestion]          [Market Ticker]
+   @whale_alert_io →                observation_          Binance/Upbit/
+   observation_source=              source=onchain        Bitflyer/Kraken
+   tg_mirror                                              + 김치 프리미엄
+          │                              │                     │
+          └──────────────┬───────────────┘                     │
+                         ▼                                      │
+           [SignalEngine (per-chain rules, external_only /      │
+            corroborated_move / full-view / partial-view)]      │
+                         │                                      │
+                         ▼                                      │
+          [LLMRouter: Anthropic → Gemini → Groq fallback]       │
+           · hybrid brief: full @ KST 09/15/21, incremental otherwise
+                         │                                      │
+                         ▼                                      │
+                 [Google Sheets (MVP storage)]                  │
+                         │                                      │
+           ┌─────────────┼─────────────────────────┐            │
+           ▼             ▼                         ▼            ▼
+   [Telegram Bot]  [Upstash Redis SSE]    [Next.js App Router]  │
+   (broadcast:     (WHALESCOPE_SSE_       / 사용자 홈 + /admin 운영 ◀───┘
+    DRY_RUN 가드)   ENABLED 3-gate 체크)    + Fear & Greed + News RSS
+                                            + Whale Stories 4-card lane
+                                                       │
+                                                       ▼
+                                     [Render REST API observability]
+                                   pipeline / bot / listener 3 workers
+                                  Service Health v2 heartbeat (instance_id,
+                                   processed_count, lag_seconds, duration_ms)
 ```
 
 ---
