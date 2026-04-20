@@ -1399,6 +1399,15 @@
     padding: var(--space-xs) var(--space-sm);
   }
 
+  .themeBtn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .motionBtn {
+    min-height: 44px;
+  }
+
   .heroTitle {
     font-size: var(--text-2xl);
   }

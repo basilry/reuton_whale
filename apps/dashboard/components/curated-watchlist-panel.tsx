@@ -138,13 +138,33 @@ export function CuratedWatchlistPanel({
           <div style={itemCopyStyle}>
             <div style={avatarStyle} aria-hidden="true">{symbolLabel}</div>
             <div style={{ minWidth: 0, display: "grid", gap: "2px" }}>
-              <p style={{ margin: 0, fontWeight: 700, color: "var(--on-surface)" }}>{item.title}</p>
+              <p
+                style={{
+                  margin: 0,
+                  fontWeight: 700,
+                  color: "var(--on-surface)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {item.title}
+              </p>
               <p style={{ margin: 0, color: "var(--on-surface-variant)", fontSize: "12px" }}>
                 {humanizeChain(item.chain, language)}
               </p>
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              flexShrink: 0,
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+            }}
+          >
             <span style={badgeStyle}>{item.badge}</span>
             <span style={{ ...badgeStyle, background: "var(--accent-soft)", color: "var(--accent-strong)" }}>
               {copy.detailCta}
