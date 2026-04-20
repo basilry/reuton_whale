@@ -5,6 +5,7 @@ import { getSheetsReadClient, readDashboardSnapshotSafe } from "@/lib/sheets";
 import { loadRenderObservability } from "@/lib/render";
 import { loadCuratedWalletEntriesWithMeta } from "@/lib/curated-wallets";
 import { readSheetRows } from "@/lib/sheets";
+import { getDashboardData } from "@/lib/metrics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +44,27 @@ export async function GET(request: Request) {
 
   const client = getSheetsReadClient();
 
+  const url = new URL(request.url);
+  const mode = url.searchParams.get("mode") ?? "full";
+
+  if (mode === "getDashboardData") {
+    const result = await timed("getDashboardData", async () => {
+      const data = await getDashboardData({
+        transactionLimit: 6,
+        signalLimit: 6,
+        systemLogLimit: 4,
+      });
+      return {
+        generatedAt: data.generatedAt,
+        txCount: data.recentTransactions.length,
+        sigCount: data.recentSignals.length,
+        sysLogCount: data.systemLogs.length,
+        payloadKb: Math.round(JSON.stringify(data).length / 1024),
+      };
+    });
+    return NextResponse.json(result, { status: 200, headers: { "Cache-Control": "no-store" } });
+  }
+
   const perTab = await Promise.all(
     DASHBOARD_TABS.map((tab) =>
       timed(`tab:${tab}`, async () => {
@@ -52,9 +74,34 @@ export async function GET(request: Request) {
     ),
   );
 
-  const snapshotSafe = await timed("snapshotSafe", readDashboardSnapshotSafe);
-  const curated = await timed("curatedWallets", loadCuratedWalletEntriesWithMeta);
-  const render = await timed("renderObservability", loadRenderObservability);
+  const snapshotSafe = await timed("snapshotSafe", async () => {
+    const result = await readDashboardSnapshotSafe();
+    return {
+      failedTabs: result.failedTabs,
+      rowCounts: {
+        transactions: result.snapshot.transactions.length,
+        daily_brief: result.snapshot.daily_brief.length,
+        signals: result.snapshot.signals.length,
+        system_log: result.snapshot.system_log.length,
+        subscribers: result.snapshot.subscribers.length,
+        tg_whale_events: result.snapshot.tg_whale_events.length,
+      },
+    };
+  });
+  const curated = await timed("curatedWallets", async () => {
+    const bundle = await loadCuratedWalletEntriesWithMeta();
+    return { walletCount: bundle.wallets.length, meta: bundle.meta };
+  });
+  const render = await timed("renderObservability", async () => {
+    const obs = await loadRenderObservability();
+    return {
+      state: obs.state,
+      configured: obs.configured,
+      serviceCount: obs.services.length,
+      deployCount: obs.deploys.length,
+      errorCount: obs.errors.length,
+    };
+  });
   const optional = await Promise.all(
     ["service_health", "channel_health", "brief_cost_ledger", "broadcast_log", "llm_budget_log", "watched_addresses"].map(
       (tab) =>
