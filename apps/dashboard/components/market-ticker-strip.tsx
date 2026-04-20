@@ -35,8 +35,14 @@ import {
   type MarketTickerSourcePhase,
 } from "@/lib/market-ticker";
 
-import { MarketDetailChartModal } from "./market-detail-chart-modal";
+import dynamic from "next/dynamic";
+
 import { MarketMiniChart } from "./market-mini-chart";
+
+const MarketDetailChartModal = dynamic(
+  () => import("./market-detail-chart-modal").then((mod) => mod.MarketDetailChartModal),
+  { ssr: false, loading: () => null },
+);
 import {
   MarketTickerSourceChips,
   type MarketTickerSourceChip,

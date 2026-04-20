@@ -1,12 +1,17 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 
-import { CuratedWalletDetailModal } from "@/components/curated-wallet-detail-modal";
 import type { DashboardLanguage } from "@/lib/i18n/config";
 import { useDashboardI18n } from "@/lib/i18n/client";
 import type { CuratedWatchlistItem } from "@/lib/types";
+
+const CuratedWalletDetailModal = dynamic(
+  () => import("@/components/curated-wallet-detail-modal").then((mod) => mod.CuratedWalletDetailModal),
+  { ssr: false, loading: () => null },
+);
 
 type CuratedWatchlistPanelProps = {
   items: CuratedWatchlistItem[];

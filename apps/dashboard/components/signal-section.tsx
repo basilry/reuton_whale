@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 
 import styles from "@/app/insights/insights.module.css";
@@ -8,7 +9,10 @@ import { useDashboardI18n } from "@/lib/i18n/client";
 import { formatDashboardMessage } from "@/lib/i18n/get-dictionary";
 import { getSignalRuleDoc } from "@/lib/signal-rule-docs";
 
-import { SignalDetailModal } from "./signal-detail-modal";
+const SignalDetailModal = dynamic(
+  () => import("./signal-detail-modal").then((mod) => mod.SignalDetailModal),
+  { ssr: false, loading: () => null },
+);
 
 type SignalTone = "critical" | "watch" | "positive" | "neutral";
 
