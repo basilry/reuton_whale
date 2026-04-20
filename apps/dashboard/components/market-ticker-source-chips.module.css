@@ -197,8 +197,8 @@
   }
 
   .chip {
-    min-height: 26px;
-    padding: 0 var(--space-xs);
+    min-height: 44px;
+    padding: 0 var(--space-sm);
   }
 
   .tooltip {

@@ -232,6 +232,7 @@ const linkChipStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+  minHeight: 44,
   padding: "var(--space-xs) var(--space-md)",
   borderRadius: "var(--radius-full)",
   background: "var(--surface-container-high)",
@@ -258,6 +259,8 @@ const detailListStyle: CSSProperties = {
 
 const tableWrapStyle: CSSProperties = {
   overflowX: "auto",
+  maxWidth: "100%",
+  minWidth: 0,
   borderRadius: "var(--radius-xl)",
   border: "1px solid var(--line)",
   background: "var(--surface)",

@@ -14,9 +14,9 @@
   gap: var(--space-xl);
 }
 
-.colSpan12 { grid-column: span 12 / span 12; scroll-margin-top: var(--inset-navbar); }
-.colSpan8  { grid-column: span 8  / span 8;  scroll-margin-top: var(--inset-navbar); }
-.colSpan4  { grid-column: span 4  / span 4;  scroll-margin-top: var(--inset-navbar); }
+.colSpan12 { grid-column: span 12 / span 12; min-width: 0; scroll-margin-top: var(--inset-navbar); }
+.colSpan8  { grid-column: span 8  / span 8;  min-width: 0; scroll-margin-top: var(--inset-navbar); }
+.colSpan4  { grid-column: span 4  / span 4;  min-width: 0; scroll-margin-top: var(--inset-navbar); }
 
 /* ── Hero banner ───────────────────────────────────────────────────────── */
 .hero {
@@ -216,6 +216,7 @@
 /* ── Brief card ────────────────────────────────────────────────────────── */
 .briefCard {
   height: 100%;
+  min-width: 0;
   padding: var(--space-2xl);
   border-radius: var(--radius-lg);
   background: var(--panel-glass);

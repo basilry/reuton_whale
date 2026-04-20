@@ -1391,6 +1391,13 @@
     justify-content: flex-start;
   }
 
+  .anchorLink {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    padding: var(--space-xs) var(--space-sm);
+  }
+
   .heroTitle {
     font-size: var(--text-2xl);
   }

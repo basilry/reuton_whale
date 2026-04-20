@@ -157,8 +157,8 @@
   }
 
   .trigger {
-    min-width: 40px;
-    min-height: 40px;
+    min-width: 44px;
+    min-height: 44px;
     padding: 0 var(--space-xs);
     justify-content: center;
   }
