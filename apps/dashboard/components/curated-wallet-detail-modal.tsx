@@ -2,13 +2,6 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import {
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip as RechartsTooltip,
-} from "recharts";
 
 import type { DashboardLanguage } from "@/lib/i18n/config";
 import { useDashboardI18n } from "@/lib/i18n/client";
@@ -229,6 +222,88 @@ function formatPercent(value: number, language: DashboardLanguage): string {
     style: "percent",
     maximumFractionDigits: 1,
   }).format(value);
+}
+
+
+type SvgDonutChartProps = {
+  slices: BalanceCompositionSlice[];
+  colors: string[];
+  innerRadius: number;
+  outerRadius: number;
+  language: DashboardLanguage;
+  unresolved: string;
+};
+
+function SvgDonutChart({
+  slices,
+  colors,
+  innerRadius,
+  outerRadius,
+  language,
+  unresolved,
+}: SvgDonutChartProps) {
+  const cx = 100;
+  const cy = 100;
+  const gap = 2; // degrees of padding between slices
+
+  const total = slices.reduce((sum, s) => sum + s.value, 0);
+  if (total <= 0) return null;
+
+  const paths: { d: string; fill: string; title: string }[] = [];
+  let cursor = 0;
+
+  for (let i = 0; i < slices.length; i++) {
+    const slice = slices[i];
+    const sweep = (slice.value / total) * 360;
+    const halfGap = gap / 2;
+    const startAngle = cursor + halfGap;
+    const endAngle = cursor + sweep - halfGap;
+    cursor += sweep;
+
+    if (endAngle <= startAngle) continue;
+
+    // Build full donut slice path: outer arc forward, line to inner, inner arc back, close
+    const x2out = cx + outerRadius * Math.cos(((endAngle - 90) * Math.PI) / 180);
+    const y2out = cy + outerRadius * Math.sin(((endAngle - 90) * Math.PI) / 180);
+    const x1in = cx + innerRadius * Math.cos(((endAngle - 90) * Math.PI) / 180);
+    const y1in = cy + innerRadius * Math.sin(((endAngle - 90) * Math.PI) / 180);
+    const x2in = cx + innerRadius * Math.cos(((startAngle - 90) * Math.PI) / 180);
+    const y2in = cy + innerRadius * Math.sin(((startAngle - 90) * Math.PI) / 180);
+    const x1out = cx + outerRadius * Math.cos(((startAngle - 90) * Math.PI) / 180);
+    const y1out = cy + outerRadius * Math.sin(((startAngle - 90) * Math.PI) / 180);
+
+    const largeArc = sweep - gap > 180 ? 1 : 0;
+
+    const d = [
+      `M ${x1out} ${y1out}`,
+      `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${x2out} ${y2out}`,
+      `L ${x1in} ${y1in}`,
+      `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${x2in} ${y2in}`,
+      "Z",
+    ].join(" ");
+
+    paths.push({
+      d,
+      fill: colors[i % colors.length],
+      title: `${slice.label}: ${formatUsd(slice.value, language, unresolved)} (${formatPercent(slice.share, language)})`,
+    });
+  }
+
+  return (
+    <svg
+      viewBox="0 0 200 200"
+      width="100%"
+      height="100%"
+      role="img"
+      aria-label="Balance composition donut chart"
+    >
+      {paths.map((p, i) => (
+        <path key={i} d={p.d} fill={p.fill}>
+          <title>{p.title}</title>
+        </path>
+      ))}
+    </svg>
+  );
 }
 
 export function CuratedWalletDetailModal({
@@ -678,41 +753,14 @@ export function CuratedWalletDetailModal({
                   {balanceComposition.slices.length > 0 ? (
                     <div className={styles.compositionCard}>
                       <div className={styles.compositionChartWrap}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={balanceComposition.slices}
-                              dataKey="value"
-                              nameKey="label"
-                              innerRadius={54}
-                              outerRadius={84}
-                              paddingAngle={2}
-                              stroke="none"
-                            >
-                              {balanceComposition.slices.map((slice, index) => (
-                                <Cell
-                                  key={`${slice.label}-${slice.value}`}
-                                  fill={
-                                    BALANCE_COMPOSITION_COLORS[
-                                      index % BALANCE_COMPOSITION_COLORS.length
-                                    ]
-                                  }
-                                />
-                              ))}
-                            </Pie>
-                            <RechartsTooltip
-                              formatter={(value: number, name: string) => [
-                                formatUsd(value, language, copy.unresolved),
-                                name,
-                              ]}
-                              contentStyle={{
-                                borderRadius: 16,
-                                border: "1px solid color-mix(in srgb, var(--line, #d7e3ef) 82%, white)",
-                                background: "color-mix(in srgb, white 94%, var(--surface-2, #f3f8fc))",
-                              }}
-                            />
-                          </PieChart>
-                        </ResponsiveContainer>
+                        <SvgDonutChart
+                          slices={balanceComposition.slices}
+                          colors={BALANCE_COMPOSITION_COLORS}
+                          innerRadius={54}
+                          outerRadius={84}
+                          language={language}
+                          unresolved={copy.unresolved}
+                        />
                       </div>
                       <div className={styles.compositionLegend}>
                         <div className={styles.compositionLegendItem}>
