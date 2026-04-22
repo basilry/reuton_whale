@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto";
+
 import { NextResponse } from "next/server";
 
 import { DASHBOARD_TABS } from "@/lib/schema";
@@ -18,7 +20,13 @@ function tokenMatches(request: Request): boolean {
   if (!expected || !provided) {
     return false;
   }
-  return provided === expected;
+
+  const a = Buffer.from(provided, "utf8");
+  const b = Buffer.from(expected, "utf8");
+  if (a.length !== b.length) {
+    return false;
+  }
+  return timingSafeEqual(a, b);
 }
 
 async function timed<T>(label: string, fn: () => Promise<T>) {
@@ -37,10 +45,14 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const mode = url.searchParams.get("mode") ?? "full";
 
-  // mode=env / redisPing는 boolean/status-only라 인증 불필요.
-  // 그 외 모드는 DASHBOARD_PASSWORD 필요.
-  const publicModes = new Set(["env", "redisPing"]);
-  if (!publicModes.has(mode) && !tokenMatches(request)) {
+  // 프로덕션에서는 debug endpoint 전체를 완전 차단한다(mode=env/redisPing 포함).
+  // 운영 관측은 /api/admin/health 경유.
+  if (process.env.NODE_ENV === "production") {
+    return new NextResponse("Not Found", { status: 404 });
+  }
+
+  // dev/preview 에서는 DASHBOARD_PASSWORD 기반 토큰 필요.
+  if (!tokenMatches(request)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
