@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { createGenericErrorResponse, requireDashboardAuth } from "@/lib/auth";
+import { createGenericErrorResponse } from "@/lib/auth";
 import { recordSignalAction } from "@/lib/metrics";
 import { API_RATE_LIMIT, clientKey, rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
@@ -15,11 +15,6 @@ export async function PATCH(
   const rl = rateLimit(clientKey(request), API_RATE_LIMIT);
   if (!rl.allowed) {
     return rateLimitResponse(rl.retryAfter ?? 60);
-  }
-
-  const unauthorized = requireDashboardAuth(request);
-  if (unauthorized) {
-    return unauthorized;
   }
 
   const { id } = await params;

@@ -12,58 +12,9 @@ type AuthResult = {
   publicPreview: boolean;
 };
 
-type DashboardAuthInput = {
-  authorization?: string | null;
-  headerPassword?: string | null;
-  cookieHeader?: string | null;
-  sessionCookie?: string | null;
-};
-
 function getDashboardPassword(): string | undefined {
   const value = process.env.DASHBOARD_PASSWORD?.trim();
   return value ? value : undefined;
-}
-
-function isPublicAdminPreviewEnabled(): boolean {
-  const raw = process.env.WHALESCOPE_PUBLIC_ADMIN_PREVIEW?.trim().toLowerCase();
-  if (raw === "0" || raw === "false" || raw === "no" || raw === "off") {
-    return false;
-  }
-  return true;
-}
-
-function extractBearerPassword(headerValue: string | null): string | undefined {
-  if (!headerValue) {
-    return undefined;
-  }
-
-  const [scheme, ...rest] = headerValue.trim().split(/\s+/);
-  if (!scheme || scheme.toLowerCase() !== "bearer" || rest.length === 0) {
-    return undefined;
-  }
-
-  const token = rest.join(" ").trim();
-  return token || undefined;
-}
-
-function extractCookieValue(cookieHeader: string | null, cookieName: string): string | undefined {
-  if (!cookieHeader) {
-    return undefined;
-  }
-
-  for (const fragment of cookieHeader.split(";")) {
-    const [rawName, ...rest] = fragment.split("=");
-    if (!rawName || rest.length === 0) {
-      continue;
-    }
-
-    if (rawName.trim() === cookieName) {
-      const value = rest.join("=").trim();
-      return value || undefined;
-    }
-  }
-
-  return undefined;
 }
 
 function timingSafePasswordEquals(
@@ -90,13 +41,8 @@ function signDashboardSession(password: string, issuedAtSeconds: number): string
     .digest("base64url");
 }
 
-function getSessionCookieValue(input: DashboardAuthInput): string | undefined {
-  return input.sessionCookie?.trim() || extractCookieValue(input.cookieHeader ?? null, DASHBOARD_SESSION_COOKIE_NAME);
-}
-
 export function isDashboardPasswordConfigured(): boolean {
-  const expectedPassword = getDashboardPassword();
-  return Boolean(expectedPassword);
+  return Boolean(getDashboardPassword());
 }
 
 export function isDashboardPasswordValid(suppliedPassword: string): boolean {
@@ -142,95 +88,13 @@ export function verifyDashboardSessionToken(
   return timingSafePasswordEquals(expectedSignature, signature);
 }
 
-export function getDashboardAuthResult(input: DashboardAuthInput): AuthResult {
-  if (isPublicAdminPreviewEnabled()) {
-    return {
-      authorized: true,
-      passwordConfigured: isDashboardPasswordConfigured(),
-      productionLocked: false,
-      publicPreview: true,
-    };
-  }
-
-  const expectedPassword = getDashboardPassword();
-
-  if (!expectedPassword) {
-    if (process.env.NODE_ENV === "production") {
-      return {
-        authorized: false,
-        passwordConfigured: false,
-        productionLocked: true,
-        publicPreview: false,
-      };
-    }
-
-    return {
-      authorized: true,
-      passwordConfigured: false,
-      productionLocked: false,
-      publicPreview: false,
-    };
-  }
-
-  const bearerPassword = extractBearerPassword(input.authorization ?? null);
-  const headerPassword = input.headerPassword?.trim() || undefined;
-  const suppliedPassword = bearerPassword || headerPassword;
-  const sessionCookie = getSessionCookieValue(input);
-  const sessionAuthorized =
-    sessionCookie ? verifyDashboardSessionToken(sessionCookie, expectedPassword) : false;
-
+export function getDashboardAuthResult(): AuthResult {
   return {
-    authorized:
-      timingSafePasswordEquals(expectedPassword, suppliedPassword) || sessionAuthorized,
-    passwordConfigured: true,
+    authorized: true,
+    passwordConfigured: isDashboardPasswordConfigured(),
     productionLocked: false,
-    publicPreview: false,
+    publicPreview: true,
   };
-}
-
-export function getDashboardSessionAuthState(sessionCookie: string | null | undefined): AuthResult {
-  return getDashboardAuthResult({ sessionCookie: sessionCookie ?? undefined });
-}
-
-export function requireDashboardAuth(request: Request): NextResponse | null {
-  if (isPublicAdminPreviewEnabled()) {
-    return null;
-  }
-
-  const { authorized, passwordConfigured, productionLocked } = getDashboardAuthResult({
-    authorization: request.headers.get("authorization"),
-    headerPassword: request.headers.get("x-dashboard-password"),
-    cookieHeader: request.headers.get("cookie"),
-  });
-
-  if (!passwordConfigured && !productionLocked) {
-    return null;
-  }
-
-  if (productionLocked) {
-    return NextResponse.json(
-      { error: "missing-production-password" },
-      {
-        status: 401,
-        headers: { "Cache-Control": "no-store" },
-      },
-    );
-  }
-
-  if (authorized) {
-    return null;
-  }
-
-  return NextResponse.json(
-    { error: "unauthorized" },
-    {
-      status: 401,
-      headers: {
-        "Cache-Control": "no-store",
-        "WWW-Authenticate": "Bearer",
-      },
-    }
-  );
 }
 
 export function createGenericErrorResponse(

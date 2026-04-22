@@ -14,7 +14,6 @@ import {
   type AdminWorkerSection,
 } from "@/components/admin/admin-operations-overview";
 import type { SystemLogRow } from "@/components/system-log-panel";
-import { DASHBOARD_SESSION_COOKIE_NAME, getDashboardAuthResult } from "@/lib/auth";
 import { DashboardConfigError } from "@/lib/env";
 import {
   formatCompactCount,
@@ -29,7 +28,6 @@ import {
 import { getDashboardData } from "@/lib/metrics";
 import { getCurrentDashboardLanguage } from "@/lib/i18n/server";
 import { normalizeDashboardData } from "@/lib/normalize";
-import { cookies } from "next/headers";
 import type {
   AdminRenderObservability,
   AdminObservabilitySummary,
@@ -1596,38 +1594,6 @@ function buildCorrelationSection(args: {
 
 export default async function AdminPage() {
   const language = await getCurrentDashboardLanguage();
-  const cookieStore = await cookies();
-  const auth = getDashboardAuthResult({
-    sessionCookie: cookieStore.get(DASHBOARD_SESSION_COOKIE_NAME)?.value ?? undefined,
-  });
-
-  if (auth.productionLocked) {
-    return (
-      <>
-        <TopNavbar initialLanguage={language} />
-
-        <main className={styles.main}>
-          <section className={styles.colSpan12}>
-            <AdminSessionPanel mode="locked" />
-          </section>
-        </main>
-      </>
-    );
-  }
-
-  if (!auth.authorized && auth.passwordConfigured) {
-    return (
-      <>
-        <TopNavbar initialLanguage={language} />
-
-        <main className={styles.main}>
-          <section className={styles.colSpan12}>
-            <AdminSessionPanel mode="login" />
-          </section>
-        </main>
-      </>
-    );
-  }
 
   const rawData = await loadDashboardData();
   const data = normalizeDashboardData(rawData);
@@ -1647,19 +1613,13 @@ export default async function AdminPage() {
       <TopNavbar initialLanguage={language} />
 
       <main className={styles.main}>
-        {auth.passwordConfigured || auth.publicPreview ? (
-          <section className={styles.colSpan12}>
-            <AdminSessionPanel
-              mode="session"
-              logoutDisabled={auth.publicPreview}
-              message={
-                auth.publicPreview
-                  ? "과제 데모 공개 모드입니다. /admin 접근은 항상 허용되며 로그아웃은 비활성화되어 있습니다."
-                  : "브라우저 쿠키 세션으로 admin API 요청이 자동 인증됩니다."
-              }
-            />
-          </section>
-        ) : null}
+        <section className={styles.colSpan12}>
+          <AdminSessionPanel
+            mode="session"
+            logoutDisabled
+            message="과제 데모 공개 모드입니다. /admin 접근은 비밀번호 없이 허용됩니다."
+          />
+        </section>
         <AdminOperationsOverview
           hero={hero}
           dataSection={dataSection}

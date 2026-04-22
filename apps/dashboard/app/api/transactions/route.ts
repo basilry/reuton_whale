@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { createGenericErrorResponse, requireDashboardAuth } from "@/lib/auth";
+import { createGenericErrorResponse } from "@/lib/auth";
 import { DASHBOARD_CACHE_TTL, getCached, setCache } from "@/lib/cache";
 import { parseLimitParam } from "@/lib/format";
 import { getTransactionsData } from "@/lib/metrics";
@@ -13,11 +13,6 @@ export async function GET(request: Request) {
   const rl = rateLimit(clientKey(request), API_RATE_LIMIT);
   if (!rl.allowed) {
     return rateLimitResponse(rl.retryAfter ?? 60);
-  }
-
-  const unauthorized = requireDashboardAuth(request);
-  if (unauthorized) {
-    return unauthorized;
   }
 
   const limit = parseLimitParam(new URL(request.url).searchParams.get("limit"), 20, 200);
