@@ -35,8 +35,22 @@ from src.utils.logger import get_logger
 
 logger = get_logger("pipeline.brief")
 
-# KST 기준 full 브리핑 실행 슬롯 (09/15/21시)
-_FULL_BRIEF_HOURS_KST = frozenset({9, 15, 21})
+def _load_brief_schedule() -> frozenset[int]:
+    path = Path(__file__).resolve().parent.parent.parent / "config" / "brief_schedule.json"
+    try:
+        with path.open("r", encoding="utf-8") as fp:
+            data = json.load(fp)
+        hours = data.get("fullBriefHoursKst")
+        if not isinstance(hours, list) or not all(isinstance(h, int) and 0 <= h <= 23 for h in hours):
+            raise ValueError(f"invalid fullBriefHoursKst in {path}: {hours!r}")
+        return frozenset(hours)
+    except FileNotFoundError:
+        # 로컬 dev 환경에서 config 누락 시 기존 기본값으로 폴백.
+        return frozenset({9, 15, 21})
+
+
+# KST 기준 full 브리핑 실행 슬롯 (09/15/21시) — config/brief_schedule.json 단일 소스
+_FULL_BRIEF_HOURS_KST = _load_brief_schedule()
 _KST = ZoneInfo("Asia/Seoul")
 
 BriefMode = Literal["full", "incremental"]
