@@ -10,6 +10,7 @@ import { NewsWidget } from "@/components/news-widget";
 import { SignalSection } from "@/components/signal-section";
 import { TelegramConnectModal } from "@/components/telegram-connect-modal";
 import { WhaleStoryPanel } from "@/components/whale-story-panel";
+import { getBriefScheduleHoursKst } from "@/lib/brief-schedule";
 import { cleanGeneratedBrief, truncateBriefHeadline } from "@/lib/format";
 import { humanizeSourceFailureKind } from "@/lib/humanize";
 import { formatDashboardMessage } from "@/lib/i18n/get-dictionary";
@@ -44,7 +45,7 @@ type BriefAnalysisItem = {
 type DashboardDictionary = Awaited<ReturnType<typeof getCurrentDashboardDictionary>>;
 type HomeSignal = ComponentProps<typeof SignalSection>["signals"][number];
 type FearGreedCopy = ComponentProps<typeof FearGreedGauge>["copy"];
-const BRIEF_SCHEDULE_HOURS_KST = [0, 8, 16] as const;
+const BRIEF_SCHEDULE_HOURS_KST = getBriefScheduleHoursKst();
 const WATCHLIST_COLLAPSED_COUNT = 6;
 
 function safeText(value: unknown, fallback = ""): string {

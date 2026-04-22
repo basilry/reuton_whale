@@ -1,0 +1,5 @@
+{
+  "fullBriefHoursKst": [9, 15, 21],
+  "timezone": "Asia/Seoul",
+  "description": "KST 기준 full 브리핑 실행 슬롯. */15 cron에서 이 시각 정각 ±7.5분에 진입하면 full 모드."
+}
