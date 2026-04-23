@@ -5,7 +5,7 @@
  *   - app/about/page.tsx (pre-renders ONE_PAGER/README at request time)
  *   - app/api/about/doc/route.ts (renders Obsidian log entries on demand)
  *
- * All HTML is sanitized through DOMPurify (isomorphic-dompurify); no raw
+ * All HTML is sanitized (script/iframe/on* stripped); no raw
  * markdown ever reaches the client. Heading IDs are assigned here so the
  * in-page TOC scroll-spy can find them consistently.
  */
@@ -15,7 +15,6 @@ import "server-only";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { marked } from "marked";
-import DOMPurify from "isomorphic-dompurify";
 
 // `next dev` / `next build` run with cwd = apps/dashboard. Resolve repo root once.
 export const REPO_ROOT = path.resolve(process.cwd(), "..", "..");
@@ -72,17 +71,26 @@ export function hardenExternalLinks(html: string): string {
   );
 }
 
+/**
+ * Strip dangerous tags/attributes from HTML rendered from trusted committed files.
+ * isomorphic-dompurify was removed: it pulls jsdom → html-encoding-sniffer →
+ * @exodus/bytes (ESM-only) which crashes the Vercel CJS runtime.
+ */
+function stripDangerous(html: string): string {
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
+    .replace(/<(iframe|object|embed)\b[^>]*>[\s\S]*?<\/\1>/gi, "")
+    .replace(/\bon\w+\s*=/gi, "data-removed=")
+    .replace(/\bjavascript:/gi, "nojs:");
+}
+
 /** Render a markdown string to sanitized HTML with heading IDs. */
 export function renderMarkdown(markdown: string): string {
   const body = stripFrontmatter(markdown);
   marked.setOptions({ gfm: true, breaks: false });
   const rawHtml = marked.parse(body, { async: false }) as string;
-  const safeHtml = DOMPurify.sanitize(rawHtml, {
-    ADD_ATTR: ["target", "rel"],
-    FORBID_TAGS: ["script", "style", "iframe", "object", "embed"],
-    FORBID_ATTR: ["onerror", "onload", "onclick"],
-  });
-  return hardenExternalLinks(assignHeadingIds(safeHtml));
+  return hardenExternalLinks(assignHeadingIds(stripDangerous(rawHtml)));
 }
 
 /** Read a markdown file from disk and render it. Returns an empty fragment on failure. */

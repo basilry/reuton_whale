@@ -89,10 +89,7 @@ const CSP_CONNECT_SRC = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  // Heavy server-only deps with native / large dep graphs (DOMPurify pulls
-  // jsdom-like internals). Keep them out of the server bundle; require() at
-  // runtime from node_modules instead.
-  serverExternalPackages: ["isomorphic-dompurify", "marked"],
+
   experimental: {
     optimizePackageImports: ["lightweight-charts", "lucide-react"],
   },
