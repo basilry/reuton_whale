@@ -1,0 +1,640 @@
+{
+  "generated_at": "2026-04-23",
+  "count": 79,
+  "entries": [
+    {
+      "file": "Top 10 Liquid Coins - Whale Wallets (2026.4 Updated).md",
+      "date": null,
+      "seq": "",
+      "title": "Top 10 Liquid Coins - Whale Wallets (2026.4 Updated)",
+      "slug": "Top 10 Liquid Coins - Whale Wallets (2026.4 Updated)",
+      "category": "UX · 디자인"
+    },
+    {
+      "file": "2026-04-14-01-WhaleScope-진행내역.md",
+      "date": "2026-04-14",
+      "seq": "01",
+      "title": "WhaleScope (02015) — 진행내역",
+      "slug": "WhaleScope-진행내역",
+      "category": "project-progress"
+    },
+    {
+      "file": "2026-04-14-02-WhaleScope-리뷰.md",
+      "date": "2026-04-14",
+      "seq": "02",
+      "title": "WhaleScope (02015) — 다관점 리뷰 & 코드 리뷰",
+      "slug": "WhaleScope-리뷰",
+      "category": "project-review"
+    },
+    {
+      "file": "2026-04-14-03-WhaleScope-2차-리뷰.md",
+      "date": "2026-04-14",
+      "seq": "03",
+      "title": "WhaleScope 2차 리뷰 — 개선 검증 + 신규 이슈",
+      "slug": "WhaleScope-2차-리뷰",
+      "category": "follow-up-review"
+    },
+    {
+      "file": "2026-04-14-04-WhaleScope-개선-프롬프트.md",
+      "date": "2026-04-14",
+      "seq": "04",
+      "title": "WhaleScope 개선 프롬프트 (Claude Code용)",
+      "slug": "WhaleScope-개선-프롬프트",
+      "category": "claude-code-prompt"
+    },
+    {
+      "file": "2026-04-14-05-WhaleScope-자체수집-전환계획.md",
+      "date": "2026-04-14",
+      "seq": "05",
+      "title": "WhaleScope 자체 수집 전환 계획 — Whale Alert 완전 제거",
+      "slug": "WhaleScope-자체수집-전환계획",
+      "category": "migration-plan"
+    },
+    {
+      "file": "2026-04-14-06-WhaleScope-자체수집-전환계획-v2.md",
+      "date": "2026-04-14",
+      "seq": "06",
+      "title": "WhaleScope 자체 수집 전환 계획 v2 — 하이브리드 소스 + 개인화 + 트렌드 코멘터리",
+      "slug": "WhaleScope-자체수집-전환계획-v2",
+      "category": "migration-plan"
+    },
+    {
+      "file": "2026-04-14-07-WhaleScope-OpenRouter-다관점리뷰.md",
+      "date": "2026-04-14",
+      "seq": "07",
+      "title": "OpenRouter 채택 다관점 리뷰",
+      "slug": "WhaleScope-OpenRouter-다관점리뷰",
+      "category": "multi-perspective-review"
+    },
+    {
+      "file": "2026-04-14-08-WhaleScope-LLM라우터-자체구축-다관점리뷰.md",
+      "date": "2026-04-14",
+      "seq": "08",
+      "title": "자체 LLM 라우터 구축 다관점 리뷰",
+      "slug": "WhaleScope-LLM라우터-자체구축-다관점리뷰",
+      "category": "multi-perspective-review"
+    },
+    {
+      "file": "2026-04-14-09-WhaleScope-아키텍처.md",
+      "date": "2026-04-14",
+      "seq": "09",
+      "title": "WhaleScope System Architecture",
+      "slug": "WhaleScope-아키텍처",
+      "category": "system-architecture"
+    },
+    {
+      "file": "2026-04-14-10-WhaleScope-아키텍처-구현-프롬프트.md",
+      "date": "2026-04-14",
+      "seq": "10",
+      "title": "WhaleScope 목표 아키텍처 구현 프롬프트 (Claude Code용)",
+      "slug": "WhaleScope-아키텍처-구현-프롬프트",
+      "category": "claude-code-prompt"
+    },
+    {
+      "file": "2026-04-14-11-WhaleScope-3차-리뷰.md",
+      "date": "2026-04-14",
+      "seq": "11",
+      "title": "WhaleScope 3차 리뷰 (아키텍처 마이그레이션 완료 직후)",
+      "slug": "WhaleScope-3차-리뷰",
+      "category": "code-review + multi-perspective-review"
+    },
+    {
+      "file": "2026-04-14-12-WhaleScope-3차개선-프롬프트.md",
+      "date": "2026-04-14",
+      "seq": "12",
+      "title": "WhaleScope 3차 개선 프롬프트 (Claude Code 실행용)",
+      "slug": "WhaleScope-3차개선-프롬프트",
+      "category": "claude-code-prompts"
+    },
+    {
+      "file": "2026-04-14-13-WhaleScope-4차개선-병렬프롬프트.md",
+      "date": "2026-04-14",
+      "seq": "13",
+      "title": "WhaleScope 4차 개선 프롬프트 (병렬 실행용)",
+      "slug": "WhaleScope-4차개선-병렬프롬프트",
+      "category": "improvement-prompt (parallel / teamCreate)"
+    },
+    {
+      "file": "2026-04-15-01-WhaleScope-개발내역-다관점-코드리뷰.md",
+      "date": "2026-04-15",
+      "seq": "01",
+      "title": "WhaleScope 개발내역 다관점 리뷰 및 코드리뷰",
+      "slug": "WhaleScope-개발내역-다관점-코드리뷰",
+      "category": "multi-perspective-code-review"
+    },
+    {
+      "file": "2026-04-15-02-WhaleScope-장기로드맵-개선순서.md",
+      "date": "2026-04-15",
+      "seq": "02",
+      "title": "WhaleScope 뤼튼 Product Engineer 과제형 로드맵 및 개선안 순서",
+      "slug": "WhaleScope-장기로드맵-개선순서",
+      "category": "wrtn-assignment-roadmap"
+    },
+    {
+      "file": "2026-04-15-03-WhaleScope-개선적용-아키텍처-실행보고서.md",
+      "date": "2026-04-15",
+      "seq": "03",
+      "title": "WhaleScope 개선 적용 및 실행 아키텍처 보고서",
+      "slug": "WhaleScope-개선적용-아키텍처-실행보고서",
+      "category": "implementation-report"
+    },
+    {
+      "file": "2026-04-15-04-WhaleScope-검증기반-개선안.md",
+      "date": "2026-04-15",
+      "seq": "04",
+      "title": "WhaleScope 검증 기반 개선안",
+      "slug": "WhaleScope-검증기반-개선안",
+      "category": "improvement-plan"
+    },
+    {
+      "file": "2026-04-16-01-WhaleScope-리뷰기반-개선안.md",
+      "date": "2026-04-16",
+      "seq": "01",
+      "title": "WhaleScope 리뷰 기반 개선안",
+      "slug": "WhaleScope-리뷰기반-개선안",
+      "category": "improvement-plan"
+    },
+    {
+      "file": "2026-04-16-02-WhaleScope-개선안-적용내역.md",
+      "date": "2026-04-16",
+      "seq": "02",
+      "title": "WhaleScope 개선안 적용내역",
+      "slug": "WhaleScope-개선안-적용내역",
+      "category": "implementation-summary"
+    },
+    {
+      "file": "2026-04-16-03-WhaleScope-다관점-코드리뷰-및-개선내역.md",
+      "date": "2026-04-16",
+      "seq": "03",
+      "title": "WhaleScope 다관점 코드리뷰 및 개선내역 (2026-04-16)",
+      "slug": "WhaleScope-다관점-코드리뷰-및-개선내역",
+      "category": "multi-perspective-code-review"
+    },
+    {
+      "file": "2026-04-16-04-WhaleScope-다관점리뷰-개선계획.md",
+      "date": "2026-04-16",
+      "seq": "04",
+      "title": "WhaleScope 다관점 리뷰 기반 개선계획",
+      "slug": "WhaleScope-다관점리뷰-개선계획",
+      "category": "improvement-plan"
+    },
+    {
+      "file": "2026-04-16-05-WhaleScope-데모-대시보드-비교-개선점.md",
+      "date": "2026-04-16",
+      "seq": "05",
+      "title": "WhaleScope 데모 vs 실제 대시보드 비교 및 개선점 (2026-04-16)",
+      "slug": "WhaleScope-데모-대시보드-비교-개선점",
+      "category": "demo-vs-implementation-comparison"
+    },
+    {
+      "file": "2026-04-16-06-WhaleScope-데모-대시보드-재평가-다관점-코드리뷰.md",
+      "date": "2026-04-16",
+      "seq": "06",
+      "title": "WhaleScope 데모 대시보드 재평가 및 다관점 코드리뷰 (2026-04-16)",
+      "slug": "WhaleScope-데모-대시보드-재평가-다관점-코드리뷰",
+      "category": "dashboard-rereview-and-code-review"
+    },
+    {
+      "file": "2026-04-16-07-WhaleScope-상세-개선-이행-계획.md",
+      "date": "2026-04-16",
+      "seq": "07",
+      "title": "WhaleScope 상세 개선 이행 계획",
+      "slug": "WhaleScope-상세-개선-이행-계획",
+      "category": "improvement-plan"
+    },
+    {
+      "file": "2026-04-17-01-WhaleScope-개선-이행-진행-상황.md",
+      "date": "2026-04-17",
+      "seq": "01",
+      "title": "WhaleScope 개선 이행 진행 상황 (2026-04-17)",
+      "slug": "WhaleScope-개선-이행-진행-상황",
+      "category": "progress-log"
+    },
+    {
+      "file": "2026-04-17-02-WhaleScope-잔여개선-상세계획-프롬프트.md",
+      "date": "2026-04-17",
+      "seq": "02",
+      "title": "WhaleScope 잔여 개선 상세 계획 + 실행 프롬프트 (2026-04-17)",
+      "slug": "WhaleScope-잔여개선-상세계획-프롬프트",
+      "category": "improvement-plan"
+    },
+    {
+      "file": "2026-04-17-03-WhaleScope-개선결과-다관점리뷰-코드리뷰.md",
+      "date": "2026-04-17",
+      "seq": "03",
+      "title": "WhaleScope 개선 이행 결과 · 다관점 리뷰 및 코드 리뷰",
+      "slug": "WhaleScope-개선결과-다관점리뷰-코드리뷰",
+      "category": "review-report"
+    },
+    {
+      "file": "2026-04-17-04-WhaleScope-잔여개선-프롬프트.md",
+      "date": "2026-04-17",
+      "seq": "04",
+      "title": "WhaleScope 잔여 개선 — Claude Code 실행 프롬프트 (4-17 2차)",
+      "slug": "WhaleScope-잔여개선-프롬프트",
+      "category": "claude-code-prompt"
+    },
+    {
+      "file": "2026-04-17-05-WhaleScope-잔여개선-실행계획.md",
+      "date": "2026-04-17",
+      "seq": "05",
+      "title": "WhaleScope 잔여 개선 실행계획 (4-17 2차)",
+      "slug": "WhaleScope-잔여개선-실행계획",
+      "category": "improvement-plan"
+    },
+    {
+      "file": "2026-04-17-06-WhaleScope-4차-리뷰.md",
+      "date": "2026-04-17",
+      "seq": "06",
+      "title": "WhaleScope 4차 리뷰 (3차 개선 반영 + 대시보드 추가)",
+      "slug": "WhaleScope-4차-리뷰",
+      "category": "code-review + multi-perspective-review"
+    },
+    {
+      "file": "2026-04-17-07-WhaleScope-종합보고서.md",
+      "date": "2026-04-17",
+      "seq": "07",
+      "title": "WhaleScope 종합보고서",
+      "slug": "WhaleScope-종합보고서",
+      "category": "comprehensive-report"
+    },
+    {
+      "file": "2026-04-17-08-WhaleScope-5차개선-병렬프롬프트.md",
+      "date": "2026-04-17",
+      "seq": "08",
+      "title": "WhaleScope 5차 개선 병렬 프롬프트",
+      "slug": "WhaleScope-5차개선-병렬프롬프트",
+      "category": "parallel-improvement-prompt"
+    },
+    {
+      "file": "2026-04-17-09-WhaleScope-개선적용-최종리뷰.md",
+      "date": "2026-04-17",
+      "seq": "09",
+      "title": "WhaleScope 2026-04-17 개선 적용 최종 리뷰",
+      "slug": "WhaleScope-개선적용-최종리뷰",
+      "category": "review-report"
+    },
+    {
+      "file": "2026-04-18-01-WhaleScope-현재-프로젝트-상태-정리.md",
+      "date": "2026-04-18",
+      "seq": "01",
+      "title": "WhaleScope 현재 프로젝트 상태 정리",
+      "slug": "WhaleScope-현재-프로젝트-상태-정리",
+      "category": "project-status"
+    },
+    {
+      "file": "2026-04-18-02-WhaleScope-Binance-Upbit-데이터소스-확장분석.md",
+      "date": "2026-04-18",
+      "seq": "02",
+      "title": "WhaleScope Binance/Upbit 데이터 소스 확장 분석",
+      "slug": "WhaleScope-Binance-Upbit-데이터소스-확장분석",
+      "category": "data-source-expansion-analysis"
+    },
+    {
+      "file": "2026-04-18-03-WhaleScope-감시지갑-큐레이션-고래스토리-기획.md",
+      "date": "2026-04-18",
+      "seq": "03",
+      "title": "감시 지갑 큐레이션 & 고래 스토리 엔진 기획",
+      "slug": "WhaleScope-감시지갑-큐레이션-고래스토리-기획",
+      "category": "plan"
+    },
+    {
+      "file": "2026-04-18-04-WhaleScope-유저홈-실시간-티커-차트-기획.md",
+      "date": "2026-04-18",
+      "seq": "04",
+      "title": "유저홈 상단 실시간 티커 & 차트 기획",
+      "slug": "WhaleScope-유저홈-실시간-티커-차트-기획",
+      "category": "plan"
+    },
+    {
+      "file": "2026-04-18-05-WhaleScope-유저홈-종합개선안-v2.md",
+      "date": "2026-04-18",
+      "seq": "05",
+      "title": "WhaleScope 유저홈 v2 종합 개선안 (Master)",
+      "slug": "WhaleScope-유저홈-종합개선안-v2",
+      "category": "plan"
+    },
+    {
+      "file": "2026-04-18-06-WhaleScope-브리핑-시장분위기-데이터파이프라인-재설계.md",
+      "date": "2026-04-18",
+      "seq": "06",
+      "title": "유저홈 브리핑·시장분위기·거래소 시그널 데이터 파이프라인 재설계",
+      "slug": "WhaleScope-브리핑-시장분위기-데이터파이프라인-재설계",
+      "category": "plan"
+    },
+    {
+      "file": "2026-04-18-07-WhaleScope-유저홈-v2-개발-QA-코드리뷰-종합보고서.md",
+      "date": "2026-04-18",
+      "seq": "07",
+      "title": "WhaleScope 유저홈 v2 개발 · QA · 코드리뷰 종합보고서",
+      "slug": "WhaleScope-유저홈-v2-개발-QA-코드리뷰-종합보고서",
+      "category": "report"
+    },
+    {
+      "file": "2026-04-18-08-WhaleScope-Render-워커-웹서버-배포가이드.md",
+      "date": "2026-04-18",
+      "seq": "08",
+      "title": "WhaleScope Render 배포 가이드",
+      "slug": "WhaleScope-Render-워커-웹서버-배포가이드",
+      "category": "render-deployment-guide"
+    },
+    {
+      "file": "2026-04-18-09-WhaleScope-페이지-정보구조-운영-사용자-분리-보고서.md",
+      "date": "2026-04-18",
+      "seq": "09",
+      "title": "WhaleScope 페이지 정보구조 및 운영/사용자 분리 보고서",
+      "slug": "WhaleScope-페이지-정보구조-운영-사용자-분리-보고서",
+      "category": "ia-routing-review-report"
+    },
+    {
+      "file": "2026-04-18-10-WhaleScope-유저홈-v3-종합개선안-실시간티커-뉴스-큐레이션.md",
+      "date": "2026-04-18",
+      "seq": "10",
+      "title": "WhaleScope 유저홈 v3 — 종합 개선안 (실시간 티커 · 뉴스 · 큐레이션)",
+      "slug": "WhaleScope-유저홈-v3-종합개선안-실시간티커-뉴스-큐레이션",
+      "category": "project-plan"
+    },
+    {
+      "file": "2026-04-18-11-WhaleScope-유저홈-v3-구현-QA-코드리뷰-종합보고서.md",
+      "date": "2026-04-18",
+      "seq": "11",
+      "title": "2026-04-18-11 WhaleScope 유저홈 v3 구현·QA·코드리뷰 종합보고서",
+      "slug": "WhaleScope-유저홈-v3-구현-QA-코드리뷰-종합보고서",
+      "category": "review"
+    },
+    {
+      "file": "2026-04-18-12-WhaleScope-유저홈-v4-개선계획-UX-티커-크론-텔레그램-모바일.md",
+      "date": "2026-04-18",
+      "seq": "12",
+      "title": "WhaleScope 유저홈 v4 개선계획 — UX·티커·크론·텔레그램·모바일",
+      "slug": "WhaleScope-유저홈-v4-개선계획-UX-티커-크론-텔레그램-모바일",
+      "category": "improvement-plan"
+    },
+    {
+      "file": "2026-04-18-13-WhaleScope-유저홈-v4-구현-QA-코드리뷰-종합보고서.md",
+      "date": "2026-04-18",
+      "seq": "13",
+      "title": "2026-04-18-13 WhaleScope 유저홈 v4 구현 QA 코드리뷰 종합보고서",
+      "slug": "WhaleScope-유저홈-v4-구현-QA-코드리뷰-종합보고서",
+      "category": "review"
+    },
+    {
+      "file": "2026-04-18-14-WhaleScope-v4-정합성-브리핑-Render-GHA-중복-분석.md",
+      "date": "2026-04-18",
+      "seq": "14",
+      "title": "2026-04-18-14 WhaleScope v4 정합성 브리핑 — Render/GHA 중복 분석",
+      "slug": "WhaleScope-v4-정합성-브리핑-Render-GHA-중복-분석",
+      "category": "cowork-session"
+    },
+    {
+      "file": "2026-04-18-15-WhaleScope-v5-개선계획-Render-단일소스-UI-UX.md",
+      "date": "2026-04-18",
+      "seq": "15",
+      "title": "WhaleScope v5 개선계획 — Render 단일 소스 전환 & 유저홈 UI/UX 개선",
+      "slug": "WhaleScope-v5-개선계획-Render-단일소스-UI-UX",
+      "category": "project-plan"
+    },
+    {
+      "file": "2026-04-18-16-WhaleScope-v5-구현-QA-코드리뷰-종합보고서.md",
+      "date": "2026-04-18",
+      "seq": "16",
+      "title": "WhaleScope v5 구현 / QA / 코드리뷰 종합보고서",
+      "slug": "WhaleScope-v5-구현-QA-코드리뷰-종합보고서",
+      "category": "implementation-report"
+    },
+    {
+      "file": "2026-04-18-17-WhaleScope-v5-정합성-QA-다관점리뷰-종합보고서.md",
+      "date": "2026-04-18",
+      "seq": "17",
+      "title": "WhaleScope v5 — 정합성 점검 × QA × 다관점 리뷰 × 디자인 리뷰 종합보고서",
+      "slug": "WhaleScope-v5-정합성-QA-다관점리뷰-종합보고서",
+      "category": "review-report"
+    },
+    {
+      "file": "2026-04-18-18-WhaleScope-v6-개선계획-데이터파이프라인-UX-인프라모니터링.md",
+      "date": "2026-04-18",
+      "seq": "18",
+      "title": "WhaleScope v6 개선계획 — 데이터 파이프라인 정상화 · 다국어 · 화이트모드 · 인프라 모니터링",
+      "slug": "WhaleScope-v6-개선계획-데이터파이프라인-UX-인프라모니터링",
+      "category": "improvement-plan"
+    },
+    {
+      "file": "2026-04-18-19-WhaleScope-v6-구현-QA-코드리뷰-종합보고서.md",
+      "date": "2026-04-18",
+      "seq": "19",
+      "title": "WhaleScope v6 구현 / QA / 코드리뷰 종합보고서",
+      "slug": "WhaleScope-v6-구현-QA-코드리뷰-종합보고서",
+      "category": "implementation-report"
+    },
+    {
+      "file": "2026-04-18-20-WhaleScope-v7-WorkerC-체크리스트-데이터소스-env-sync.md",
+      "date": "2026-04-18",
+      "seq": "20",
+      "title": "WhaleScope v7 Worker C 체크리스트",
+      "slug": "WhaleScope-v7-WorkerC-체크리스트-데이터소스-env-sync",
+      "category": "implementation-checklist"
+    },
+    {
+      "file": "2026-04-18-21-WhaleScope-v7-구현-QA-종합보고서.md",
+      "date": "2026-04-18",
+      "seq": "21",
+      "title": "WhaleScope v7 구현 · QA · 종합보고서",
+      "slug": "WhaleScope-v7-구현-QA-종합보고서",
+      "category": "implementation-report"
+    },
+    {
+      "file": "2026-04-18-22-WhaleScope-v7-개선계획-데이터풍부화-신호상세-i18n확장.md",
+      "date": "2026-04-18",
+      "seq": "22",
+      "title": "WhaleScope v7 개선계획 — 데이터 풍부화 · 신호 상세 · i18n 확장",
+      "slug": "WhaleScope-v7-개선계획-데이터풍부화-신호상세-i18n확장",
+      "category": "improvement-plan"
+    },
+    {
+      "file": "2026-04-19-01-WhaleScope-뉴스-신선도-dual-staleness-개편-리뷰.md",
+      "date": "2026-04-19",
+      "seq": "01",
+      "title": "WhaleScope 뉴스 신선도(Dual-Staleness) 개편 — 다관점 리뷰 + 코드 리뷰 종합 보고",
+      "slug": "WhaleScope-뉴스-신선도-dual-staleness-개편-리뷰",
+      "category": "cowork-session"
+    },
+    {
+      "file": "2026-04-19-02-WhaleScope-디자인-개선계획.md",
+      "date": "2026-04-19",
+      "seq": "02",
+      "title": "WhaleScope 디자인 개선계획 (4-Layer 평가 기반)",
+      "slug": "WhaleScope-디자인-개선계획",
+      "category": "design-improvement-plan"
+    },
+    {
+      "file": "2026-04-19-03-WhaleScope-장애대응-및-개선-이행계획.md",
+      "date": "2026-04-19",
+      "seq": "03",
+      "title": "WhaleScope 장애 대응 및 개선 이행 계획 (2026-04-19)",
+      "slug": "WhaleScope-장애대응-및-개선-이행계획",
+      "category": "cowork-session"
+    },
+    {
+      "file": "2026-04-19-04-WhaleScope-운영페이지-관측-개선계획-Render-로그-통합.md",
+      "date": "2026-04-19",
+      "seq": "04",
+      "title": "WhaleScope 운영페이지 관측 개선계획: 수집 데이터, 워커 상태, Render 로그 통합",
+      "slug": "WhaleScope-운영페이지-관측-개선계획-Render-로그-통합",
+      "category": "plan"
+    },
+    {
+      "file": "2026-04-19-05-WhaleScope-UX-개선계획.md",
+      "date": "2026-04-19",
+      "seq": "05",
+      "title": "WhaleScope UX 개선계획 — 브라우저 인터랙션 관찰 기반",
+      "slug": "WhaleScope-UX-개선계획",
+      "category": "project-doc"
+    },
+    {
+      "file": "2026-04-19-06-WhaleScope-운영페이지-관측-개선계획-v2-Render-로그-통합-상세설계.md",
+      "date": "2026-04-19",
+      "seq": "06",
+      "title": "WhaleScope 운영페이지 관측 개선계획 v2 — Render 로그 통합 상세설계",
+      "slug": "WhaleScope-운영페이지-관측-개선계획-v2-Render-로그-통합-상세설계",
+      "category": "operations-observability-plan"
+    },
+    {
+      "file": "2026-04-19-07-WhaleScope-감시지갑-체인편향-분석-ETH-중심-근본원인.md",
+      "date": "2026-04-19",
+      "seq": "07",
+      "title": "감시지갑이 ETH에만 몰려 있는 이유 — 근본 원인 분석 보고서",
+      "slug": "WhaleScope-감시지갑-체인편향-분석-ETH-중심-근본원인",
+      "category": "analysis"
+    },
+    {
+      "file": "2026-04-19-08-WhaleScope-v6-개선완료보고서.md",
+      "date": "2026-04-19",
+      "seq": "08",
+      "title": "WhaleScope v6 개선 완료 보고서",
+      "slug": "WhaleScope-v6-개선완료보고서",
+      "category": "project-report"
+    },
+    {
+      "file": "2026-04-19-09-WhaleScope-감시지갑-체인-커버리지-확장-개선안-상세설계.md",
+      "date": "2026-04-19",
+      "seq": "09",
+      "title": "감시지갑 체인 커버리지 확장 — 개선안 상세설계",
+      "slug": "WhaleScope-감시지갑-체인-커버리지-확장-개선안-상세설계",
+      "category": "improvement-plan"
+    },
+    {
+      "file": "2026-04-20-01-WhaleScope-체인-커버리지-적용완료-QA-종합보고서.md",
+      "date": "2026-04-20",
+      "seq": "01",
+      "title": "WhaleScope 체인 커버리지 적용 완료 / QA 종합보고서",
+      "slug": "WhaleScope-체인-커버리지-적용완료-QA-종합보고서",
+      "category": "implementation-report"
+    },
+    {
+      "file": "2026-04-20-02-WhaleScope-텔레그램-사이클-점검-및-봇-미발송-근본원인-분석.md",
+      "date": "2026-04-20",
+      "seq": "02",
+      "title": "WhaleScope 텔레그램 사이클 점검 및 봇 미발송 근본 원인 분석",
+      "slug": "WhaleScope-텔레그램-사이클-점검-및-봇-미발송-근본원인-분석",
+      "category": "diagnostic-report"
+    },
+    {
+      "file": "2026-04-20-03-WhaleScope-운영-Upbit-API-중단-및-Redis-실시간-비활성-근본원인-분석.md",
+      "date": "2026-04-20",
+      "seq": "03",
+      "title": "WhaleScope — 운영 Upbit API 중단 및 Redis 실시간 비활성 근본원인 분석",
+      "slug": "WhaleScope-운영-Upbit-API-중단-및-Redis-실시간-비활성-근본원인-분석",
+      "category": "diagnostic-report"
+    },
+    {
+      "file": "2026-04-20-04-WhaleScope-Sheets-Redis캐싱-429해결-구현계획.md",
+      "date": "2026-04-20",
+      "seq": "04",
+      "title": "WhaleScope Google Sheets → Redis 캐싱 레이어 도입 계획",
+      "slug": "WhaleScope-Sheets-Redis캐싱-429해결-구현계획",
+      "category": "project-plan"
+    },
+    {
+      "file": "2026-04-20-05-WhaleScope-로딩성능-분석-개선계획.md",
+      "date": "2026-04-20",
+      "seq": "05",
+      "title": "WhaleScope 로딩 성능 분석 및 개선안 (v1)",
+      "slug": "WhaleScope-로딩성능-분석-개선계획",
+      "category": "project-plan"
+    },
+    {
+      "file": "2026-04-20-06-WhaleScope-브리핑축약-로딩성능-반영보고서.md",
+      "date": "2026-04-20",
+      "seq": "06",
+      "title": "WhaleScope 브리핑 축약 + 로딩 성능 개선 반영 보고서",
+      "slug": "WhaleScope-브리핑축약-로딩성능-반영보고서",
+      "category": "project-report"
+    },
+    {
+      "file": "2026-04-21-01-WhaleScope-README-스냅샷.md",
+      "date": "2026-04-21",
+      "seq": "01",
+      "title": "WhaleScope",
+      "slug": "WhaleScope-README-스냅샷",
+      "category": "reference"
+    },
+    {
+      "file": "2026-04-21-02-WhaleScope-ONE_PAGER-스냅샷.md",
+      "date": "2026-04-21",
+      "seq": "02",
+      "title": "WhaleScope — One Pager",
+      "slug": "WhaleScope-ONE_PAGER-스냅샷",
+      "category": "reference"
+    },
+    {
+      "file": "2026-04-22-01-WhaleScope-다관점리뷰-종합보고서.md",
+      "date": "2026-04-22",
+      "seq": "01",
+      "title": "WhaleScope 다관점 리뷰 · 코드리뷰 종합보고서",
+      "slug": "WhaleScope-다관점리뷰-종합보고서",
+      "category": "review"
+    },
+    {
+      "file": "2026-04-22-02-WhaleScope-다관점리뷰-개선안-실행계획.md",
+      "date": "2026-04-22",
+      "seq": "02",
+      "title": "WhaleScope 다관점 리뷰 · 개선안 실행 계획",
+      "slug": "WhaleScope-다관점리뷰-개선안-실행계획",
+      "category": "review"
+    },
+    {
+      "file": "2026-04-23-01-WhaleScope-과제소개페이지-개발기획안.md",
+      "date": "2026-04-23",
+      "seq": "01",
+      "title": "WhaleScope `/about` 과제소개페이지 개발 기획안",
+      "slug": "WhaleScope-과제소개페이지-개발기획안",
+      "category": "note"
+    },
+    {
+      "file": "DESIGN.md",
+      "date": "2026-04-17",
+      "seq": "10",
+      "title": "WhaleScope Dashboard — DESIGN.md (Layer 2 토큰 · 컴포넌트 규칙)",
+      "slug": "DESIGN",
+      "category": "UX · 디자인",
+      "source": "dashboard"
+    },
+    {
+      "file": ".design-context.md",
+      "date": "2026-04-17",
+      "seq": "11",
+      "title": "WhaleScope Dashboard — .design-context.md (Layer 1 Persona · Tone)",
+      "slug": "design-context",
+      "category": "UX · 디자인",
+      "source": "dashboard"
+    },
+    {
+      "file": "2026-04-23-02-WhaleScope-과제소개페이지-설계문서통합-작업기록.md",
+      "date": "2026-04-23",
+      "seq": "02",
+      "title": "WhaleScope `/about` 과제소개페이지 구현·설계문서 통합 · 작업 기록",
+      "slug": "WhaleScope-과제소개페이지-설계문서통합-작업기록",
+      "category": "implementation-report"
+    }
+  ]
+}

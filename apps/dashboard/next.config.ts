@@ -89,6 +89,15 @@ const CSP_CONNECT_SRC = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Pin the file-trace root to this app so Next.js does not scan the entire
+  // monorepo (which balloons memory usage in constrained sandboxes).
+  // `next build` is always invoked with cwd = apps/dashboard, so process.cwd()
+  // resolves to the app directory regardless of how it's launched.
+  outputFileTracingRoot: resolve(process.cwd()),
+  // Heavy server-only deps with native / large dep graphs (DOMPurify pulls
+  // jsdom-like internals). Keep them out of the server bundle; require() at
+  // runtime from node_modules instead.
+  serverExternalPackages: ["isomorphic-dompurify", "marked"],
   experimental: {
     optimizePackageImports: ["lightweight-charts", "lucide-react"],
   },

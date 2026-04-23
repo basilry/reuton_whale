@@ -1,0 +1,1677 @@
+<!DOCTYPE html>
+<html class="light" lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="WhaleScope 과제 소개 페이지 — 뤼튼 테크놀로지스 Product Engineer 과제 C 영역" name="description"/>
+<title>WhaleScope — 과제 소개</title>
+
+<!-- theme-boot: 레이아웃 플리커 방지 -->
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem("ws-theme");
+      var sysDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var isDark = saved ? saved === "dark" : sysDark;
+      document.documentElement.classList.toggle("dark", isDark);
+      document.documentElement.classList.toggle("light", !isDark);
+    } catch (e) {}
+  })();
+</script>
+
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link as="style" crossorigin="" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+
+<!-- Markdown renderer + DOM sanitizer (for ONE_PAGER.md · README.md 직접 연결) -->
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.11/dist/purify.min.js" defer></script>
+
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          // Material 3 — Light
+          "surface-tint": "#00629e",
+          "outline-variant": "#c0c7d2",
+          "surface-container-low": "#edf4fc",
+          "primary-fixed": "#cfe5ff",
+          "on-secondary-fixed-variant": "#2d486d",
+          "error-container": "#ffdad6",
+          "surface-bright": "#f6faff",
+          "on-surface": "#151c22",
+          "inverse-on-surface": "#eaf1f9",
+          "surface-container": "#e8eff7",
+          "inverse-surface": "#2a3137",
+          "on-primary-fixed-variant": "#004a79",
+          "on-background": "#151c22",
+          "surface": "#f6faff",
+          "on-secondary-container": "#3e5980",
+          "on-secondary-fixed": "#001c3b",
+          "surface-container-lowest": "#ffffff",
+          "on-primary": "#ffffff",
+          "on-primary-container": "#f7f9ff",
+          "on-error": "#ffffff",
+          "on-surface-variant": "#404751",
+          "tertiary-fixed-dim": "#77dc7a",
+          "on-tertiary": "#ffffff",
+          "secondary": "#455f87",
+          "surface-container-highest": "#dce3eb",
+          "on-tertiary-fixed": "#002105",
+          "secondary-fixed": "#d5e3ff",
+          "primary-fixed-dim": "#9acbff",
+          "on-primary-fixed": "#001d34",
+          "tertiary": "#00691e",
+          "tertiary-container": "#18842e",
+          "secondary-container": "#b5d0fd",
+          "on-tertiary-fixed-variant": "#005316",
+          "primary": "#005e97",
+          "tertiary-fixed": "#93f993",
+          "background": "#f6faff",
+          "surface-variant": "#dce3eb",
+          "surface-dim": "#d4dbe3",
+          "on-error-container": "#93000a",
+          "on-secondary": "#ffffff",
+          "surface-container-high": "#e2e9f1",
+          "inverse-primary": "#9acbff",
+          "secondary-fixed-dim": "#adc8f5",
+          "outline": "#707882",
+          "on-tertiary-container": "#eaffe3",
+          "primary-container": "#0077be",
+          "error": "#ba1a1a",
+        },
+        borderRadius: {
+          DEFAULT: "1rem",
+          lg: "2rem",
+          xl: "3rem",
+          full: "9999px",
+        },
+        fontFamily: {
+          headline: ["Manrope", "Pretendard", "sans-serif"],
+          body: ["Pretendard", "sans-serif"],
+          label: ["Pretendard", "sans-serif"],
+        },
+        transitionTimingFunction: {
+          // ease-in 금지 — 모두 ease-out 계열
+          "emphasis": "cubic-bezier(0.2, 0, 0, 1)",
+          "standard": "cubic-bezier(0.2, 0, 0, 1)",
+          "spring-soft": "cubic-bezier(0.34, 1.56, 0.64, 1)",
+        },
+        transitionDuration: {
+          "quick": "160ms",
+          "base": "200ms",
+          "calm": "300ms",
+        },
+      },
+    },
+  };
+</script>
+
+<style>
+  /* ---- Core typography & paper ---- */
+  body {
+    font-family: "Pretendard", sans-serif;
+    background-color: #f6faff;
+    color: #151c22;
+    -webkit-font-smoothing: antialiased;
+  }
+  html.dark body { background-color: #0f141a; color: #eaf1f9; }
+  .font-manrope { font-family: "Manrope", "Pretendard", sans-serif; }
+
+  /* ---- Glass card (DESIGN §6 elevation-2 + §2 surface-container) ---- */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(192, 199, 210, 0.35);
+    box-shadow: 0 4px 12px -2px rgba(0, 65, 106, 0.06), 0 2px 4px -1px rgba(0, 65, 106, 0.04);
+  }
+  html.dark .glass-card {
+    background: rgba(30, 38, 50, 0.74);
+    border: 1px solid rgba(112, 120, 130, 0.25);
+    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.42), 0 2px 4px -1px rgba(0, 0, 0, 0.30);
+  }
+
+  /* ---- Paper texture backdrop ---- */
+  .wave-bg {
+    background-image:
+      radial-gradient(at 0% 0%, rgba(0, 94, 151, 0.05) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(24, 132, 46, 0.03) 0px, transparent 50%);
+  }
+  html.dark .wave-bg {
+    background-image:
+      radial-gradient(at 0% 0%, rgba(0, 94, 151, 0.08) 0px, transparent 55%),
+      radial-gradient(at 100% 100%, rgba(24, 132, 46, 0.04) 0px, transparent 55%);
+  }
+
+  /* ---- Material Symbols baseline ---- */
+  .material-symbols-outlined {
+    font-size: 20px;
+    vertical-align: middle;
+    font-variation-settings: "FILL" 0, "wght" 400;
+  }
+
+  /* ---- Editorial body prose (max-w-[65ch] 규칙) ---- */
+  .prose-editorial p {
+    max-width: 65ch;
+    line-height: 1.7;
+    color: #404751;
+    margin-bottom: 1rem;
+  }
+  html.dark .prose-editorial p { color: #c0c7d2; }
+  .prose-editorial h3 {
+    font-family: "Manrope", "Pretendard", sans-serif;
+    font-weight: 700;
+    font-size: 1.25rem;
+    letter-spacing: -0.01em;
+    color: #151c22;
+    text-wrap: balance;
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+    scroll-margin-top: 96px;
+  }
+  html.dark .prose-editorial h3 { color: #eaf1f9; }
+  .prose-editorial ul {
+    max-width: 65ch;
+    padding-left: 1.25rem;
+    margin-bottom: 1rem;
+    list-style: disc;
+    color: #404751;
+    line-height: 1.7;
+  }
+  html.dark .prose-editorial ul { color: #c0c7d2; }
+  .prose-editorial li { margin-bottom: 0.25rem; }
+  .prose-editorial strong { color: #005e97; font-weight: 700; }
+  html.dark .prose-editorial strong { color: #9acbff; }
+  .prose-editorial blockquote {
+    max-width: 65ch;
+    border-left: 2px solid #0077be;
+    padding-left: 1rem;
+    color: #404751;
+    font-style: italic;
+    margin: 1.25rem 0;
+  }
+  html.dark .prose-editorial blockquote { color: #c0c7d2; border-left-color: #9acbff; }
+  .prose-editorial code {
+    font-family: "SF Mono", ui-monospace, "JetBrains Mono", monospace;
+    font-size: 0.875em;
+    background: rgba(0, 94, 151, 0.08);
+    color: #005e97;
+    padding: 0.1em 0.35em;
+    border-radius: 0.25rem;
+  }
+  html.dark .prose-editorial code { background: rgba(154, 203, 255, 0.14); color: #9acbff; }
+  .prose-editorial table {
+    font-size: 0.875rem;
+    border-collapse: collapse;
+    margin: 1.25rem 0;
+    width: 100%;
+    max-width: 65ch;
+  }
+  .prose-editorial th, .prose-editorial td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #c0c7d2;
+    text-align: left;
+  }
+  html.dark .prose-editorial th, html.dark .prose-editorial td { border-bottom-color: rgba(192, 199, 210, 0.2); }
+  .prose-editorial th { font-weight: 700; background: rgba(237, 244, 252, 0.4); }
+  html.dark .prose-editorial th { background: rgba(69, 95, 135, 0.15); }
+
+  /* ---- Tabular nums for numbers ---- */
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+
+  /* ---- Focus-visible (DESIGN §13 accessibility) ---- */
+  button:focus-visible, a:focus-visible, [role="tab"]:focus-visible {
+    outline: 2px solid #0077be;
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  html.dark button:focus-visible, html.dark a:focus-visible, html.dark [role="tab"]:focus-visible {
+    outline-color: #9acbff;
+  }
+
+  /* ---- CTA button interaction ---- */
+  .cta-primary {
+    transition-property: background-color, transform, box-shadow;
+    transition-duration: 160ms;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  }
+  .cta-primary:hover { background-color: #004a79; box-shadow: 0 6px 20px -4px rgba(0, 94, 151, 0.35); }
+  .cta-primary:active { transform: scale(0.97); box-shadow: 0 2px 6px -1px rgba(0, 94, 151, 0.30); }
+  html.dark .cta-primary:hover { background-color: #9acbff; }
+
+  .cta-ghost {
+    transition-property: background-color, border-color, color, transform;
+    transition-duration: 160ms;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  }
+  .cta-ghost:hover { background-color: rgba(0, 119, 190, 0.08); border-color: #0077be; color: #004a79; }
+  .cta-ghost:active { transform: scale(0.97); }
+  html.dark .cta-ghost:hover { background-color: rgba(154, 203, 255, 0.10); color: #cfe5ff; }
+
+  /* ---- Tab chip ---- */
+  .tab-chip {
+    transition-property: background-color, color, box-shadow, transform;
+    transition-duration: 200ms;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  }
+  .tab-chip:hover { background-color: rgba(0, 119, 190, 0.06); }
+  .tab-chip:active { transform: scale(0.98); }
+  .tab-chip[aria-selected="true"] {
+    background-color: #005e97;
+    color: #ffffff;
+    box-shadow: 0 6px 18px -4px rgba(0, 94, 151, 0.32);
+  }
+  html.dark .tab-chip[aria-selected="true"] {
+    background-color: #9acbff;
+    color: #001d34;
+  }
+
+  /* ---- TOC active link ---- */
+  .toc-link {
+    transition-property: color, background-color, border-color;
+    transition-duration: 160ms;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  }
+  .toc-link[aria-current="true"] {
+    color: #005e97;
+    background-color: rgba(0, 119, 190, 0.08);
+    border-color: #0077be;
+  }
+  html.dark .toc-link[aria-current="true"] {
+    color: #9acbff;
+    background-color: rgba(154, 203, 255, 0.10);
+    border-color: #9acbff;
+  }
+
+  /* ---- Tab panel visibility ---- */
+  [role="tabpanel"] { display: none; }
+  [role="tabpanel"].is-active { display: block; animation: fade-up 300ms cubic-bezier(0.2, 0, 0, 1); }
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ---- Skip link (a11y) ---- */
+  .skip-link {
+    position: absolute;
+    top: -64px;
+    left: 1rem;
+    background: #005e97;
+    color: #fff;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    z-index: 100;
+    transition: top 160ms cubic-bezier(0.2, 0, 0, 1);
+  }
+  .skip-link:focus-visible { top: 1rem; }
+
+  /* ---- prefers-reduced-motion ---- */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
+  }
+
+  /* ---- Subtle divider (editorial style) ---- */
+  .editorial-rule {
+    width: 48px; height: 2px; background: #005e97;
+    margin: 1.5rem 0;
+  }
+  html.dark .editorial-rule { background: #9acbff; }
+
+  /* ---- Markdown-rendered content (prose-editorial extensions) ---- */
+  .prose-editorial h1 {
+    font-family: "Manrope", "Pretendard", sans-serif;
+    font-weight: 800;
+    font-size: 2.25rem;
+    letter-spacing: -0.018em;
+    line-height: 1.15;
+    color: #151c22;
+    text-wrap: balance;
+    margin-top: 2.5rem;
+    margin-bottom: 1rem;
+    scroll-margin-top: 96px;
+  }
+  .prose-editorial > h1:first-child,
+  .prose-editorial .md-content > h1:first-child { margin-top: 0; }
+  html.dark .prose-editorial h1 { color: #eaf1f9; }
+
+  .prose-editorial h2 {
+    font-family: "Manrope", "Pretendard", sans-serif;
+    font-weight: 700;
+    font-size: 1.625rem;
+    letter-spacing: -0.012em;
+    color: #151c22;
+    text-wrap: balance;
+    margin-top: 2.25rem;
+    margin-bottom: 0.875rem;
+    scroll-margin-top: 96px;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(192, 199, 210, 0.45);
+  }
+  html.dark .prose-editorial h2 { color: #eaf1f9; border-bottom-color: rgba(112, 120, 130, 0.25); }
+
+  .prose-editorial h4 {
+    font-family: "Manrope", "Pretendard", sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
+    color: #151c22;
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+    scroll-margin-top: 96px;
+  }
+  html.dark .prose-editorial h4 { color: #eaf1f9; }
+
+  .prose-editorial hr {
+    border: 0;
+    border-top: 1px solid rgba(192, 199, 210, 0.5);
+    margin: 2rem 0;
+    max-width: 65ch;
+  }
+  html.dark .prose-editorial hr { border-top-color: rgba(112, 120, 130, 0.3); }
+
+  .prose-editorial ol {
+    max-width: 65ch;
+    padding-left: 1.25rem;
+    margin-bottom: 1rem;
+    list-style: decimal;
+    color: #404751;
+    line-height: 1.7;
+  }
+  html.dark .prose-editorial ol { color: #c0c7d2; }
+  .prose-editorial ol li { margin-bottom: 0.25rem; }
+
+  .prose-editorial pre {
+    max-width: none;
+    overflow-x: auto;
+    background: rgba(0, 94, 151, 0.05);
+    padding: 1rem 1.25rem;
+    border-radius: 0.75rem;
+    margin: 1rem 0;
+    font-size: 0.875rem;
+    line-height: 1.65;
+    border: 1px solid rgba(192, 199, 210, 0.35);
+  }
+  html.dark .prose-editorial pre {
+    background: rgba(154, 203, 255, 0.06);
+    border-color: rgba(112, 120, 130, 0.22);
+  }
+  .prose-editorial pre code {
+    background: none;
+    padding: 0;
+    color: inherit;
+    font-size: inherit;
+  }
+
+  .prose-editorial a {
+    color: #005e97;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-thickness: 1px;
+    transition: text-decoration-thickness 160ms cubic-bezier(0.2, 0, 0, 1);
+  }
+  .prose-editorial a:hover { text-decoration-thickness: 2px; }
+  html.dark .prose-editorial a { color: #9acbff; }
+
+  .prose-editorial img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.75rem;
+    margin: 1rem 0;
+    border: 1px solid rgba(192, 199, 210, 0.35);
+  }
+  html.dark .prose-editorial img { border-color: rgba(112, 120, 130, 0.25); }
+
+  .prose-editorial details {
+    margin: 1rem 0;
+    padding: 0.75rem 1rem;
+    background: rgba(237, 244, 252, 0.5);
+    border: 1px solid rgba(192, 199, 210, 0.4);
+    border-radius: 0.5rem;
+  }
+  html.dark .prose-editorial details {
+    background: rgba(69, 95, 135, 0.12);
+    border-color: rgba(112, 120, 130, 0.22);
+  }
+  .prose-editorial summary {
+    cursor: pointer;
+    font-weight: 700;
+    color: #005e97;
+  }
+  html.dark .prose-editorial summary { color: #9acbff; }
+
+  /* ---- MD loader + error states ---- */
+  @keyframes ws-spin { to { transform: rotate(360deg); } }
+  .md-loader-icon {
+    display: inline-block;
+    animation: ws-spin 1s linear infinite;
+  }
+  .md-empty-state {
+    border: 1px dashed rgba(192, 199, 210, 0.6);
+    border-radius: 0.75rem;
+    padding: 1.25rem;
+    color: #404751;
+    font-size: 0.875rem;
+    max-width: 65ch;
+  }
+  html.dark .md-empty-state { border-color: rgba(112, 120, 130, 0.3); color: #c0c7d2; }
+  .md-error-state {
+    border: 1px solid rgba(186, 26, 26, 0.3);
+    background: rgba(255, 218, 214, 0.35);
+    border-radius: 0.75rem;
+    padding: 1.25rem;
+    color: #151c22;
+    font-size: 0.875rem;
+    max-width: 65ch;
+  }
+  html.dark .md-error-state {
+    background: rgba(186, 26, 26, 0.12);
+    color: #eaf1f9;
+  }
+
+  /* TOC 내부 스크롤바 — 토큰 색상, 얇은 스타일 */
+  .ws-toc-scroll { scrollbar-width: thin; scrollbar-color: rgba(0, 94, 151, 0.35) transparent; scroll-behavior: smooth; overscroll-behavior: contain; }
+  .ws-toc-scroll::-webkit-scrollbar { width: 6px; }
+  .ws-toc-scroll::-webkit-scrollbar-track { background: transparent; }
+  .ws-toc-scroll::-webkit-scrollbar-thumb { background: rgba(0, 94, 151, 0.35); border-radius: 999px; }
+  .ws-toc-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0, 94, 151, 0.55); }
+  html.dark .ws-toc-scroll { scrollbar-color: rgba(157, 202, 255, 0.4) transparent; }
+  html.dark .ws-toc-scroll::-webkit-scrollbar-thumb { background: rgba(157, 202, 255, 0.4); }
+  html.dark .ws-toc-scroll::-webkit-scrollbar-thumb:hover { background: rgba(157, 202, 255, 0.6); }
+
+  /* ========== 작업 로그 패널 (panel-log) ========== */
+  /* Sidebar sticky behavior — applies only in the mobile/tablet slot (본문 내).
+     Desktop slot(ws-log-sidebar-slot-desk)의 wrapper가 이미 sticky라 중복 방지 위해 static. */
+  @media (min-width: 768px) {
+    #ws-log-sidebar-slot-mobile .ws-log-sidebar { position: sticky; top: 6rem; }
+  }
+  #ws-log-sidebar-slot-desk .ws-log-sidebar {
+    position: static;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  /* Desktop slot 안에서는 내부 리스트가 남은 공간을 전부 차지하도록 max-height 해제 */
+  #ws-log-sidebar-slot-desk .ws-log-list { max-height: none; flex: 1 1 auto; min-height: 0; }
+
+  /* Date group <details> styling */
+  .ws-log-group { border-top: 1px solid rgba(0, 94, 151, 0.08); }
+  .ws-log-group:first-of-type { border-top: 0; }
+  html.dark .ws-log-group { border-top-color: rgba(157, 202, 255, 0.12); }
+  .ws-log-group summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 10px 10px 10px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border-radius: 10px;
+    color: rgb(0, 94, 151);
+    transition-property: background-color, color;
+    transition-duration: 160ms;
+    transition-timing-function: ease-out;
+  }
+  html.dark .ws-log-group summary { color: rgb(157, 202, 255); }
+  .ws-log-group summary::-webkit-details-marker { display: none; }
+  .ws-log-group summary:hover { background-color: rgba(0, 94, 151, 0.06); }
+  html.dark .ws-log-group summary:hover { background-color: rgba(157, 202, 255, 0.08); }
+  .ws-log-group summary:focus-visible { outline: 2px solid rgb(0, 94, 151); outline-offset: 2px; }
+  html.dark .ws-log-group summary:focus-visible { outline-color: rgb(157, 202, 255); }
+
+  .ws-log-group .ws-log-date { font-family: "Manrope", ui-sans-serif, system-ui, sans-serif; font-weight: 700; font-size: 13px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  .ws-log-group .ws-log-daycount { font-size: 11px; color: rgba(0, 94, 151, 0.6); font-variant-numeric: tabular-nums; font-weight: 600; }
+  html.dark .ws-log-group .ws-log-daycount { color: rgba(157, 202, 255, 0.7); }
+  .ws-log-group .ws-log-chevron { display: inline-block; transition: transform 200ms ease-out; }
+  .ws-log-group[open] .ws-log-chevron { transform: rotate(90deg); }
+
+  /* Individual log item button */
+  .ws-log-items { list-style: none; padding: 0 0 10px 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+  .ws-log-item {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    padding: 10px 12px 10px 14px;
+    border-radius: 10px;
+    color: rgb(32, 38, 44);
+    cursor: pointer;
+    transition-property: background-color, color;
+    transition-duration: 160ms;
+    transition-timing-function: ease-out;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  html.dark .ws-log-item { color: rgb(226, 232, 240); }
+  .ws-log-item:hover { background-color: rgba(0, 94, 151, 0.06); }
+  html.dark .ws-log-item:hover { background-color: rgba(157, 202, 255, 0.08); }
+  .ws-log-item:focus-visible { outline: 2px solid rgb(0, 94, 151); outline-offset: 2px; }
+  html.dark .ws-log-item:focus-visible { outline-color: rgb(157, 202, 255); }
+  .ws-log-item[aria-current="true"] {
+    background-color: rgba(0, 94, 151, 0.10);
+    color: rgb(0, 65, 106);
+  }
+  html.dark .ws-log-item[aria-current="true"] {
+    background-color: rgba(157, 202, 255, 0.14);
+    color: rgb(207, 228, 255);
+  }
+
+  .ws-log-item .ws-log-title { font-size: 13px; font-weight: 700; line-height: 1.35; letter-spacing: -0.005em; }
+  .ws-log-item[aria-current="true"] .ws-log-title { font-weight: 800; }
+  .ws-log-item .ws-log-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+  /* Category badges — use design tokens, not arbitrary colors */
+  .ws-log-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 999px;
+    line-height: 1.6;
+    white-space: nowrap;
+  }
+  .ws-log-badge[data-cat="다관점 리뷰"] { background: rgba(0, 94, 151, 0.12); color: rgb(0, 65, 106); }
+  html.dark .ws-log-badge[data-cat="다관점 리뷰"] { background: rgba(157, 202, 255, 0.15); color: rgb(207, 228, 255); }
+  .ws-log-badge[data-cat="개선 계획 · 프롬프트"] { background: rgba(0, 105, 30, 0.12); color: rgb(0, 75, 21); }
+  html.dark .ws-log-badge[data-cat="개선 계획 · 프롬프트"] { background: rgba(120, 220, 138, 0.14); color: rgb(180, 240, 190); }
+  .ws-log-badge[data-cat="아키텍처 · 데이터"] { background: rgba(100, 90, 125, 0.12); color: rgb(75, 60, 100); }
+  html.dark .ws-log-badge[data-cat="아키텍처 · 데이터"] { background: rgba(200, 190, 235, 0.15); color: rgb(215, 205, 245); }
+  .ws-log-badge[data-cat="QA · 종합 보고서"] { background: rgba(186, 26, 26, 0.10); color: rgb(140, 20, 20); }
+  html.dark .ws-log-badge[data-cat="QA · 종합 보고서"] { background: rgba(255, 180, 171, 0.16); color: rgb(255, 210, 205); }
+  .ws-log-badge[data-cat="UX · 디자인"] { background: rgba(121, 80, 170, 0.12); color: rgb(80, 40, 125); }
+  html.dark .ws-log-badge[data-cat="UX · 디자인"] { background: rgba(216, 188, 255, 0.15); color: rgb(230, 210, 255); }
+  .ws-log-badge[data-cat="문서 스냅샷"] { background: rgba(60, 95, 130, 0.12); color: rgb(35, 60, 90); }
+  html.dark .ws-log-badge[data-cat="문서 스냅샷"] { background: rgba(175, 200, 225, 0.14); color: rgb(210, 225, 240); }
+  .ws-log-badge[data-cat="자료 · 레퍼런스"] { background: rgba(130, 105, 20, 0.12); color: rgb(95, 75, 10); }
+  html.dark .ws-log-badge[data-cat="자료 · 레퍼런스"] { background: rgba(235, 210, 130, 0.16); color: rgb(245, 225, 170); }
+  .ws-log-badge[data-cat="기타"] { background: rgba(100, 100, 100, 0.10); color: rgb(70, 70, 70); }
+  html.dark .ws-log-badge[data-cat="기타"] { background: rgba(200, 200, 210, 0.14); color: rgb(220, 220, 225); }
+
+  .ws-log-seq { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; font-size: 10px; color: rgb(108, 120, 130); letter-spacing: -0.02em; }
+  html.dark .ws-log-seq { color: rgb(148, 163, 178); }
+
+  /* Empty filter state */
+  .ws-log-empty { padding: 24px 12px; text-align: center; font-size: 13px; color: rgb(108, 120, 130); }
+  html.dark .ws-log-empty { color: rgb(148, 163, 178); }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .ws-log-group summary,
+    .ws-log-item,
+    .ws-log-group .ws-log-chevron { transition: none; }
+  }
+</style>
+</head>
+
+<body class="wave-bg min-h-screen">
+
+<a class="skip-link" href="#main">본문으로 건너뛰기</a>
+
+<!-- ========== TopNavBar ========== -->
+<header class="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-[0_20px_40px_rgba(0,65,106,0.06)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.35)] sticky top-0 z-50 border-b border-slate-100 dark:border-slate-800">
+  <div class="flex justify-between items-center w-full px-4 sm:px-8 py-3 sm:py-4 max-w-[1920px] mx-auto gap-3">
+    <div class="flex items-center gap-3 sm:gap-6">
+      <a href="/" class="text-xl sm:text-2xl font-black text-sky-800 dark:text-sky-100 italic font-manrope tracking-tight" aria-label="WhaleScope 홈">WhaleScope</a>
+      <div class="hidden md:flex items-center gap-2">
+        <span class="px-3 py-1 bg-surface-container-lowest dark:bg-slate-800 text-on-surface dark:text-sky-100 text-[10px] font-bold tracking-widest uppercase rounded-full shadow-sm border border-outline-variant/20 dark:border-slate-700">뤼튼 PE 과제</span>
+        <p class="text-xs text-slate-500 dark:text-slate-400 max-w-xs leading-tight font-medium">Product Engineer 과제 — 영역 C (AI 요약)</p>
+      </div>
+    </div>
+    <nav class="hidden lg:flex items-center gap-8 font-manrope tracking-tight font-bold text-base" aria-label="주요 내비게이션">
+      <a class="text-sky-700 dark:text-sky-300 border-b-2 border-teal-400 pb-1" href="#" aria-current="page">과제 소개</a>
+      <a class="text-slate-500 dark:text-slate-400 hover:text-sky-700 dark:hover:text-sky-300 cta-ghost rounded-md px-2 py-1" href="/">대시보드</a>
+      <a class="text-slate-500 dark:text-slate-400 hover:text-sky-700 dark:hover:text-sky-300 cta-ghost rounded-md px-2 py-1" href="https://github.com/" rel="noopener">GitHub</a>
+    </nav>
+    <div class="flex items-center gap-2">
+      <!-- Theme toggle -->
+      <button id="theme-toggle" type="button" aria-label="테마 전환" class="w-11 h-11 rounded-full flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cta-ghost">
+        <span class="material-symbols-outlined" aria-hidden="true" id="theme-icon">light_mode</span>
+      </button>
+      <!-- Live indicator -->
+      <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-tertiary-fixed/30 dark:bg-tertiary/20 text-tertiary dark:text-tertiary-fixed-dim">
+        <span class="w-2 h-2 rounded-full bg-tertiary dark:bg-tertiary-fixed-dim" aria-hidden="true"></span>
+        <span class="text-xs font-bold tabular-nums">운영 중 · v0.9.3</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="max-w-[1920px] mx-auto px-4 sm:px-8 py-8 sm:py-12">
+
+<!-- ========== Hero ========== -->
+<section class="mb-10 sm:mb-14" aria-labelledby="hero-title">
+  <div class="grid grid-cols-12 gap-6">
+    <article class="col-span-12 lg:col-span-8 glass-card rounded-2xl p-6 sm:p-10">
+      <div class="flex flex-wrap items-center gap-2 mb-5">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 dark:bg-primary-fixed-dim/15 text-primary dark:text-primary-fixed-dim text-[11px] font-bold tracking-wider uppercase">
+          <span class="material-symbols-outlined" aria-hidden="true" style="font-size:14px;">insights</span>
+          영역 C · AI 활용 콘텐츠 요약
+        </span>
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-tertiary/10 dark:bg-tertiary-fixed-dim/15 text-tertiary dark:text-tertiary-fixed-dim text-[11px] font-bold tracking-wider uppercase">
+          <span class="material-symbols-outlined" aria-hidden="true" style="font-size:14px;">schedule</span>
+          Day 7 · MVP 제출
+        </span>
+      </div>
+      <h1 id="hero-title" class="font-manrope font-extrabold text-3xl sm:text-4xl lg:text-5xl tracking-tight text-on-surface dark:text-sky-50 leading-[1.1]" style="text-wrap: balance;">
+        매일 아침 읽는 한 장의<br class="hidden sm:block"/> 고래 레터, <span class="text-primary dark:text-primary-fixed-dim">WhaleScope</span>
+      </h1>
+      <div class="editorial-rule"></div>
+      <p class="text-lg sm:text-xl text-on-surface-variant dark:text-slate-300 leading-relaxed font-medium" style="max-width: 65ch;">
+        온체인 고래 지갑의 이동을 <strong class="text-primary dark:text-primary-fixed-dim">규칙 엔진 + LLM 라우터</strong>로 해석하고, 한국어 2–3문장 컨텍스트로 매일 09:00·15:00·21:00 큐레이션합니다. Streamlit 프로토타입에서 Next.js + Google Sheets + Upstash Redis로 재설계했습니다.
+      </p>
+      <p class="mt-3 text-sm text-muted dark:text-slate-400" style="max-width: 65ch;">
+        이 페이지는 배포 URL에 도달한 심사위원이 GitHub을 보지 않고도 맥락·증거·판단 기록을 5분 안에 확인할 수 있도록 재구성한 아카이브입니다.
+      </p>
+
+      <div class="flex flex-wrap items-center gap-3 mt-8">
+        <a href="/" class="cta-primary inline-flex items-center gap-2 px-5 py-3 rounded-full bg-primary text-on-primary font-bold text-sm shadow-md">
+          <span class="material-symbols-outlined" aria-hidden="true" style="font-size:18px;">dashboard</span>
+          라이브 대시보드 열기
+        </a>
+        <a href="https://github.com/" rel="noopener" class="cta-ghost inline-flex items-center gap-2 px-5 py-3 rounded-full bg-transparent border border-outline-variant dark:border-slate-700 text-on-surface dark:text-slate-200 font-bold text-sm">
+          <span class="material-symbols-outlined" aria-hidden="true" style="font-size:18px;">code</span>
+          GitHub 원문 저장소
+        </a>
+        <a href="https://t.me/" rel="noopener" class="cta-ghost inline-flex items-center gap-2 px-5 py-3 rounded-full bg-transparent border border-outline-variant dark:border-slate-700 text-on-surface dark:text-slate-200 font-bold text-sm">
+          <span class="material-symbols-outlined" aria-hidden="true" style="font-size:18px;">send</span>
+          Telegram 구독
+        </a>
+      </div>
+
+      <!-- 안내 콜아웃: AI 활용 고지 -->
+      <aside class="mt-6 flex items-start gap-3 rounded-xl border border-outline-variant/40 dark:border-slate-700 bg-surface-container-low/50 dark:bg-slate-800/40 p-4" role="note">
+        <span class="material-symbols-outlined text-secondary dark:text-secondary-fixed-dim shrink-0 mt-0.5" aria-hidden="true">info</span>
+        <p class="text-xs sm:text-sm text-on-surface-variant dark:text-slate-300 leading-relaxed">
+          본 제출물은 Codex · Claude Code · Cursor · Obsidian 기반 AI 협업 워크플로우로 제작되었습니다. AI는 의사결정의 <strong>보조 도구</strong>이며, 가설 설정 · 아키텍처 선택 · 코드 리뷰는 지원자 본인이 수행하였습니다.
+        </p>
+      </aside>
+    </article>
+
+    <!-- Hero sidebar — 3개 숫자 (증거) -->
+    <aside class="col-span-12 lg:col-span-4 grid grid-cols-3 lg:grid-cols-1 gap-4" aria-label="주요 지표">
+      <div class="glass-card rounded-2xl p-4 sm:p-6">
+        <div class="text-xs text-muted dark:text-slate-400 font-bold uppercase tracking-wider">Test Coverage</div>
+        <div class="mt-2 font-manrope font-extrabold text-3xl sm:text-4xl text-primary dark:text-primary-fixed-dim tabular-nums">402</div>
+        <div class="text-xs text-on-surface-variant dark:text-slate-300 mt-1">pytest · 전체 green</div>
+      </div>
+      <div class="glass-card rounded-2xl p-4 sm:p-6">
+        <div class="text-xs text-muted dark:text-slate-400 font-bold uppercase tracking-wider">First Load JS</div>
+        <div class="mt-2 font-manrope font-extrabold text-3xl sm:text-4xl text-tertiary dark:text-tertiary-fixed-dim tabular-nums">−34<span class="text-xl">%</span></div>
+        <div class="text-xs text-on-surface-variant dark:text-slate-300 mt-1">312 → 206 kB · 번들 최적화</div>
+      </div>
+      <div class="glass-card rounded-2xl p-4 sm:p-6">
+        <div class="text-xs text-muted dark:text-slate-400 font-bold uppercase tracking-wider">Runtime Cost</div>
+        <div class="mt-2 font-manrope font-extrabold text-3xl sm:text-4xl text-secondary dark:text-secondary-fixed-dim tabular-nums">$9<span class="text-xl">/mo</span></div>
+        <div class="text-xs text-on-surface-variant dark:text-slate-300 mt-1">$21 → $9 · 하이브리드 브리핑</div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ========== 4 Summary Cards ========== -->
+<section class="mb-10 sm:mb-14" aria-labelledby="summary-title">
+  <h2 id="summary-title" class="font-manrope font-bold text-xs tracking-[0.2em] uppercase text-muted dark:text-slate-400 mb-4">한 눈에 보는 WhaleScope</h2>
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+
+    <!-- 문제 -->
+    <article class="glass-card rounded-2xl p-6 flex flex-col gap-3">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-error" aria-hidden="true">report</span>
+        <h3 class="font-manrope font-bold text-sm uppercase tracking-wider text-error">문제</h3>
+      </div>
+      <p class="text-xl font-manrope font-extrabold text-on-surface dark:text-sky-50 leading-tight" style="text-wrap: balance;">데이터는 넘치는데, 해석이 없다.</p>
+      <ul class="text-xs text-on-surface-variant dark:text-slate-300 leading-relaxed space-y-1 mt-auto">
+        <li>• 해석 부재 — raw tx만 남음</li>
+        <li>• 정보 과부하 — 하루 100+ 시그널</li>
+        <li>• 언어 장벽 — 영어 텍스트/TG 중심</li>
+        <li>• 비용 장벽 — 유료 구독 $30–$100/월</li>
+      </ul>
+    </article>
+
+    <!-- 해법 -->
+    <article class="glass-card rounded-2xl p-6 flex flex-col gap-3">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-primary" aria-hidden="true">auto_awesome</span>
+        <h3 class="font-manrope font-bold text-sm uppercase tracking-wider text-primary dark:text-primary-fixed-dim">해법</h3>
+      </div>
+      <p class="text-xl font-manrope font-extrabold text-on-surface dark:text-sky-50 leading-tight" style="text-wrap: balance;">규칙은 정확히, 설명은 자연스럽게.</p>
+      <ul class="text-xs text-on-surface-variant dark:text-slate-300 leading-relaxed space-y-1 mt-auto">
+        <li>• Detection — 8개 결정론 규칙</li>
+        <li>• Explanation — Anthropic→Gemini→Groq 라우터</li>
+        <li>• Telegram 주요 채널 · 한국어 UX</li>
+        <li>• Daily Brief 09/15/21 KST</li>
+      </ul>
+    </article>
+
+    <!-- 증거 -->
+    <article class="glass-card rounded-2xl p-6 flex flex-col gap-3">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-tertiary" aria-hidden="true">verified</span>
+        <h3 class="font-manrope font-bold text-sm uppercase tracking-wider text-tertiary dark:text-tertiary-fixed-dim">증거</h3>
+      </div>
+      <p class="text-xl font-manrope font-extrabold text-on-surface dark:text-sky-50 leading-tight" style="text-wrap: balance;">제출 전 이미 운영되는 파이프라인.</p>
+      <ul class="text-xs text-on-surface-variant dark:text-slate-300 leading-relaxed space-y-1 mt-auto">
+        <li>• pytest <span class="tabular-nums font-bold">402</span>개 · smoke 경로 포함</li>
+        <li>• First Load JS <span class="tabular-nums font-bold">206</span> kB</li>
+        <li>• 6 체인 상시 + 4 체인 카나리</li>
+        <li>• Sheets L1 + Redis L2 dual-cache</li>
+      </ul>
+    </article>
+
+    <!-- 지표 -->
+    <article class="glass-card rounded-2xl p-6 flex flex-col gap-3">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-secondary" aria-hidden="true">target</span>
+        <h3 class="font-manrope font-bold text-sm uppercase tracking-wider text-secondary dark:text-secondary-fixed-dim">지표</h3>
+      </div>
+      <p class="text-xl font-manrope font-extrabold text-on-surface dark:text-sky-50 leading-tight" style="text-wrap: balance;">판단 가능한 서비스인지 수치로.</p>
+      <ul class="text-xs text-on-surface-variant dark:text-slate-300 leading-relaxed space-y-1 mt-auto">
+        <li>• Daily Brief 열람률 목표 <span class="tabular-nums font-bold">60%</span></li>
+        <li>• Kill 기준 <span class="tabular-nums font-bold">30 / 10 / 30</span></li>
+        <li>• 비추적 KPI — 일일 발송 수량</li>
+        <li>• Runtime $21 → $9 / month</li>
+      </ul>
+    </article>
+  </div>
+</section>
+
+<!-- ========== Tab Bar ========== -->
+<section class="mb-6">
+  <div class="glass-card rounded-full p-1.5 sm:p-2 flex flex-wrap gap-1 sm:gap-2" role="tablist" aria-label="과제 문서 섹션">
+    <button type="button" class="tab-chip font-manrope font-bold text-xs sm:text-sm px-4 sm:px-5 py-3 rounded-full text-on-surface dark:text-slate-200 min-h-[44px] inline-flex items-center" role="tab" aria-selected="true" aria-controls="panel-onepager" id="tab-onepager" data-tab="onepager">One Pager</button>
+    <button type="button" class="tab-chip font-manrope font-bold text-xs sm:text-sm px-4 sm:px-5 py-3 rounded-full text-on-surface dark:text-slate-200 min-h-[44px] inline-flex items-center" role="tab" aria-selected="false" aria-controls="panel-readme" id="tab-readme" data-tab="readme">README</button>
+    <button type="button" class="tab-chip font-manrope font-bold text-xs sm:text-sm px-4 sm:px-5 py-3 rounded-full text-on-surface dark:text-slate-200 min-h-[44px] inline-flex items-center" role="tab" aria-selected="false" aria-controls="panel-ainotes" id="tab-ainotes" data-tab="ainotes">AI 협업 기록</button>
+    <button type="button" class="tab-chip font-manrope font-bold text-xs sm:text-sm px-4 sm:px-5 py-3 rounded-full text-on-surface dark:text-slate-200 min-h-[44px] inline-flex items-center" role="tab" aria-selected="false" aria-controls="panel-metrics" id="tab-metrics" data-tab="metrics">지표 & 성능</button>
+    <button type="button" class="tab-chip font-manrope font-bold text-xs sm:text-sm px-4 sm:px-5 py-3 rounded-full text-on-surface dark:text-slate-200 min-h-[44px] inline-flex items-center" role="tab" aria-selected="false" aria-controls="panel-timeline" id="tab-timeline" data-tab="timeline">판단 기록</button>
+    <button type="button" class="tab-chip font-manrope font-bold text-xs sm:text-sm px-4 sm:px-5 py-3 rounded-full text-on-surface dark:text-slate-200 min-h-[44px] inline-flex items-center" role="tab" aria-selected="false" aria-controls="panel-log" id="tab-log" data-tab="log">작업 로그</button>
+  </div>
+</section>
+
+<!-- ========== Tab Panels ========== -->
+<section class="grid grid-cols-12 gap-6 lg:gap-8">
+
+  <!-- ----- Sticky left column (desktop only) — 작업 로그 탭: 검색+리스트 사이드바 (JS가 이동), 그 외 탭: TOC ----- -->
+  <aside class="hidden lg:block col-span-3" aria-label="좌측 사이드바">
+    <div class="sticky top-24 flex flex-col gap-4 max-h-[calc(100vh-7rem)]">
+      <!-- Desktop slot: 작업 로그 탭일 때 .ws-log-sidebar DOM이 여기로 이동. 기타 탭에서는 hidden. -->
+      <div id="ws-log-sidebar-slot-desk" class="hidden flex-1 min-h-0 flex-col"></div>
+
+      <!-- TOC nav — 작업 로그 탭일 때는 hidden 처리. 나머지 탭에서는 표시. -->
+      <nav class="glass-card rounded-2xl p-5 overflow-y-auto ws-toc-scroll flex-1 min-h-0" id="toc-nav">
+        <p class="font-manrope font-bold text-xs uppercase tracking-widest text-muted dark:text-slate-400 mb-3">이 문서에서</p>
+        <ol id="toc-list" class="space-y-1 text-sm"></ol>
+        <div class="mt-4 pt-4 border-t border-outline-variant/40 dark:border-slate-700">
+          <a href="#main" class="cta-ghost inline-flex items-center gap-1 text-xs text-muted dark:text-slate-400 rounded-md px-2 py-1">
+            <span class="material-symbols-outlined" aria-hidden="true" style="font-size:14px;">arrow_upward</span>
+            맨 위로
+          </a>
+        </div>
+      </nav>
+    </div>
+  </aside>
+
+  <!-- ----- Main article column ----- -->
+  <div class="col-span-12 lg:col-span-9 glass-card rounded-2xl p-6 sm:p-10">
+
+    <!-- =========== Panel: One Pager (ONE_PAGER.md 직접 렌더) =========== -->
+    <article id="panel-onepager" role="tabpanel" aria-labelledby="tab-onepager" class="is-active prose-editorial" data-md-source="../../ONE_PAGER.md" data-md-gh-url="https://github.com/" data-md-label="ONE_PAGER.md">
+      <header class="mb-6 flex flex-wrap items-start justify-between gap-3 not-prose">
+        <div>
+          <p class="font-manrope text-xs tracking-[0.2em] uppercase text-muted dark:text-slate-400">ONE_PAGER.md · 원문 렌더</p>
+          <p class="text-xs text-muted dark:text-slate-400 mt-1">이 탭은 저장소 루트의 <code>ONE_PAGER.md</code>를 런타임에 불러와 렌더합니다. 편집은 원본 파일에서만 수행하세요.</p>
+        </div>
+        <a class="cta-ghost inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-outline-variant dark:border-slate-700 text-xs font-bold text-on-surface dark:text-slate-200" data-gh-link href="#" rel="noopener">
+          <span class="material-symbols-outlined" aria-hidden="true" style="font-size:16px;">open_in_new</span>
+          GitHub에서 보기
+        </a>
+      </header>
+
+      <div class="md-content" aria-live="polite" aria-busy="true">
+        <div class="md-empty-state flex items-center gap-3">
+          <span class="material-symbols-outlined md-loader-icon text-primary dark:text-primary-fixed-dim" aria-hidden="true">progress_activity</span>
+          <span>원문 마크다운을 불러오는 중…</span>
+        </div>
+      </div>
+    </article>
+
+    <!-- =========== Panel: README (README.md 직접 렌더) =========== -->
+    <article id="panel-readme" role="tabpanel" aria-labelledby="tab-readme" class="prose-editorial" data-md-source="../../README.md" data-md-gh-url="https://github.com/" data-md-label="README.md">
+      <header class="mb-6 flex flex-wrap items-start justify-between gap-3 not-prose">
+        <div>
+          <p class="font-manrope text-xs tracking-[0.2em] uppercase text-muted dark:text-slate-400">README.md · 원문 렌더</p>
+          <p class="text-xs text-muted dark:text-slate-400 mt-1">이 탭은 저장소 루트의 <code>README.md</code>를 런타임에 불러와 렌더합니다. 편집은 원본 파일에서만 수행하세요.</p>
+        </div>
+        <a class="cta-ghost inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-outline-variant dark:border-slate-700 text-xs font-bold text-on-surface dark:text-slate-200" data-gh-link href="#" rel="noopener">
+          <span class="material-symbols-outlined" aria-hidden="true" style="font-size:16px;">open_in_new</span>
+          GitHub에서 보기
+        </a>
+      </header>
+
+      <div class="md-content" aria-live="polite" aria-busy="true">
+        <div class="md-empty-state flex items-center gap-3">
+          <span class="material-symbols-outlined md-loader-icon text-primary dark:text-primary-fixed-dim" aria-hidden="true">progress_activity</span>
+          <span>원문 마크다운을 불러오는 중…</span>
+        </div>
+      </div>
+    </article>
+
+    <!-- =========== Panel: AI Notes =========== -->
+    <article id="panel-ainotes" role="tabpanel" aria-labelledby="tab-ainotes" class="prose-editorial">
+      <header class="mb-6">
+        <p class="font-manrope text-xs tracking-[0.2em] uppercase text-muted dark:text-slate-400">AI 협업 · 투명성</p>
+        <h2 class="font-manrope font-extrabold text-2xl sm:text-3xl mt-2 text-on-surface dark:text-sky-50" style="text-wrap: balance;">AI는 어디에 어떻게 쓰였는가</h2>
+      </header>
+
+      <h3 id="ai-1">1. 사용 정의</h3>
+      <p>AI는 <strong>생성·탐색·리팩토링의 속도를 올리는 보조 도구</strong>로 썼다. 설계의 근거와 평가, 가설 갱신은 본인이 수행하였다. 아래 표는 각 도구의 실제 역할이다.</p>
+
+      <h3 id="ai-2">2. 개발 AI 분업</h3>
+      <table>
+        <thead><tr><th>도구</th><th>주 용도</th><th>구체 사례</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Codex</strong></td><td>리서치·스켈레톤</td><td>초기 폴더 구조, 탐지 규칙 의사코드</td></tr>
+          <tr><td><strong>Claude Code</strong></td><td>리팩토링·테스트 설계</td><td>402개 pytest 전수, SSE 스트림 재작성</td></tr>
+          <tr><td><strong>Cursor</strong></td><td>실시간 IDE 보조</td><td>타입 힌트 보정, 오탈자 수정</td></tr>
+          <tr><td><strong>Claude + Obsidian</strong></td><td>설계 의사결정 기록</td><td>Daily 노트 · 가설 수정 히스토리</td></tr>
+        </tbody>
+      </table>
+
+      <h3 id="ai-3">3. 런타임 AI 분업</h3>
+      <p>의도적으로 3개 공급자를 동시에 운영한다. Anthropic이 primary, Gemini는 영미권 뉴스 요약에 강점, Groq는 초저 레이턴시 fallback.</p>
+      <ul>
+        <li><strong>Primary</strong> — Anthropic (Claude) · 한국어 뉘앙스 · 규범 준수</li>
+        <li><strong>Fallback 1</strong> — Google Gemini · 비용 · 영미 컨텍스트</li>
+        <li><strong>Fallback 2</strong> — Groq · 50ms 단위 응답 · 장애 시 최후 안전망</li>
+      </ul>
+      <blockquote>장애 상황 재현 테스트에서 3단 라우터가 평균 <span class="tabular-nums">2.4초</span> 이내에 결과를 반환하는 것을 확인했다. primary 전용 구성은 같은 조건에서 타임아웃 10초 이상이었다.</blockquote>
+
+      <h3 id="ai-4">4. AI가 하지 않는 것</h3>
+      <ul>
+        <li>추천 코인/포지션 제안 — 가격 예측을 생성하지 않는다</li>
+        <li>가설 수립·KPI 결정 — 지원자 본인이 한다</li>
+        <li>최종 배포 승인 — 테스트 green + 리뷰 후 사람이 푸시</li>
+      </ul>
+
+      <h3 id="ai-5">5. 재현 가능성</h3>
+      <p>설계 · 리팩토링 세션 로그는 Obsidian에 날짜별로 남아 있다. 파이프라인의 deterministic 구간(규칙 · 집계)은 재실행 시 동일 입력에 동일 출력이며, LLM 구간은 프롬프트 버저닝과 seed 고정으로 변동 폭을 줄였다.</p>
+    </article>
+
+    <!-- =========== Panel: Metrics =========== -->
+    <article id="panel-metrics" role="tabpanel" aria-labelledby="tab-metrics" class="prose-editorial">
+      <header class="mb-6">
+        <p class="font-manrope text-xs tracking-[0.2em] uppercase text-muted dark:text-slate-400">KPI · Test · Perf</p>
+        <h2 class="font-manrope font-extrabold text-2xl sm:text-3xl mt-2 text-on-surface dark:text-sky-50" style="text-wrap: balance;">판단 가능한 서비스인지 수치로 증명한다</h2>
+      </header>
+
+      <h3 id="mt-1">1. 북극성 & Kill 기준</h3>
+      <p>북극성은 <strong>Daily Brief 열람률 60%</strong>, Kill 기준은 2주 기준 <span class="tabular-nums">30/10/30</span>.</p>
+      <table>
+        <thead><tr><th>지표</th><th>목표</th><th>Kill 역치</th></tr></thead>
+        <tbody>
+          <tr><td>Daily Brief 열람률</td><td class="tabular-nums">60%</td><td>&lt; 30% (2주 연속)</td></tr>
+          <tr><td>4주 리텐션</td><td class="tabular-nums">35%</td><td>&lt; 10%</td></tr>
+          <tr><td>허위 시그널 비율</td><td class="tabular-nums">&lt; 10%</td><td>&gt; 30%</td></tr>
+        </tbody>
+      </table>
+
+      <h3 id="mt-2">2. 테스트 커버리지</h3>
+      <p><strong>pytest 402개 전체 green.</strong> smoke fallback(keyless 빌드) 경로 포함. 단위 테스트(수집·집계·라우터 fallback)와 시나리오 테스트(전체 파이프라인 E2E mock)가 같이 돈다.</p>
+      <ul>
+        <li>수집기 단위 — chain별 fixture 기반 parser 테스트</li>
+        <li>규칙 엔진 — 8개 규칙 × edge case per-rule</li>
+        <li>LLM 라우터 — primary/fallback 3가지 장애 시나리오</li>
+        <li>SSE stream — Redis L2 TTL(45/60초) 경계 테스트</li>
+      </ul>
+
+      <h3 id="mt-3">3. 성능 지표</h3>
+      <table>
+        <thead><tr><th>지표</th><th>Before</th><th>After</th><th>Δ</th></tr></thead>
+        <tbody>
+          <tr><td>First Load JS</td><td class="tabular-nums">312 kB</td><td class="tabular-nums">206 kB</td><td class="tabular-nums text-tertiary dark:text-tertiary-fixed-dim font-bold">−34%</td></tr>
+          <tr><td>Route (대시보드)</td><td class="tabular-nums">193 kB</td><td class="tabular-nums">86.1 kB</td><td class="tabular-nums text-tertiary dark:text-tertiary-fixed-dim font-bold">−55%</td></tr>
+          <tr><td>Runtime cost</td><td class="tabular-nums">$21/mo</td><td class="tabular-nums">$9/mo</td><td class="tabular-nums text-tertiary dark:text-tertiary-fixed-dim font-bold">−57%</td></tr>
+          <tr><td>Test count</td><td class="tabular-nums">—</td><td class="tabular-nums">402</td><td>전체 green</td></tr>
+        </tbody>
+      </table>
+
+      <h3 id="mt-4">4. 하이브리드 브리핑 — 비용 절감 근거</h3>
+      <p>KST 09 · 15 · 21시에만 전체 브리핑 생성, 나머지 시간은 증분(incremental)으로만 업데이트한다. LLM 호출 수 감소로 $21 → $9/month.</p>
+      <blockquote>"하루 3회의 진짜 레터 + 그 사이의 얇은 증분" — 독서감 훼손 없이 비용 절반 이하로 내렸다.</blockquote>
+
+      <h3 id="mt-5">5. 비추적 지표</h3>
+      <p>의도적으로 추적하지 <strong>않는</strong> 지표가 있다. 일일 발송 수량 · DAU 절대값 · 시그널 수. 이것을 KPI로 두면 양을 늘리기 위해 품질을 희생하게 된다.</p>
+    </article>
+
+    <!-- =========== Panel: Timeline =========== -->
+    <article id="panel-timeline" role="tabpanel" aria-labelledby="tab-timeline" class="prose-editorial">
+      <header class="mb-6">
+        <p class="font-manrope text-xs tracking-[0.2em] uppercase text-muted dark:text-slate-400">Decision Log · Day 1 → Day 10</p>
+        <h2 class="font-manrope font-extrabold text-2xl sm:text-3xl mt-2 text-on-surface dark:text-sky-50" style="text-wrap: balance;">가설은 어떻게 갱신되었는가</h2>
+      </header>
+
+      <h3 id="tl-1">Day 1–3 · 리서치 → IA → 스택</h3>
+      <ul>
+        <li><strong>가설 ①</strong> Whale Alert API를 구독해 빠르게 붙인다 → <strong>기각</strong>. 체인 커버리지 부족 + 월 비용이 MVP 예산 초과. self-collect 방향으로 선회.</li>
+        <li><strong>가설 ②</strong> 규칙 엔진만으로 충분하다 → <strong>부분 기각</strong>. "왜 중요한가"에 답할 컨텍스트가 없어 한국어 해석 레이어 필요. LLM 라우터 설계 도입.</li>
+      </ul>
+
+      <h3 id="tl-2">Day 4–6 · 구현</h3>
+      <ul>
+        <li><strong>가설 ③</strong> Streamlit이 7일에 적합하다 → <strong>기각</strong>. 공유 URL · SEO · 반응성이 나오지 않는다. Next.js 15 App Router로 재작성 결정. 첫 2일 속도 손해는 이후 운영 · 확장에서 회수됨.</li>
+        <li><strong>가설 ④</strong> Anthropic 단일 공급자로 충분 → <strong>기각</strong>. 장애 재현 테스트에서 타임아웃 10초 이상. 3단 라우터 도입.</li>
+      </ul>
+
+      <h3 id="tl-3">Day 7 · MVP 제출</h3>
+      <p>제출 시점 기준 체인 6개 상시 + 4개 카나리 + 규칙 8개 + 라우터 3공급자 + pytest 402. 지원서와 함께 이 <code>/about</code> 페이지의 초안을 동봉.</p>
+
+      <h3 id="tl-4">Day 8–10 · 제출 후 이터레이션</h3>
+      <ul>
+        <li>번들 분석 · 코드 스플리팅 → First Load JS −34%</li>
+        <li>하이브리드 브리핑 도입 → Runtime cost −57%</li>
+        <li>Sheets L1 + Redis L2 dual-role 정식화</li>
+      </ul>
+
+      <h3 id="tl-5">유지된 결정</h3>
+      <blockquote>"탐지는 규칙, 설명은 LLM" — 1일차부터 유지된 단일 원칙. 아키텍처 흔들림 없이 10일 내내 파이프라인의 분업이 유지됨.</blockquote>
+
+      <h3 id="tl-6">회고 — 다음에 바꾼다면</h3>
+      <ul>
+        <li>Day 1에 Next.js로 바로 시작 — Streamlit에서의 2일 투자는 회수되지 않았다</li>
+        <li>시장 컨텍스트(가격·매크로) 연결을 Day 5 이전에 — 규칙 품질 상한이 데이터 폭에 묶인다</li>
+        <li>피드백 루프 프로토타입을 Day 6에 — 포스트 제출이 아니라 제출 전에</li>
+      </ul>
+    </article>
+
+    <!-- =========== Panel: 작업 로그 (Obsidian WhaleScope 세션 기록) =========== -->
+    <article id="panel-log" role="tabpanel" aria-labelledby="tab-log" class="prose-editorial" data-md-source="" data-md-label="">
+      <header class="mb-6 flex flex-wrap items-start justify-between gap-3 not-prose">
+        <div>
+          <p class="font-manrope text-xs tracking-[0.2em] uppercase text-muted dark:text-slate-400">Session Log · 2026-04-14 → 2026-04-23</p>
+          <h2 class="font-manrope font-extrabold text-2xl sm:text-3xl mt-2 text-on-surface dark:text-sky-50" style="text-wrap: balance;">10일간의 작업 로그 — <span class="tabular-nums">76</span>개 세션</h2>
+          <p class="text-sm text-on-surface-variant dark:text-slate-300 mt-2 max-w-2xl">프로젝트 기간 동안 Obsidian에 축적된 설계 / 리뷰 / 개선 이행 문서를 일자별로 열람합니다. 왼쪽 목록에서 문서를 선택하면 우측에 원문이 렌더됩니다.</p>
+        </div>
+      </header>
+
+      <div class="ws-log-wrap grid gap-6 md:grid-cols-12 md:gap-8 not-prose">
+        <!-- Sidebar: date-grouped list -->
+        <aside class="md:col-span-5 lg:hidden" aria-label="작업 로그 목록" id="ws-log-sidebar-slot-mobile">
+          <div class="ws-log-sidebar glass-card rounded-2xl p-4 flex flex-col gap-3">
+            <!-- 검색창 — DOM은 하나만, JS가 뷰포트(lg)+탭(log)에 따라 .ws-log-sidebar 전체를 좌측 aside slot으로 이동 -->
+            <label class="flex items-center gap-2 px-3 py-2 rounded-full border border-outline-variant dark:border-slate-700 focus-within:border-primary dark:focus-within:border-primary-fixed-dim" style="transition-property: border-color; transition-duration: 180ms;">
+              <span class="material-symbols-outlined text-muted dark:text-slate-400" aria-hidden="true" style="font-size:18px;">search</span>
+              <input
+                id="ws-log-search"
+                type="search"
+                placeholder="제목 · 키워드 검색"
+                class="flex-1 bg-transparent text-sm text-on-surface dark:text-slate-100 placeholder:text-muted dark:placeholder:text-slate-500 outline-none min-w-0"
+                aria-label="작업 로그 검색"
+                autocomplete="off"
+                spellcheck="false" />
+              <button type="button" id="ws-log-search-clear" class="hidden text-muted dark:text-slate-400 hover:text-on-surface dark:hover:text-slate-200 rounded-full p-1" aria-label="검색어 지우기">
+                <span class="material-symbols-outlined" aria-hidden="true" style="font-size:16px;">close</span>
+              </button>
+            </label>
+
+            <div class="flex items-center justify-between text-[11px] text-muted dark:text-slate-400">
+              <span id="ws-log-count" class="tabular-nums">76 documents</span>
+              <button type="button" id="ws-log-collapse-all" class="font-bold uppercase tracking-wider rounded-md px-2 py-1 hover:text-on-surface dark:hover:text-slate-100 cta-ghost">모두 접기</button>
+            </div>
+
+            <div id="ws-log-list" class="ws-log-list ws-toc-scroll overflow-y-auto pr-1" style="max-height: calc(100vh - 18rem); min-height: 280px;">
+              <div class="ws-log-skeleton flex items-center gap-3 text-sm text-muted dark:text-slate-400 p-3">
+                <span class="material-symbols-outlined md-loader-icon text-primary dark:text-primary-fixed-dim" aria-hidden="true">progress_activity</span>
+                <span>목록을 불러오는 중…</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Content: selected doc render -->
+        <section class="md:col-span-7 lg:col-span-12 min-w-0">
+          <div class="ws-log-doc-header mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="font-manrope text-[11px] tracking-[0.2em] uppercase text-muted dark:text-slate-400" id="ws-log-doc-meta">문서 미선택</p>
+              <h3 class="font-manrope font-bold text-base sm:text-lg mt-1 text-on-surface dark:text-sky-50 truncate" id="ws-log-doc-title" style="text-wrap: balance;">왼쪽에서 세션 문서를 선택하세요</h3>
+            </div>
+            <a id="ws-log-raw-link" class="cta-ghost inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-outline-variant dark:border-slate-700 text-xs font-bold text-on-surface dark:text-slate-200" href="#" target="_blank" rel="noopener noreferrer" hidden>
+              <span class="material-symbols-outlined" aria-hidden="true" style="font-size:16px;">description</span>
+              원본 .md
+            </a>
+          </div>
+
+          <div class="md-content" aria-live="polite" aria-busy="false">
+            <div class="md-empty-state flex flex-col items-start gap-3 p-6 rounded-2xl border border-dashed border-outline-variant dark:border-slate-700">
+              <span class="material-symbols-outlined text-primary dark:text-primary-fixed-dim" aria-hidden="true" style="font-size:28px;">article</span>
+              <p class="font-bold text-[13px] text-on-surface dark:text-slate-100">작업 로그 미리보기</p>
+              <p class="text-[13px] leading-relaxed text-on-surface-variant dark:text-slate-300">76개 세션 문서는 프로젝트 기간(10일) 동안 축적된 설계·리뷰·개선 이행 기록입니다. 왼쪽 목록에서 날짜를 펼쳐 문서를 선택하면 이 영역에 원문이 렌더됩니다. 검색 상자로 키워드(예: 「라우터」, 「큐레이션」, 「다관점」)도 필터링 가능합니다.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ========== Footer Actions ========== -->
+<footer class="mt-12 sm:mt-16 mb-6">
+  <div class="glass-card rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+    <div class="flex flex-col gap-1">
+      <p class="font-manrope font-bold text-xs tracking-widest uppercase text-muted dark:text-slate-400">WhaleScope · /about</p>
+      <p class="text-sm text-on-surface-variant dark:text-slate-300">문서 최종 갱신 <time datetime="2026-04-23" class="font-bold tabular-nums">2026-04-23</time> · 빌드 <span class="tabular-nums font-bold">v0.9.3</span></p>
+      <p class="text-xs text-muted dark:text-slate-400">이 페이지의 원본 문서는 GitHub <code>ONE_PAGER.md</code> · <code>README.md</code>에서 확인할 수 있습니다.</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+      <a href="/about/WhaleScope-Submission.pdf" class="cta-ghost inline-flex items-center gap-2 px-4 py-2.5 rounded-full border border-outline-variant dark:border-slate-700 text-on-surface dark:text-slate-200 font-bold text-sm" download>
+        <span class="material-symbols-outlined" aria-hidden="true" style="font-size:18px;">picture_as_pdf</span>
+        PDF 내려받기
+      </a>
+      <a href="https://github.com/" rel="noopener" class="cta-ghost inline-flex items-center gap-2 px-4 py-2.5 rounded-full border border-outline-variant dark:border-slate-700 text-on-surface dark:text-slate-200 font-bold text-sm">
+        <span class="material-symbols-outlined" aria-hidden="true" style="font-size:18px;">code</span>
+        GitHub
+      </a>
+      <a href="https://t.me/" rel="noopener" class="cta-primary inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-primary text-on-primary font-bold text-sm">
+        <span class="material-symbols-outlined" aria-hidden="true" style="font-size:18px;">send</span>
+        Telegram 구독
+      </a>
+    </div>
+  </div>
+</footer>
+
+</main>
+
+<!-- ========== Scripts ========== -->
+<script>
+(function () {
+  "use strict";
+
+  // --- DOM refs ---
+  var tabButtons = document.querySelectorAll('[role="tab"]');
+  var panels = document.querySelectorAll('[role="tabpanel"]');
+  var tocNav = document.getElementById("toc-nav");
+  var tocList = document.getElementById("toc-list");
+
+  // --- Markdown runtime rendering state ---
+  // Cache parsed/sanitized HTML per source so that re-activating a tab is instant.
+  var mdCache = {};
+  // Track load status per panel: "idle" | "loading" | "loaded" | "error"
+  var mdStatus = {};
+
+  // --- Slugify for heading IDs ---
+  // Preserves Korean characters (mdn: URL fragment can contain Unicode), strips punctuation.
+  function slugify(text) {
+    if (!text) return "";
+    return String(text)
+      .trim()
+      .toLowerCase()
+      .replace(/[\s]+/g, "-")
+      .replace(/[^\p{L}\p{N}\-]+/gu, "")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+  }
+
+  // --- Strip YAML frontmatter if present ---
+  function stripFrontmatter(text) {
+    if (text.slice(0, 4) !== "---\n" && text.slice(0, 5) !== "---\r\n") return text;
+    return text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "");
+  }
+
+  // --- Wait for marked + DOMPurify (both loaded via defer) ---
+  function whenMarkdownReady() {
+    return new Promise(function (resolve, reject) {
+      var tries = 0;
+      var max = 60; // ~3s at 50ms
+      (function tick() {
+        if (window.marked && window.DOMPurify) return resolve();
+        if (tries++ >= max) return reject(new Error("marked/DOMPurify failed to load"));
+        setTimeout(tick, 50);
+      })();
+    });
+  }
+
+  // --- Assign IDs to h2/h3 inside a rendered markdown container, dedup if collision ---
+  function addHeadingIds(container) {
+    var seen = {};
+    var hs = container.querySelectorAll("h2, h3");
+    hs.forEach(function (h) {
+      var base = slugify(h.textContent) || "section";
+      var id = base;
+      var n = 2;
+      while (seen[id]) { id = base + "-" + n++; }
+      seen[id] = true;
+      h.id = id;
+    });
+  }
+
+  // --- Render error state into a container ---
+  function renderMdError(container, label, err) {
+    var isFileProto = location.protocol === "file:";
+    var hint = isFileProto
+      ? "브라우저가 <code>file://</code>로 열려 있어 <code>fetch()</code>가 차단되었습니다. 프로젝트 루트에서 <code>python -m http.server 8000</code>을 실행한 뒤 <code>http://localhost:8000/docs/demo_pic/about_page.html</code>로 접근해주세요."
+      : label + " 파일을 불러오지 못했습니다. 저장소 루트에 파일이 존재하는지, 경로(<code>../../" + label + "</code>)가 유효한지 확인해주세요.";
+    container.innerHTML =
+      '<div class="md-error-state not-prose">' +
+      '<p class="font-bold text-[13px] text-error dark:text-error-container mb-2 flex items-center gap-2">' +
+      '<span class="material-symbols-outlined" aria-hidden="true" style="font-size:18px;">error</span>' +
+      label + ' 렌더 실패' +
+      '</p>' +
+      '<p class="text-[13px] leading-relaxed">' + hint + '</p>' +
+      '<p class="text-[12px] mt-3 text-on-surface-variant dark:text-slate-400 font-mono">' +
+      (err && err.message ? String(err.message).replace(/[<>&]/g, function (c) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]; }) : "unknown error") +
+      '</p>' +
+      '</div>';
+    container.setAttribute("aria-busy", "false");
+  }
+
+  // --- Load markdown for a panel (idempotent, cached) ---
+  function loadMarkdown(panel) {
+    if (!panel) return Promise.resolve();
+    var src = panel.getAttribute("data-md-source");
+    if (!src) return Promise.resolve();
+    var label = panel.getAttribute("data-md-label") || src;
+    var container = panel.querySelector(".md-content");
+    if (!container) return Promise.resolve();
+
+    // Already loaded — still refresh TOC and return.
+    if (mdStatus[src] === "loaded" && mdCache[src]) {
+      if (container.dataset.rendered !== "true") {
+        container.innerHTML = mdCache[src];
+        container.dataset.rendered = "true";
+        container.setAttribute("aria-busy", "false");
+        addHeadingIds(container);
+      }
+      return Promise.resolve();
+    }
+
+    // In-flight — queue on the existing promise.
+    if (mdStatus[src] === "loading" && mdCache[src] && mdCache[src].then) {
+      return mdCache[src];
+    }
+
+    mdStatus[src] = "loading";
+
+    var p = whenMarkdownReady()
+      .then(function () {
+        return fetch(src, { cache: "no-store" });
+      })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status + " on " + src);
+        return res.text();
+      })
+      .then(function (text) {
+        var body = stripFrontmatter(text);
+        // marked options: gfm + breaks off (markdown spec), headerIds off (we assign our own).
+        var rawHtml = window.marked.parse(body, { gfm: true, breaks: false, headerIds: false, mangle: false });
+        var safeHtml = window.DOMPurify.sanitize(rawHtml, {
+          ADD_ATTR: ["target", "rel"],
+          // Allow images, tables, code blocks, details/summary.
+          FORBID_TAGS: ["script", "style", "iframe", "object", "embed"],
+          FORBID_ATTR: ["onerror", "onload", "onclick"]
+        });
+        mdCache[src] = safeHtml;
+        mdStatus[src] = "loaded";
+        container.innerHTML = safeHtml;
+        container.dataset.rendered = "true";
+        container.setAttribute("aria-busy", "false");
+        addHeadingIds(container);
+        // External links open in new tab for context preservation.
+        container.querySelectorAll("a[href^='http']").forEach(function (a) {
+          a.setAttribute("target", "_blank");
+          a.setAttribute("rel", "noopener noreferrer");
+        });
+        return true;
+      })
+      .catch(function (err) {
+        mdStatus[src] = "error";
+        renderMdError(container, label, err);
+        return false;
+      });
+
+    // While loading, stash the promise so concurrent requests dedup.
+    mdCache[src] = p;
+    return p;
+  }
+
+  // --- Escape HTML for safe insertion into innerHTML templates ---
+  function escapeHtml(s) {
+    if (s == null) return "";
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  // --- Obsidian session log (panel-log) state ---
+  var logPanel = document.getElementById("panel-log");
+  var logList = document.getElementById("ws-log-list");
+  var logSearch = document.getElementById("ws-log-search");
+  var logSearchClear = document.getElementById("ws-log-search-clear");
+  var logCount = document.getElementById("ws-log-count");
+  var logCollapse = document.getElementById("ws-log-collapse-all");
+  var logDocTitle = document.getElementById("ws-log-doc-title");
+  var logDocMeta = document.getElementById("ws-log-doc-meta");
+  var logRawLink = document.getElementById("ws-log-raw-link");
+  var logManifest = null;
+  var logEntriesBySlug = {};
+  var logInitPromise = null;
+
+  // --- Log sidebar placement: single DOM node moved between desktop left column and mobile/tablet position ---
+  var logSidebarEl = document.querySelector(".ws-log-sidebar");
+  var logSlotDesk = document.getElementById("ws-log-sidebar-slot-desk");
+  var logSlotMobile = document.getElementById("ws-log-sidebar-slot-mobile");
+  var isDesktopMQ = window.matchMedia("(min-width: 1024px)");
+  function syncLogSidebarPlacement() {
+    if (!logSidebarEl || !logSlotDesk || !logSlotMobile) return;
+    var logTabActive = logPanel && logPanel.classList.contains("is-active");
+    var useDesktopSlot = isDesktopMQ.matches && logTabActive;
+    // Preserve scroll position across the move so the user doesn't lose their place.
+    var prevScroll = logList ? logList.scrollTop : 0;
+    if (useDesktopSlot) {
+      if (logSidebarEl.parentNode !== logSlotDesk) logSlotDesk.appendChild(logSidebarEl);
+      logSlotDesk.classList.remove("hidden");
+      logSlotDesk.classList.add("flex");
+      // buildTOC sets tocNav.style.display inline — override both class and style to guarantee hide.
+      if (tocNav) { tocNav.classList.add("hidden"); tocNav.style.display = "none"; }
+    } else {
+      if (logSidebarEl.parentNode !== logSlotMobile) logSlotMobile.appendChild(logSidebarEl);
+      logSlotDesk.classList.add("hidden");
+      logSlotDesk.classList.remove("flex");
+      // Clear inline style so buildTOC's subsequent setting (or CSS default) takes effect.
+      if (tocNav) { tocNav.classList.remove("hidden"); tocNav.style.display = ""; }
+    }
+    if (logList) logList.scrollTop = prevScroll;
+  }
+  if (isDesktopMQ.addEventListener) {
+    isDesktopMQ.addEventListener("change", syncLogSidebarPlacement);
+  } else if (isDesktopMQ.addListener) {
+    // Safari < 14 fallback
+    isDesktopMQ.addListener(syncLogSidebarPlacement);
+  }
+
+  // --- Group log entries by date (desc), undated last ---
+  function groupLogByDate(entries) {
+    var groups = {};
+    entries.forEach(function (e) {
+      var key = e.date || "미상";
+      (groups[key] = groups[key] || []).push(e);
+    });
+    var keys = Object.keys(groups).sort(function (a, b) {
+      if (a === "미상") return 1;
+      if (b === "미상") return -1;
+      return a < b ? 1 : a > b ? -1 : 0;
+    });
+    return keys.map(function (k) { return { date: k, items: groups[k] }; });
+  }
+
+  // --- Render sidebar (filtered by optional query) ---
+  function renderLogSidebar(filterQ) {
+    if (!logManifest || !logList) return;
+    var q = (filterQ || "").trim().toLowerCase();
+    var filtered = q
+      ? logManifest.entries.filter(function (e) {
+          return (e.title || "").toLowerCase().indexOf(q) >= 0
+            || (e.slug || "").toLowerCase().indexOf(q) >= 0
+            || (e.category || "").toLowerCase().indexOf(q) >= 0;
+        })
+      : logManifest.entries;
+
+    if (logCount) logCount.textContent = filtered.length + " documents";
+
+    if (filtered.length === 0) {
+      logList.innerHTML = '<div class="ws-log-empty">검색 결과가 없습니다.</div>';
+      return;
+    }
+
+    var groups = groupLogByDate(filtered);
+    var frag = document.createDocumentFragment();
+    groups.forEach(function (g, gi) {
+      var details = document.createElement("details");
+      details.className = "ws-log-group";
+      // First 2 groups open by default when unfiltered; all open when filtering
+      details.open = q ? true : (gi < 2);
+
+      var summary = document.createElement("summary");
+      summary.innerHTML =
+        '<span style="display:inline-flex;align-items:center;gap:8px;min-width:0;">' +
+          '<span class="ws-log-chevron material-symbols-outlined" aria-hidden="true" style="font-size:16px;">chevron_right</span>' +
+          '<span class="ws-log-date">' + escapeHtml(g.date) + '</span>' +
+        '</span>' +
+        '<span class="ws-log-daycount">' + g.items.length + '건</span>';
+      details.appendChild(summary);
+
+      var ul = document.createElement("ul");
+      ul.className = "ws-log-items";
+      g.items.forEach(function (e) {
+        var li = document.createElement("li");
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "ws-log-item";
+        btn.setAttribute("data-slug", e.slug);
+        btn.setAttribute("aria-current", "false");
+        btn.innerHTML =
+          '<span class="ws-log-title">' + escapeHtml(e.title) + '</span>' +
+          '<span class="ws-log-meta">' +
+            (e.seq ? '<span class="ws-log-seq">#' + escapeHtml(e.seq) + '</span>' : '') +
+            '<span class="ws-log-badge" data-cat="' + escapeHtml(e.category) + '">' + escapeHtml(e.category) + '</span>' +
+          '</span>';
+        btn.addEventListener("click", function () { selectLogEntry(e, true); });
+        li.appendChild(btn);
+        ul.appendChild(li);
+      });
+      details.appendChild(ul);
+      frag.appendChild(details);
+    });
+
+    logList.innerHTML = "";
+    logList.appendChild(frag);
+  }
+
+  // --- Switch the log panel to a specific entry ---
+  function selectLogEntry(entry, updateHash) {
+    if (!entry || !logPanel) return;
+    var src = "../obsidian/" + encodeURIComponent(entry.file);
+    var container = logPanel.querySelector(".md-content");
+    if (container) {
+      container.dataset.rendered = "false";
+      container.setAttribute("aria-busy", "true");
+      container.innerHTML =
+        '<div class="md-empty-state flex items-center gap-3">' +
+        '<span class="material-symbols-outlined md-loader-icon text-primary dark:text-primary-fixed-dim" aria-hidden="true">progress_activity</span>' +
+        '<span>' + escapeHtml(entry.file) + ' 불러오는 중…</span>' +
+        '</div>';
+    }
+    logPanel.setAttribute("data-md-source", src);
+    logPanel.setAttribute("data-md-label", entry.file);
+
+    if (logDocTitle) logDocTitle.textContent = entry.title;
+    if (logDocMeta) logDocMeta.textContent = (entry.date ? entry.date + " · " : "") + entry.category;
+    if (logRawLink) {
+      logRawLink.setAttribute("href", src);
+      logRawLink.hidden = false;
+    }
+
+    // Mark active item in sidebar + ensure its details group is open
+    if (logList) {
+      logList.querySelectorAll(".ws-log-item").forEach(function (b) {
+        b.setAttribute("aria-current", b.getAttribute("data-slug") === entry.slug ? "true" : "false");
+      });
+      logList.querySelectorAll("details.ws-log-group").forEach(function (d) {
+        if (d.querySelector('.ws-log-item[data-slug="' + CSS.escape(entry.slug) + '"]')) d.open = true;
+      });
+      var active = logList.querySelector('.ws-log-item[aria-current="true"]');
+      if (active) {
+        var listRect = logList.getBoundingClientRect();
+        var itemRect = active.getBoundingClientRect();
+        if (itemRect.top < listRect.top + 8 || itemRect.bottom > listRect.bottom - 8) {
+          active.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        }
+      }
+    }
+
+    // 로그 탭은 TOC를 사이드바(.ws-log-sidebar)로 대체하므로 buildTOC 생략.
+    loadMarkdown(logPanel);
+
+    if (updateHash) {
+      history.replaceState(null, "", "#log/" + encodeURIComponent(entry.slug));
+    }
+  }
+
+  // --- Lazy-load manifest on first panel activation (cached) ---
+  function initLogPanel() {
+    if (logInitPromise) return logInitPromise;
+    logInitPromise = fetch("../obsidian/_manifest.json", { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error("manifest HTTP " + r.status); return r.json(); })
+      .then(function (m) {
+        logManifest = m;
+        (m.entries || []).forEach(function (e) { logEntriesBySlug[e.slug] = e; });
+        renderLogSidebar("");
+      })
+      .catch(function (err) {
+        if (logList) {
+          var isFile = location.protocol === "file:";
+          logList.innerHTML =
+            '<div class="ws-log-empty">' +
+            '<p style="font-weight:700;color:rgb(186,26,26);margin-bottom:6px;">매니페스트 로드 실패</p>' +
+            '<p style="font-size:12px;">' +
+              (isFile
+                ? '<code>file://</code>에서는 <code>fetch()</code>가 차단됩니다. 프로젝트 루트에서 <code>python -m http.server 8000</code> 실행 후 <code>http://localhost:8000/docs/demo_pic/about_page.html</code>로 접근하세요.'
+                : '매니페스트 파일(<code>docs/obsidian/_manifest.json</code>)을 찾을 수 없습니다.') +
+            '</p>' +
+            '<p style="font-size:11px;font-family:ui-monospace,monospace;margin-top:8px;color:rgb(108,120,130);">' + escapeHtml(err && err.message || String(err)) + '</p>' +
+            '</div>';
+        }
+      });
+    return logInitPromise;
+  }
+
+  // --- Search / clear / collapse-all bindings (single DOM — sidebar is moved between viewports) ---
+  var searchTimer = null;
+  if (logSearch) {
+    logSearch.addEventListener("input", function (e) {
+      var val = e.target.value;
+      if (logSearchClear) logSearchClear.classList.toggle("hidden", !val);
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(function () { renderLogSidebar(val); }, 140);
+    });
+    logSearch.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && e.target.value) {
+        e.target.value = "";
+        if (logSearchClear) logSearchClear.classList.add("hidden");
+        renderLogSidebar("");
+      }
+    });
+  }
+  if (logSearchClear) {
+    logSearchClear.addEventListener("click", function () {
+      if (logSearch) { logSearch.value = ""; logSearch.focus(); }
+      logSearchClear.classList.add("hidden");
+      renderLogSidebar("");
+    });
+  }
+  if (logCollapse) {
+    logCollapse.addEventListener("click", function () {
+      if (!logList) return;
+      logList.querySelectorAll("details.ws-log-group").forEach(function (d) { d.open = false; });
+    });
+  }
+
+  // --- Parse hash — supports "#tab" and "#log/<slug>" ---
+  function parseHash() {
+    var raw = (location.hash || "").replace(/^#/, "");
+    if (!raw) return { tab: "onepager" };
+    if (raw.indexOf("log/") === 0) {
+      return { tab: "log", slug: decodeURIComponent(raw.slice(4)) };
+    }
+    return { tab: raw };
+  }
+
+  // --- Tab switching + URL hash sync ---
+  function activateTab(tabName, updateHash) {
+    if (!tabName) return;
+    var targetBtn = document.querySelector('[data-tab="' + tabName + '"]');
+    var targetPanel = document.getElementById("panel-" + tabName);
+    if (!targetBtn || !targetPanel) return;
+
+    tabButtons.forEach(function (b) { b.setAttribute("aria-selected", b === targetBtn ? "true" : "false"); });
+    panels.forEach(function (p) { p.classList.toggle("is-active", p === targetPanel); });
+
+    // Desktop: move .ws-log-sidebar into the left column on 작업 로그 탭, back to its mobile position otherwise.
+    syncLogSidebarPlacement();
+
+    if (tabName === "log") {
+      // Lazy-load manifest. TOC 빌드는 생략 — 좌측 컬럼은 로그 리스트(.ws-log-sidebar)가 차지하고,
+      // 문서 내 헤딩 TOC는 이 탭에서 표시되지 않는다. buildTOC를 호출하면
+      // #ws-log-doc-title(h3)을 잡아 tocNav.style.display='block'으로 복원되는 부작용이 있으므로 스킵.
+      initLogPanel();
+      var curSrc = targetPanel.getAttribute("data-md-source");
+      if (curSrc) loadMarkdown(targetPanel);
+      if (updateHash) history.replaceState(null, "", "#" + tabName);
+      return;
+    }
+
+    // Markdown-backed panels: lazy-load on first activation, rebuild TOC after render.
+    if (targetPanel.hasAttribute("data-md-source") && targetPanel.getAttribute("data-md-source")) {
+      loadMarkdown(targetPanel).then(function () { buildTOC(targetPanel); });
+    } else {
+      buildTOC(targetPanel);
+    }
+
+    if (updateHash) {
+      history.replaceState(null, "", "#" + tabName);
+    }
+  }
+
+  tabButtons.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      activateTab(btn.getAttribute("data-tab"), true);
+      var panel = document.getElementById("panel-" + btn.getAttribute("data-tab"));
+      if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    // Keyboard — Arrow navigation per ARIA tab pattern
+    btn.addEventListener("keydown", function (e) {
+      var order = Array.prototype.slice.call(tabButtons);
+      var idx = order.indexOf(btn);
+      var next;
+      if (e.key === "ArrowRight") next = order[(idx + 1) % order.length];
+      if (e.key === "ArrowLeft") next = order[(idx - 1 + order.length) % order.length];
+      if (e.key === "Home") next = order[0];
+      if (e.key === "End") next = order[order.length - 1];
+      if (next) { e.preventDefault(); next.focus(); next.click(); }
+    });
+  });
+
+  // --- Wire GitHub "open in new tab" links from data-md-gh-url (if provided) ---
+  document.querySelectorAll("[data-gh-link]").forEach(function (a) {
+    var panel = a.closest("[data-md-source]");
+    if (!panel) return;
+    var gh = panel.getAttribute("data-md-gh-url");
+    var src = panel.getAttribute("data-md-source");
+    if (gh && gh !== "https://github.com/") {
+      a.setAttribute("href", gh);
+    } else {
+      // No canonical GitHub URL configured — link to the local md file so the raw source is still reachable.
+      a.setAttribute("href", src);
+    }
+    a.setAttribute("target", "_blank");
+    a.setAttribute("rel", "noopener noreferrer");
+  });
+
+  // Hash deep-link — resolve initial tab, then activate. Supports "#log/<slug>" for session-log docs.
+  var initialParsed = parseHash();
+  if (!document.querySelector('[data-tab="' + initialParsed.tab + '"]')) initialParsed = { tab: "onepager" };
+  activateTab(initialParsed.tab, false);
+  if (initialParsed.tab === "log" && initialParsed.slug) {
+    initLogPanel().then(function () {
+      var e = logEntriesBySlug[initialParsed.slug];
+      if (e) selectLogEntry(e, false);
+    });
+  }
+
+  // --- TOC build per active panel (scans h2 + h3 with visual hierarchy) ---
+  function buildTOC(panel) {
+    if (!tocList || !tocNav) return;
+    // Race guard: loadMarkdown is async — if the user switched tabs before fetch resolved,
+    // skip TOC mutation so we don't clobber the current tab's tocNav state (특히 log 탭은 tocNav를 숨김 처리).
+    if (!panel || !panel.classList.contains("is-active")) return;
+    // Log 탭이 활성 상태면 tocNav는 log sidebar에 의해 가려져야 한다. 절대 건드리지 않는다.
+    if (logPanel && logPanel.classList.contains("is-active")) return;
+    tocList.innerHTML = "";
+    var headings = Array.prototype.slice.call(panel.querySelectorAll("h2[id], h3[id]"));
+    if (headings.length === 0) { tocNav.style.display = "none"; return; }
+    tocNav.style.display = "block";
+
+    headings.forEach(function (h) {
+      var level = h.tagName.toLowerCase(); // h2 | h3
+      var li = document.createElement("li");
+      var a = document.createElement("a");
+      a.href = "#" + h.id;
+      a.textContent = h.textContent;
+      // h2 = top-level section title (slightly bolder, flush-left)
+      // h3 = subsection (indented, smaller)
+      var baseCls = "toc-link block border-l-2 border-transparent py-1.5 rounded-md hover:text-primary dark:hover:text-primary-fixed-dim";
+      if (level === "h2") {
+        a.className = baseCls + " pl-3 text-[13px] font-bold text-on-surface dark:text-slate-100 mt-2";
+      } else {
+        a.className = baseCls + " pl-6 text-[12px] text-on-surface-variant dark:text-slate-300";
+      }
+      a.dataset.target = h.id;
+      a.addEventListener("click", function (e) {
+        e.preventDefault();
+        h.scrollIntoView({ behavior: "smooth", block: "start" });
+        history.replaceState(null, "", "#" + h.id);
+      });
+      li.appendChild(a);
+      tocList.appendChild(li);
+    });
+    setupScrollSpy(panel);
+  }
+
+  // --- Scroll-spy (IntersectionObserver) — observes h2 + h3 ---
+  var currentObserver = null;
+  function setupScrollSpy(panel) {
+    if (currentObserver) currentObserver.disconnect();
+    var tocLinks = tocList.querySelectorAll(".toc-link");
+    var headings = Array.prototype.slice.call(panel.querySelectorAll("h2[id], h3[id]"));
+    if (headings.length === 0) return;
+
+    currentObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          var activeLink = null;
+          tocLinks.forEach(function (l) {
+            var on = l.dataset.target === entry.target.id;
+            l.setAttribute("aria-current", on ? "true" : "false");
+            if (on) activeLink = l;
+          });
+          // Keep the active TOC item visible inside the TOC's own scroll container.
+          if (activeLink && tocNav) {
+            var navRect = tocNav.getBoundingClientRect();
+            var linkRect = activeLink.getBoundingClientRect();
+            if (linkRect.top < navRect.top + 16 || linkRect.bottom > navRect.bottom - 16) {
+              activeLink.scrollIntoView({ block: "nearest", behavior: "smooth" });
+            }
+          }
+        }
+      });
+    }, { rootMargin: "-20% 0px -60% 0px", threshold: 0 });
+    headings.forEach(function (h) { currentObserver.observe(h); });
+  }
+
+  // --- Dark mode toggle ---
+  var themeBtn = document.getElementById("theme-toggle");
+  var themeIcon = document.getElementById("theme-icon");
+  function updateThemeIcon() {
+    var isDark = document.documentElement.classList.contains("dark");
+    themeIcon.textContent = isDark ? "dark_mode" : "light_mode";
+    themeBtn.setAttribute("aria-pressed", isDark ? "true" : "false");
+  }
+  themeBtn.addEventListener("click", function () {
+    var isDark = document.documentElement.classList.contains("dark");
+    document.documentElement.classList.toggle("dark", !isDark);
+    document.documentElement.classList.toggle("light", isDark);
+    try { localStorage.setItem("ws-theme", !isDark ? "dark" : "light"); } catch (e) {}
+    updateThemeIcon();
+  });
+  updateThemeIcon();
+
+  // --- Sync hash across tab changes too (also handles "#log/<slug>" deep-links) ---
+  window.addEventListener("hashchange", function () {
+    var p = parseHash();
+    if (!document.querySelector('[data-tab="' + p.tab + '"]')) return;
+    activateTab(p.tab, false);
+    if (p.tab === "log" && p.slug) {
+      initLogPanel().then(function () {
+        var e = logEntriesBySlug[p.slug];
+        if (e) selectLogEntry(e, false);
+      });
+    }
+  });
+})();
+</script>
+
+</body>
+</html>

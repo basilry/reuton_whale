@@ -5,6 +5,9 @@ export const enDictionary = {
     primaryNavigation: "Primary navigation",
     userHome: "Home",
     admin: "Admin",
+    about: "About",
+    operational: "Operational",
+    operationalLabel: "Service is currently operational",
   },
   sidebar: {
     ariaLabel: "Insights navigation",

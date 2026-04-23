@@ -24,6 +24,7 @@ export function TopNavbar({ initialLanguage }: TopNavbarProps) {
   const NAV_ITEMS = [
     { label: dictionary.navbar.userHome, href: "/" },
     { label: dictionary.navbar.admin, href: "/admin" },
+    { label: dictionary.navbar.about, href: "/about" },
   ] as const;
 
   function isActive(href: string): boolean {
@@ -108,6 +109,16 @@ export function TopNavbar({ initialLanguage }: TopNavbarProps) {
         </nav>
 
         <div className={styles.right}>
+          {/* Operational status chip — visible on ≥640px */}
+          <span
+            className={styles.opPill}
+            role="status"
+            aria-label={dictionary.navbar.operationalLabel}
+          >
+            <span className={styles.opDot} aria-hidden="true" />
+            {dictionary.navbar.operational}
+          </span>
+
           {/* Hamburger button — mobile only */}
           <button
             ref={hamburgerRef}

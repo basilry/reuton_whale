@@ -5,6 +5,9 @@ export const koDictionary = {
     primaryNavigation: "주요 내비게이션",
     userHome: "유저 홈",
     admin: "운영",
+    about: "과제 소개",
+    operational: "운영중",
+    operationalLabel: "현재 서비스 정상 운영 중",
   },
   sidebar: {
     ariaLabel: "인사이트 내비게이션",
