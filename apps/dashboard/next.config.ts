@@ -90,6 +90,25 @@ const CSP_CONNECT_SRC = [
 const nextConfig: NextConfig = {
   poweredByHeader: false,
 
+  // Vercel 모노리포 빌드에서 트레이스 범위를 레포 루트로 고정.
+  // 없으면 Next가 복수 lockfile 자동감지에 의존하게 되어 환경별로 결과가 흔들린다.
+  outputFileTracingRoot: resolve(process.cwd(), "..", ".."),
+
+  // /about · /api/about/doc 은 요청 시점에 레포 루트의 마크다운을
+  // 읽는다. @vercel/nft 는 fs.readFile 동적 경로를 추적하지 못하므로
+  // 번들에 포함시킬 경로를 명시한다. 경로는 next.config.ts가 있는
+  // apps/dashboard 기준 상대 경로(`../../`로 레포 루트 참조).
+  outputFileTracingIncludes: {
+    "/about": ["../../ONE_PAGER.md", "../../README.md", "../../docs/obsidian/**"],
+    "/api/about/doc": [
+      "../../ONE_PAGER.md",
+      "../../README.md",
+      "../../docs/obsidian/**",
+      "./DESIGN.md",
+      "./.design-context.md",
+    ],
+  },
+
   experimental: {
     optimizePackageImports: ["lightweight-charts", "lucide-react"],
   },
