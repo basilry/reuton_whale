@@ -132,7 +132,7 @@ def test_run_news_rss_refresh_returns_rich_metadata_and_logs_run():
     with patch(
         "src.ingestion.news_rss.load_listener_config",
         return_value=SimpleNamespace(sheet_id="sheet", google_credentials="{}"),
-    ), patch("src.ingestion.news_rss.SheetsClient", return_value=client), patch(
+    ), patch("src.ingestion.news_rss.build_storage_client", return_value=client), patch(
         "src.ingestion.news_rss.NewsRssIngestor.fetch",
         return_value=(rows, feed_results),
     ):

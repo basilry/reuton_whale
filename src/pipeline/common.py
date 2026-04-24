@@ -22,7 +22,8 @@ from src.signals.baseline import build_chain_baselines
 from src.signals.engine import SignalEngine
 from src.signals.formatters import signal_to_sheet_dict
 from src.signals.models import Event, Signal
-from src.storage.sheets_client import SheetsClient
+from src.storage.factory import build_storage_client as build_storage_client_from_env
+from src.storage.protocol import Storage
 from src.storage.queries import now_iso
 from src.utils.logger import get_logger
 from src.utils.datetime_utils import parse_dt
@@ -48,6 +49,8 @@ class CollectedEvents:
 class PipelineEnv:
     sheet_id: str
     google_credentials: str
+    storage_backend: str = "sheets"
+    database_url: str = ""
     etherscan_api_key: str = ""
     solscan_api_key: str = ""
     enable_chain_xrp: bool = False
@@ -69,6 +72,7 @@ class PipelineEnv:
     telegram_broadcast_token: str = ""
     telegram_broadcast_enabled: bool = False
     telegram_broadcast_dry_run: bool = True
+    sheets_write_mode: str = "full"
 
 
 def coerce_json_list(value: object) -> list[str]:
@@ -128,8 +132,16 @@ def load_pipeline_env(
 ) -> PipelineEnv:
     load_dotenv()
 
-    sheet_id = require_env("GOOGLE_SHEET_ID")
-    google_credentials = require_env("GOOGLE_CREDENTIALS_JSON")
+    storage_backend = os.getenv("STORAGE_BACKEND", "sheets").strip().lower() or "sheets"
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if storage_backend == "postgres":
+        if not database_url:
+            raise ValueError("Missing required environment variable: DATABASE_URL")
+        sheet_id = os.getenv("GOOGLE_SHEET_ID", "").strip()
+        google_credentials = os.getenv("GOOGLE_CREDENTIALS_JSON", "").strip()
+    else:
+        sheet_id = require_env("GOOGLE_SHEET_ID")
+        google_credentials = require_env("GOOGLE_CREDENTIALS_JSON")
     etherscan_api_key = os.getenv("ETHERSCAN_API_KEY", "").strip()
     solscan_api_key = os.getenv("SOLSCAN_API_KEY", "").strip()
     enable_chain_xrp = env_bool("ENABLE_CHAIN_XRP", default=False)
@@ -186,6 +198,8 @@ def load_pipeline_env(
     return PipelineEnv(
         sheet_id=sheet_id,
         google_credentials=google_credentials,
+        storage_backend=storage_backend,
+        database_url=database_url,
         etherscan_api_key=etherscan_api_key,
         solscan_api_key=solscan_api_key,
         enable_chain_xrp=enable_chain_xrp,
@@ -207,6 +221,10 @@ def load_pipeline_env(
         telegram_broadcast_token=os.getenv("TELEGRAM_BROADCAST_BOT_TOKEN", "").strip(),
         telegram_broadcast_enabled=env_bool("TELEGRAM_BROADCAST_ENABLED", default=False),
         telegram_broadcast_dry_run=env_bool("TELEGRAM_BROADCAST_DRY_RUN", default=True),
+        sheets_write_mode=(
+            os.getenv("SHEETS_WRITE_MODE", "full").strip().lower()
+            or "full"
+        ),
     )
 
 
@@ -237,8 +255,26 @@ def build_router_from_env(env: PipelineEnv) -> LLMRouter:
     return LLMRouter(providers=providers, routing_config=routing_cfg, logger=logger)
 
 
-def build_sheets_client(env: PipelineEnv) -> SheetsClient:
-    return SheetsClient(env.sheet_id, env.google_credentials)
+def build_storage_client(env: PipelineEnv) -> Storage:
+    return build_storage_client_from_env(
+        backend=env.storage_backend,
+        environ={
+            "STORAGE_BACKEND": env.storage_backend,
+            "DATABASE_URL": env.database_url,
+            "GOOGLE_SHEET_ID": env.sheet_id,
+            "GOOGLE_CREDENTIALS_JSON": env.google_credentials,
+            "SHEETS_WRITE_MODE": env.sheets_write_mode,
+        },
+    )
+
+
+def build_sheets_client(env: PipelineEnv) -> Storage:
+    """Backward-compatible storage builder.
+
+    Existing pipeline modules and tests still patch ``build_sheets_client``.
+    The returned object may be Sheets or Postgres depending on STORAGE_BACKEND.
+    """
+    return build_storage_client(env)
 
 
 def build_price_services(env: PipelineEnv) -> tuple[PriceService, EtherscanCollector | None, SolscanCollector | None]:

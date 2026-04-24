@@ -1,6 +1,6 @@
 import { JWT } from "google-auth-library";
 
-import { getDashboardEnv, SHEETS_SCOPES } from "./env";
+import { getDashboardDataBackend, getDashboardEnv, SHEETS_SCOPES } from "./env";
 import {
   columnLabel,
   newestFirst,
@@ -27,6 +27,11 @@ import {
   type TgWhaleEventRow,
   type TransactionRow,
 } from "./schema";
+import {
+  readPostgresDashboardSnapshot,
+  readPostgresDashboardSnapshotSafe,
+  readPostgresRows,
+} from "./postgres";
 
 const SHEETS_API_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
 const SHEETS_WRITE_SCOPES = [
@@ -557,6 +562,9 @@ export function getSheetsWriteClient(): SheetsWriteClient {
 export async function readSheetRows<T extends SheetTabName>(
   tab: T
 ): Promise<SheetRowMap[T][]> {
+  if (getDashboardDataBackend() === "postgres") {
+    return readPostgresRows(tab);
+  }
   return getSheetsReadClient().readTab(tab);
 }
 
@@ -577,6 +585,9 @@ export async function listDailyBriefs(): Promise<DailyBriefRow[]> {
 }
 
 export async function readDashboardSnapshot(): Promise<DashboardSheetSnapshot> {
+  if (getDashboardDataBackend() === "postgres") {
+    return readPostgresDashboardSnapshot();
+  }
   return getSheetsReadClient().readDashboardAggregate();
 }
 
@@ -584,6 +595,9 @@ export async function readDashboardSnapshotSafe(): Promise<{
   snapshot: DashboardSheetSnapshot;
   failedTabs: Array<{ tab: DashboardTabName; error: string }>;
 }> {
+  if (getDashboardDataBackend() === "postgres") {
+    return readPostgresDashboardSnapshotSafe();
+  }
   const client = getSheetsReadClient();
   const failedTabs: Array<{ tab: DashboardTabName; error: string }> = [];
 

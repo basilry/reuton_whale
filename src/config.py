@@ -10,6 +10,9 @@ class Config:
     sheet_id: str
     google_credentials: str
     telegram_token: str
+    storage_backend: str = "sheets"
+    database_url: str = ""
+    sheets_write_mode: str = "full"
     solscan_api_key: str = ""
     enable_chain_xrp: bool = False
     xrpscan_api_base: str = "https://api.xrpscan.com/api/v1"
@@ -31,6 +34,25 @@ def _set_required(values: dict, field: str, env_var: str) -> None:
     if not value:
         raise ValueError(f"Missing required environment variable: {env_var}")
     values[field] = value
+
+
+def _set_storage_values(values: dict) -> None:
+    storage_backend = os.getenv("STORAGE_BACKEND", "sheets").strip().lower() or "sheets"
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    values["storage_backend"] = storage_backend
+    values["database_url"] = database_url
+    values["sheets_write_mode"] = (
+        os.getenv("SHEETS_WRITE_MODE", "full").strip().lower() or "full"
+    )
+    if storage_backend == "postgres":
+        if not database_url:
+            raise ValueError("Missing required environment variable: DATABASE_URL")
+        values["sheet_id"] = os.getenv("GOOGLE_SHEET_ID", "")
+        values["google_credentials"] = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
+        return
+
+    _set_required(values, "sheet_id", "GOOGLE_SHEET_ID")
+    _set_required(values, "google_credentials", "GOOGLE_CREDENTIALS_JSON")
 
 
 def _set_llm_values(values: dict, require_one: bool) -> None:
@@ -86,8 +108,7 @@ def load_config() -> Config:
     values: dict = {
         "etherscan_api_key": os.getenv("ETHERSCAN_API_KEY", ""),
     }
-    _set_required(values, "sheet_id", "GOOGLE_SHEET_ID")
-    _set_required(values, "google_credentials", "GOOGLE_CREDENTIALS_JSON")
+    _set_storage_values(values)
     _set_required(values, "telegram_token", "TELEGRAM_BOT_TOKEN")
     _set_llm_values(values, require_one=True)
     _set_optional_values(values)
@@ -107,8 +128,7 @@ def load_listener_config() -> Config:
         "etherscan_api_key": "",
         "telegram_token": "",
     }
-    _set_required(values, "sheet_id", "GOOGLE_SHEET_ID")
-    _set_required(values, "google_credentials", "GOOGLE_CREDENTIALS_JSON")
+    _set_storage_values(values)
     _set_llm_values(values, require_one=False)
     _set_optional_values(values)
 

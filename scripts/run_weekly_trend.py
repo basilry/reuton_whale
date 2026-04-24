@@ -19,7 +19,7 @@ from src.config import load_config
 from src.distributor.telegram_bot import WhaleScopeBot
 from src.main import _build_router
 from src.analyzer.claude_analyzer import LLMAnalyzer
-from src.storage.sheets_client import SheetsClient
+from src.storage.factory import build_storage_client
 from src.utils.logger import get_logger
 
 logger = get_logger("run_weekly_trend")
@@ -27,7 +27,7 @@ logger = get_logger("run_weekly_trend")
 
 async def _run_weekly_trend_async() -> dict[str, object]:
     config = load_config()
-    sheets = SheetsClient(config.sheet_id, config.google_credentials)
+    sheets = build_storage_client()
     router = _build_router(config)
     analyzer = LLMAnalyzer(router=router, storage=sheets)
     bot = WhaleScopeBot(config.telegram_token, sheets)

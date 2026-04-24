@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@types/node": "^20.19.0",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vercel/speed-insights": "^2.0.0",
@@ -20,6 +21,7 @@
     "lightweight-charts": "^5.1.0",
     "marked": "^12.0.2",
     "next": "^15.5.0",
+    "pg": "^8.20.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^5.7.0"

@@ -18,7 +18,7 @@ from src.pipeline.brief import run_brief_pipeline
 from src.pipeline.broadcast_daily import run_broadcast_daily
 from src.pipeline.broadcast_periodic import run_broadcast_periodic
 from src.pipeline.channel_health import run_channel_health
-from src.pipeline.common import build_sheets_client, load_pipeline_env
+from src.pipeline.common import build_storage_client, load_pipeline_env
 from src.pipeline.signals import run_signals_pipeline
 from src.pipeline.stories import run_stories_pipeline
 from src.utils.logger import get_logger
@@ -145,11 +145,11 @@ def _job_runners() -> dict[str, Callable[[], object]]:
     }
 
 
-def _ensure_sheets_client(sheets=None):
-    if sheets is not None:
-        return sheets
+def _ensure_storage_client(storage=None):
+    if storage is not None:
+        return storage
     env = load_pipeline_env()
-    return build_sheets_client(env)
+    return build_storage_client(env)
 
 
 def _should_skip_duplicate_job(sheets, job_name: str, slot: DispatchSlot) -> bool:
@@ -218,22 +218,30 @@ def _record_job_heartbeat(
         status = "error"
         details = {"error": error}
 
-    append_service_heartbeat(
-        sheets,
-        service=f"pipeline.{job_name}",
-        component="pipeline",
-        status=status,
-        run_status=run_status,
-        heartbeat_key=build_heartbeat_key(job_name, slot.heartbeat_key),
-        details=details,
-        error=error,
-        observed_at=observed_at,
-        job_name=job_name,
-        processed_count=processed_count,
-        lag_seconds=lag_seconds,
-        duration_ms=duration_ms,
-        source_name=_JOB_SOURCE_NAMES.get(job_name, ""),
-    )
+    try:
+        append_service_heartbeat(
+            sheets,
+            service=f"pipeline.{job_name}",
+            component="pipeline",
+            status=status,
+            run_status=run_status,
+            heartbeat_key=build_heartbeat_key(job_name, slot.heartbeat_key),
+            details=details,
+            error=error,
+            observed_at=observed_at,
+            job_name=job_name,
+            processed_count=processed_count,
+            lag_seconds=lag_seconds,
+            duration_ms=duration_ms,
+            source_name=_JOB_SOURCE_NAMES.get(job_name, ""),
+        )
+    except Exception as exc:
+        logger.warning(
+            "Job heartbeat write failed job=%s slot=%s: %s",
+            job_name,
+            slot.heartbeat_key,
+            exc,
+        )
 
 
 def _publish_run_all_success(job_name: str, outcome: object, slot: DispatchSlot) -> None:
@@ -251,7 +259,7 @@ def _publish_run_all_success(job_name: str, outcome: object, slot: DispatchSlot)
     )
 
 
-def run_all(*, now: datetime | None = None, sheets=None) -> dict[str, object]:
+def run_all(*, now: datetime | None = None, sheets=None, storage=None) -> dict[str, object]:
     current = _normalize_now(now)
     slot = _resolve_dispatch_slot(current)
     run_started_at = time.perf_counter()
@@ -268,13 +276,13 @@ def run_all(*, now: datetime | None = None, sheets=None) -> dict[str, object]:
         "failed_jobs": {},
     }
     runners = _job_runners()
-    sheets_client = _ensure_sheets_client(sheets)
+    storage_client = _ensure_storage_client(storage if storage is not None else sheets)
     executed: list[str] = []
     skipped: dict[str, str] = {}
     failed: dict[str, str] = {}
 
     for job_name in due:
-        if _should_skip_duplicate_job(sheets_client, job_name, slot):
+        if _should_skip_duplicate_job(storage_client, job_name, slot):
             skipped[job_name] = "duplicate_slot"
             logger.info(
                 "Skipping duplicate scheduled job name=%s slot=%s",
@@ -293,7 +301,7 @@ def run_all(*, now: datetime | None = None, sheets=None) -> dict[str, object]:
             _publish_run_all_success(job_name, outcome, slot)
             duration_ms = int((time.perf_counter() - started_at) * 1000)
             _record_job_heartbeat(
-                sheets_client,
+                storage_client,
                 job_name,
                 slot,
                 outcome,
@@ -304,7 +312,7 @@ def run_all(*, now: datetime | None = None, sheets=None) -> dict[str, object]:
             failed[job_name] = str(exc)
             duration_ms = int((time.perf_counter() - started_at) * 1000)
             _record_job_heartbeat(
-                sheets_client,
+                storage_client,
                 job_name,
                 slot,
                 None,
@@ -324,25 +332,32 @@ def run_all(*, now: datetime | None = None, sheets=None) -> dict[str, object]:
 
     total_duration_ms = int((time.perf_counter() - run_started_at) * 1000)
     summary_observed_at = slot.current_utc if now is not None else datetime.now(timezone.utc)
-    append_service_heartbeat(
-        sheets_client,
-        service="pipeline.run_all",
-        component="orchestrator",
-        status=pipeline_status_to_health(summary["status"]),
-        run_status=summary["status"],
-        heartbeat_key=build_heartbeat_key("run_all", slot.heartbeat_key),
-        details={
-            "due_jobs": due,
-            "executed_jobs": executed,
-            "skipped_jobs": skipped,
-            "failed_jobs": list(failed),
-        },
-        observed_at=summary_observed_at,
-        job_name="dispatcher",
-        processed_count=len(executed),
-        lag_seconds=max(0, int((summary_observed_at - slot.slot_start_utc).total_seconds())),
-        duration_ms=total_duration_ms,
-    )
+    try:
+        append_service_heartbeat(
+            storage_client,
+            service="pipeline.run_all",
+            component="orchestrator",
+            status=pipeline_status_to_health(summary["status"]),
+            run_status=summary["status"],
+            heartbeat_key=build_heartbeat_key("run_all", slot.heartbeat_key),
+            details={
+                "due_jobs": due,
+                "executed_jobs": executed,
+                "skipped_jobs": skipped,
+                "failed_jobs": list(failed),
+            },
+            observed_at=summary_observed_at,
+            job_name="dispatcher",
+            processed_count=len(executed),
+            lag_seconds=max(0, int((summary_observed_at - slot.slot_start_utc).total_seconds())),
+            duration_ms=total_duration_ms,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Dispatcher heartbeat write failed slot=%s: %s",
+            slot.heartbeat_key,
+            exc,
+        )
     logger.info(
         "run_all finished status=%s due=%s executed=%s skipped=%s failed=%s",
         summary["status"],

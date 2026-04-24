@@ -16,7 +16,7 @@ from src.config import load_listener_config
 from src.observability.service_health import append_service_heartbeat, pipeline_status_to_health
 from src.pipeline.common import init_run_result
 from src.storage.queries import now_iso
-from src.storage.sheets_client import SheetsClient
+from src.storage.factory import build_storage_client
 from src.utils.logger import get_logger
 
 logger = get_logger("news_rss")
@@ -330,8 +330,8 @@ class NewsRssIngestor:
 
 def run_news_rss_refresh() -> dict[str, object]:
     result = init_run_result("news_rss")
-    config = load_listener_config()
-    client = SheetsClient(config.sheet_id, config.google_credentials)
+    load_listener_config()
+    client = build_storage_client()
     ingestor = NewsRssIngestor()
     rows, feed_results = ingestor.fetch()
     inserted = client.append_news_feed(rows)

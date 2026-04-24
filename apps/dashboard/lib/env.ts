@@ -23,6 +23,12 @@ export interface DashboardEnv {
   credentials: GoogleServiceAccountCredentials;
 }
 
+export type DashboardDataBackend = "sheets" | "postgres";
+
+export interface DashboardPostgresEnv {
+  databaseUrl: string;
+}
+
 export interface LiveUpdatesEnv {
   enabled: boolean;
   configured: boolean;
@@ -238,6 +244,23 @@ export function getDashboardEnv(): DashboardEnv {
     sheetId: sheetId!,
     credentials: parseCredentialsJson(credentialsJson!),
   };
+}
+
+export function getDashboardDataBackend(): DashboardDataBackend {
+  const raw = readEnvValue("DASHBOARD_DATA_BACKEND") ?? readEnvValue("STORAGE_BACKEND") ?? "sheets";
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "postgres") {
+    return "postgres";
+  }
+  return "sheets";
+}
+
+export function getDashboardPostgresEnv(): DashboardPostgresEnv {
+  const databaseUrl = readEnvValue("DATABASE_URL");
+  if (!databaseUrl) {
+    throw missingEnvError(["DATABASE_URL"]);
+  }
+  return { databaseUrl };
 }
 
 export function getLiveUpdatesEnv(): LiveUpdatesEnv {

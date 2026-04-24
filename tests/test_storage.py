@@ -1,8 +1,11 @@
 import json
+import threading
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
+import gspread
 import pytest
+from requests import Response
 
 from src.storage.queries import dict_to_row, now_iso, row_to_dict
 from src.storage.schema import (
@@ -16,12 +19,16 @@ from src.storage.schema import (
     SUBSCRIBERS_HEADERS,
     SYSTEM_LOG_HEADERS,
     TAB_HEADERS,
+    TAB_ADDRESS_ACTIVITY,
+    TAB_SERVICE_HEALTH,
     TAB_SUBSCRIBERS,
+    TAB_SYSTEM_LOG,
     TAB_TRANSACTIONS,
     TRANSACTIONS_HEADERS,
     USER_INTERESTS_HEADERS,
     WATCHED_ADDRESSES_HEADERS,
 )
+from src.utils.errors import StorageQuotaExceeded
 
 
 class TestSchema:
@@ -171,6 +178,34 @@ class TestSheetsClient:
             client = SheetsClient("fake_sheet_id", '{"type":"service_account"}')
             return client, mock_spreadsheet
 
+    def _make_uninitialized_client(self, *, write_mode: str = "full"):
+        from src.storage.sheets_client import SheetsClient
+
+        client = object.__new__(SheetsClient)
+        client._worksheet_cache = {}
+        client._append_only_schema_verified = set()
+        client._system_log_cache = None
+        client._write_lock = threading.Lock()
+        client._write_mode = write_mode
+        return client
+
+    def _quota_api_error(self):
+        response = Response()
+        response.status_code = 400
+        response._content = json.dumps(
+            {
+                "error": {
+                    "code": 400,
+                    "message": (
+                        "This action would increase the number of cells in the "
+                        "workbook above the limit of 10000000 cells."
+                    ),
+                    "status": "INVALID_ARGUMENT",
+                }
+            }
+        ).encode("utf-8")
+        return gspread.exceptions.APIError(response)
+
     def test_init_opens_spreadsheet(self):
         client, mock_ss = self._make_client()
         assert client._spreadsheet == mock_ss
@@ -209,6 +244,44 @@ class TestSheetsClient:
 
         count = client.append_transactions([{"raw_response_hash": "x", "hash": "h"}])
         assert count == 1
+
+    def test_append_transactions_maps_cell_limit_to_quota_without_retry(self):
+        client = self._make_uninitialized_client()
+        mock_ws = MagicMock()
+        mock_ws.get_all_values.return_value = [TRANSACTIONS_HEADERS]
+        mock_ws.append_rows.side_effect = self._quota_api_error()
+        client._worksheet = MagicMock(return_value=mock_ws)
+
+        with pytest.raises(StorageQuotaExceeded):
+            client.append_transactions([{"raw_response_hash": "x", "hash": "h"}])
+
+        assert mock_ws.append_rows.call_count == 1
+
+    def test_summary_only_skips_high_churn_writes(self):
+        client = self._make_uninitialized_client(write_mode="summary_only")
+        client._worksheet = MagicMock()
+
+        assert client.append_transactions([{"raw_response_hash": "x"}]) == 0
+        assert client.append_address_activity([{"tx_hash": "h"}]) == 0
+        client.append_system_log("warning", "quota", {})
+        client.log_run({"run_id": "signals_1"})
+        client.append_service_health({"service": "pipeline.signals"})
+        client.append_tg_whale_event({"tg_msg_id": "m1"})
+
+        client._worksheet.assert_not_called()
+
+    def test_disabled_skips_high_churn_writes(self):
+        client = self._make_uninitialized_client(write_mode="disabled")
+        client._worksheet = MagicMock()
+
+        assert client.append_transactions([{"raw_response_hash": "x"}]) == 0
+        assert client.append_address_activity([{"tx_hash": "h"}]) == 0
+        client.append_system_log("warning", "quota", {})
+        client.log_run({"run_id": "signals_1"})
+        client.append_service_health({"service": "pipeline.signals"})
+        client.append_tg_whale_event({"tg_msg_id": "m1"})
+
+        client._worksheet.assert_not_called()
 
     def test_get_daily_brief_filters_by_date(self):
         client, mock_ss = self._make_client()

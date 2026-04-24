@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import threading
 from datetime import datetime, timezone
 
@@ -51,7 +52,7 @@ from src.storage.schema import (
     WHALE_STORIES_HEADERS,
     SERVICE_HEALTH_HEADERS,
 )
-from src.utils.errors import StorageError
+from src.utils.errors import StorageError, StorageQuotaExceeded
 from src.utils.chains import canonical_chain, is_evm_chain
 from src.utils.logger import get_logger
 from src.utils.retry import retry
@@ -68,6 +69,14 @@ SCOPES = [
 # shared header layout.
 SUBSCRIBERS_HEADERS_EXT = [*SUBSCRIBERS_HEADERS, "language"]
 SUBSCRIBER_STATUSES = {"active", "paused", "blocked", "deactivated"}
+SHEETS_WRITE_MODES = {"full", "summary_only", "disabled"}
+HIGH_CHURN_WRITE_TABS = {
+    TAB_TRANSACTIONS,
+    TAB_ADDRESS_ACTIVITY,
+    TAB_SERVICE_HEALTH,
+    TAB_SYSTEM_LOG,
+    TAB_TG_WHALE_EVENTS,
+}
 
 
 def _parse_coins(raw: str) -> list[str]:
@@ -134,6 +143,40 @@ def _json_loads_safe(value: str) -> dict | list | None:
         return None
 
 
+def _normalize_sheets_write_mode(value: object) -> str:
+    normalized = str(value or "full").strip().lower() or "full"
+    if normalized not in SHEETS_WRITE_MODES:
+        logger.warning("Invalid SHEETS_WRITE_MODE=%s; falling back to full", value)
+        return "full"
+    return normalized
+
+
+def _api_error_status_code(error: gspread.exceptions.APIError) -> int | None:
+    response = getattr(error, "response", None)
+    status = getattr(response, "status_code", None)
+    if isinstance(status, int):
+        return status
+    code = getattr(error, "code", None)
+    return code if isinstance(code, int) else None
+
+
+def _is_workbook_cell_limit_error(error: gspread.exceptions.APIError) -> bool:
+    text = str(error).lower()
+    return (
+        _api_error_status_code(error) == 400
+        and "workbook" in text
+        and "cells" in text
+        and "10000000" in text
+    )
+
+
+def _raise_storage_error(action: str, error: gspread.exceptions.APIError) -> None:
+    message = f"Failed to {action}: {error}"
+    if _is_workbook_cell_limit_error(error):
+        raise StorageQuotaExceeded(message) from error
+    raise StorageError(message) from error
+
+
 def _column_letter(index_1based: int) -> str:
     """Convert a 1-based column index to A1 notation (1 -> A, 27 -> AA)."""
     if index_1based <= 0:
@@ -147,7 +190,7 @@ def _column_letter(index_1based: int) -> str:
 
 
 class SheetsClient:
-    def __init__(self, sheet_id: str, credentials_json: str):
+    def __init__(self, sheet_id: str, credentials_json: str, *, write_mode: str | None = None):
         try:
             creds_dict = json.loads(credentials_json)
             creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
@@ -158,6 +201,9 @@ class SheetsClient:
         self._worksheet_cache: dict[str, gspread.Worksheet] = {}
         self._append_only_schema_verified: set[str] = set()
         self._system_log_cache: list[dict] | None = None
+        self._write_mode = _normalize_sheets_write_mode(
+            write_mode if write_mode is not None else os.getenv("SHEETS_WRITE_MODE", "full")
+        )
         self._ensure_worksheets()
         # Serializes gspread mutations across threads (async callers via
         # asyncio.to_thread may schedule multiple writes concurrently).
@@ -210,10 +256,22 @@ class SheetsClient:
             return
         self._system_log_cache.append(self._normalize_entry(entry, SYSTEM_LOG_HEADERS))
 
+    def _should_skip_high_churn_write(self, tab_name: str) -> bool:
+        if tab_name not in HIGH_CHURN_WRITE_TABS or self._write_mode == "full":
+            return False
+        logger.warning(
+            "Skipping Sheets high-churn write tab=%s mode=%s",
+            tab_name,
+            self._write_mode,
+        )
+        return True
+
     # --- transactions ---
 
     @retry(max_retries=3, base_delay=2.0)
     def append_transactions(self, transactions: list[dict]) -> int:
+        if self._should_skip_high_churn_write(TAB_TRANSACTIONS):
+            return 0
         with self._write_lock:
             try:
                 ws = self._worksheet(TAB_TRANSACTIONS)
@@ -236,7 +294,7 @@ class SheetsClient:
                             len(new_rows), len(transactions) - len(new_rows))
                 return len(new_rows)
             except gspread.exceptions.APIError as e:
-                raise StorageError(f"Failed to append transactions: {e}") from e
+                _raise_storage_error("append transactions", e)
 
     @retry(max_retries=3, base_delay=2.0)
     def list_transactions(
@@ -667,6 +725,8 @@ class SheetsClient:
 
     @retry(max_retries=3, base_delay=2.0)
     def log_run(self, run_data: dict) -> None:
+        if self._should_skip_high_churn_write(TAB_SYSTEM_LOG):
+            return
         with self._write_lock:
             try:
                 ws = self._worksheet(TAB_SYSTEM_LOG)
@@ -677,10 +737,12 @@ class SheetsClient:
                 self._append_system_log_cache_entry(run_data)
                 logger.info("Logged run: %s", run_data.get("run_id", "?"))
             except gspread.exceptions.APIError as e:
-                raise StorageError(f"Failed to log run: {e}") from e
+                _raise_storage_error("log run", e)
 
     @retry(max_retries=3, base_delay=2.0)
     def append_system_log(self, level: str, category: str, payload: dict) -> None:
+        if self._should_skip_high_churn_write(TAB_SYSTEM_LOG):
+            return
         with self._write_lock:
             try:
                 ws = self._worksheet(TAB_SYSTEM_LOG)
@@ -692,7 +754,7 @@ class SheetsClient:
                 self._append_system_log_cache_entry(entry)
                 logger.info("Appended system log level=%s category=%s", level, category)
             except gspread.exceptions.APIError as e:
-                raise StorageError(f"Failed to append system log: {e}") from e
+                _raise_storage_error("append system log", e)
 
     @retry(max_retries=3, base_delay=2.0)
     def list_system_log(
@@ -1105,6 +1167,8 @@ class SheetsClient:
 
     @retry(max_retries=3, base_delay=2.0)
     def append_address_activity(self, events: list[dict]) -> int:
+        if self._should_skip_high_churn_write(TAB_ADDRESS_ACTIVITY):
+            return 0
         with self._write_lock:
             try:
                 ws = self._worksheet(TAB_ADDRESS_ACTIVITY)
@@ -1138,7 +1202,7 @@ class SheetsClient:
                 logger.info("Appended %d address activity events", len(new_rows))
                 return len(new_rows)
             except gspread.exceptions.APIError as e:
-                raise StorageError(f"Failed to append address activity: {e}") from e
+                _raise_storage_error("append address activity", e)
 
     @retry(max_retries=3, base_delay=2.0)
     def list_address_activity(self, since: datetime | None = None) -> list[dict]:
@@ -1170,6 +1234,8 @@ class SheetsClient:
 
     @retry(max_retries=3, base_delay=2.0)
     def append_tg_whale_event(self, event: dict) -> None:
+        if self._should_skip_high_churn_write(TAB_TG_WHALE_EVENTS):
+            return
         with self._write_lock:
             try:
                 ws = self._worksheet(TAB_TG_WHALE_EVENTS)
@@ -1804,6 +1870,8 @@ class SheetsClient:
 
     @retry(max_retries=3, base_delay=2.0)
     def append_service_health(self, entry: dict) -> None:
+        if self._should_skip_high_churn_write(TAB_SERVICE_HEALTH):
+            return
         with self._write_lock:
             try:
                 ws = self._worksheet(TAB_SERVICE_HEALTH)
@@ -1863,7 +1931,7 @@ class SheetsClient:
                     normalized["job_name"],
                 )
             except gspread.exceptions.APIError as e:
-                raise StorageError(f"Failed to append service health: {e}") from e
+                _raise_storage_error("append service health", e)
 
     # --- internal helpers ---
 

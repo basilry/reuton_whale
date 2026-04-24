@@ -11,6 +11,10 @@ class StorageError(Exception):
     pass
 
 
+class StorageQuotaExceeded(StorageError):
+    pass
+
+
 class DistributorError(Exception):
     pass
 

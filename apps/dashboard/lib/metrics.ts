@@ -28,13 +28,19 @@ import {
   persistCuratedWalletEnabled,
   toLegacyWatchlistEntries,
 } from "./curated-wallets";
-import { getDashboardEnv, getLiveUpdatesEnv, getRenderEnvState, SHEETS_SCOPES } from "./env";
+import {
+  getDashboardDataBackend,
+  getDashboardEnv,
+  getLiveUpdatesEnv,
+  getRenderEnvState,
+  SHEETS_SCOPES,
+} from "./env";
 import { getFearGreedData } from "./fear-greed";
 import { getLiveUpdateStatus } from "./live-updates";
 import { fetchLiveUpdateEvents } from "./live-updates.server";
+import { readPostgresOptionalRows } from "./postgres";
 import { loadRenderObservability } from "./render";
 import {
-  readDashboardSnapshot,
   readDashboardSnapshotSafe,
   readSheetRows,
 } from "./sheets";
@@ -383,6 +389,9 @@ function rowHasMeaningfulContent(row: OptionalSheetRow): boolean {
 
 async function readOptionalSheetRows(tabName: string): Promise<OptionalSheetRow[]> {
   try {
+    if (getDashboardDataBackend() === "postgres") {
+      return await readPostgresOptionalRows(tabName);
+    }
     const env = getDashboardEnv();
     const token = await getOptionalSheetsAccessToken();
     const range = `${tabName}!${OPTIONAL_TAB_RANGE}`;
@@ -2919,6 +2928,8 @@ export async function getDashboardData(options?: {
   const signalLimit = options?.signalLimit ?? 20;
   const systemLogLimit = options?.systemLogLimit ?? 25;
   const includeAdminExtras = options?.includeAdminExtras ?? true;
+  const dataBackend = getDashboardDataBackend();
+  const dataSourceName = dataBackend === "postgres" ? "postgres" : "google_sheets";
   const emptyRenderObservability = (): AdminRenderObservability => ({
     provider: "render",
     state: "error",
@@ -2966,7 +2977,7 @@ export async function getDashboardData(options?: {
   const snapshot = snapshotResult.snapshot;
   if (snapshotResult.failedTabs.length > 0) {
     console.error(
-      "[metrics/getDashboardData] sheet tabs degraded:",
+      "[metrics/getDashboardData] data tabs degraded:",
       snapshotResult.failedTabs.map((item) => `${item.tab}: ${item.error}`).join(" | "),
     );
   }
@@ -3032,10 +3043,13 @@ export async function getDashboardData(options?: {
     system_log: snapshot.system_log.length,
     subscribers: snapshot.subscribers.length,
   };
-  const dataSourceOverrideRow = findServiceHealthOverride(serviceHealthRows, ["data_source", "google_sheets", "sheets"]);
+  const dataSourceOverrideRow = findServiceHealthOverride(
+    serviceHealthRows,
+    ["data_source", dataSourceName, "google_sheets", "sheets", "postgres"],
+  );
   const dataSourceOverride = parseServiceHealthRow(dataSourceOverrideRow);
   const sourceHealthBase = buildSourceHealth({
-    source: "google_sheets",
+    source: dataSourceName,
     generatedAt,
     latestRunUpdatedAt,
     transactionUpdatedAt,
@@ -3148,7 +3162,7 @@ export async function getDashboardData(options?: {
   // at the dashboard request frequency and is worth the safety budget.
   return sanitizeForRsc({
     generatedAt,
-    source: "google_sheets",
+    source: dataSourceName,
     adminObservability,
     latestBrief: normalizedBrief,
     recentTransactions,

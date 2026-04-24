@@ -12,9 +12,16 @@ _KST = ZoneInfo("Asia/Seoul")
 
 
 class FakeSheets:
-    def __init__(self, *, duplicates: set[str] | None = None, duplicate_error: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        duplicates: set[str] | None = None,
+        duplicate_error: bool = False,
+        heartbeat_error: bool = False,
+    ) -> None:
         self.duplicates = duplicates or set()
         self.duplicate_error = duplicate_error
+        self.heartbeat_error = heartbeat_error
         self.service_health_entries: list[dict] = []
         self.checked_jobs: list[str] = []
 
@@ -32,6 +39,8 @@ class FakeSheets:
         return run_type in self.duplicates
 
     def append_service_health(self, entry: dict) -> None:
+        if self.heartbeat_error:
+            raise StorageError("quota exceeded")
         self.service_health_entries.append(entry)
 
 
@@ -256,6 +265,40 @@ def test_run_all_continues_when_duplicate_guard_read_fails():
         "brief",
         "broadcast_daily",
     ]
+
+
+def test_run_all_heartbeat_write_failures_are_non_fatal():
+    calls: list[str] = []
+    sheets = FakeSheets(heartbeat_error=True)
+
+    def _record(name: str):
+        def _runner():
+            calls.append(name)
+            return {"status": "completed", "details": f"runner={name}"}
+
+        return _runner
+
+    with patch.object(run_all_module, "run_signals_pipeline", side_effect=_record("signals")), patch.object(
+        run_all_module, "run_curated_balance_refresh", side_effect=_record("curated_balance")
+    ), patch.object(
+        run_all_module, "run_news_rss_refresh", side_effect=_record("news_rss")
+    ), patch.object(
+        run_all_module, "run_broadcast_periodic", side_effect=_record("broadcast_periodic")
+    ):
+        summary = run_all_module.run_all(
+            now=_kst_datetime(2026, 4, 20, 13, 16),
+            sheets=sheets,
+        )
+
+    assert summary["status"] == "completed"
+    assert summary["executed_jobs"] == [
+        "signals",
+        "curated_balance",
+        "news_rss",
+        "broadcast_periodic",
+    ]
+    assert summary["failed_jobs"] == {}
+    assert calls == ["signals", "curated_balance", "news_rss", "broadcast_periodic"]
 
 
 def test_run_all_publishes_success_for_news_and_watchlist_only():

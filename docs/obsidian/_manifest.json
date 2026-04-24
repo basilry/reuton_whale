@@ -1,6 +1,6 @@
 {
   "generated_at": "2026-04-24",
-  "count": 82,
+  "count": 83,
   "entries": [
     {
       "file": "Top 10 Liquid Coins - Whale Wallets (2026.4 Updated).md",
@@ -659,6 +659,14 @@
       "title": "WhaleScope Sheets 10M 복구 검증 리포트",
       "slug": "WhaleScope-Sheets-10M복구-검증리포트",
       "category": "verification-report"
+    },
+    {
+      "file": "2026-04-24-04-WhaleScope-PostgreSQL전환-개선계획-RenderCron유지.md",
+      "date": "2026-04-24",
+      "seq": "04",
+      "title": "WhaleScope PostgreSQL 전환 개선계획 — Render Cron 유지 전제",
+      "slug": "WhaleScope-PostgreSQL전환-개선계획-RenderCron유지",
+      "category": "execution-plan"
     }
   ]
 }

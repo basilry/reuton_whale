@@ -119,8 +119,8 @@ function getCopy(language: "ko" | "en") {
         offline: "네트워크 또는 스트림 연결이 오프라인 상태입니다.",
         unsupported: "이 브라우저는 EventSource를 지원하지 않습니다.",
         featureDisabled: "실시간 자동 새로고침 기능이 현재 비활성화되어 있습니다.",
-        redisMissing: "로컬/개발 환경에서는 Redis REST URL이 설정되지 않아 실시간 스트림이 비활성입니다.",
-        tokenMissing: "로컬/개발 환경에서는 Redis REST 토큰이 설정되지 않아 실시간 스트림이 비활성입니다.",
+        redisMissing: "실시간 자동 새로고침에 필요한 Redis REST URL이 설정되지 않았습니다.",
+        tokenMissing: "실시간 자동 새로고침에 필요한 Redis REST 토큰이 설정되지 않았습니다.",
       },
     };
   }
@@ -142,8 +142,8 @@ function getCopy(language: "ko" | "en") {
       offline: "The network or stream connection is offline.",
       unsupported: "This browser does not support EventSource.",
       featureDisabled: "Live auto-refresh is currently disabled.",
-      redisMissing: "Local/dev environment has no Redis REST URL, so the live stream is on standby.",
-      tokenMissing: "Local/dev environment has no Redis REST token, so the live stream is on standby.",
+      redisMissing: "Live auto-refresh is missing the Redis REST URL.",
+      tokenMissing: "Live auto-refresh is missing the Redis REST token.",
     },
   };
 }
@@ -445,7 +445,7 @@ export function LiveUpdatesController({
 
         if (statusPayload?.state === "disabled") {
           patchConnection({
-            status: "standby",
+            status: "offline",
             detail: detailForStatusReason(effectCopy, statusPayload.reason),
           });
           return;

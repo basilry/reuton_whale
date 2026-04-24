@@ -254,7 +254,7 @@
   border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--surface);
-  color: var(--muted-strong);
+  color: var(--on-surface);
   flex-shrink: 0;
 }
 

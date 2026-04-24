@@ -5,13 +5,18 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
+from src.utils.errors import StorageQuotaExceeded
 from src.utils.logger import get_logger
 
 logger = get_logger("retry")
 T = TypeVar("T")
 
 
-def retry(max_retries: int = 5, base_delay: float = 1.0):
+def retry(
+    max_retries: int = 5,
+    base_delay: float = 1.0,
+    non_retry_exceptions: tuple[type[BaseException], ...] = (StorageQuotaExceeded,),
+):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -20,6 +25,8 @@ def retry(max_retries: int = 5, base_delay: float = 1.0):
                 try:
                     return func(*args, **kwargs)
                 except Exception as e:
+                    if isinstance(e, non_retry_exceptions):
+                        raise
                     last_exception = e
                     if attempt == max_retries:
                         break

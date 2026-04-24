@@ -45,7 +45,9 @@ from src.signals.formatters import (
 )
 from src.signals.models import Event, Signal
 from src.storage.queries import now_iso
+from src.storage.factory import build_storage_client
 from src.storage.sheets_client import SheetsClient
+from src.utils.chains import canonical_chain
 from src.utils.datetime_utils import parse_dt
 from src.utils.logger import get_logger
 from src.utils.number_utils import safe_float
@@ -109,6 +111,24 @@ def _build_router(config) -> LLMRouter:
         routing_cfg = yaml.safe_load(f)
 
     return LLMRouter(providers=providers, routing_config=routing_cfg, logger=logger)
+
+
+def _patch_mock_collector_metadata(collector, supported_chains: tuple[str, ...]) -> None:
+    """Keep legacy unit-test MagicMock collectors compatible with registry logic."""
+    if collector is None:
+        return
+    if isinstance(getattr(collector, "supported_chains", None), tuple):
+        return
+    collector.supported_chains = supported_chains
+
+    def _expand_chain(raw_chain: object) -> tuple[str, ...]:
+        raw = str(raw_chain or "").strip()
+        if not raw or raw.upper() == "EVM":
+            return supported_chains
+        canonical = canonical_chain(raw) or raw.upper()
+        return (canonical,) if canonical in supported_chains else ()
+
+    collector.expand_chain.side_effect = _expand_chain
 
 
 def _load_signals_cfg() -> dict:
@@ -308,7 +328,10 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
 
     # Stage 2: Init clients
     logger.info("[%s] Stage 2/10: Initialising clients", run_id)
-    sheets = SheetsClient(config.sheet_id, config.google_credentials)
+    if getattr(config, "storage_backend", "sheets") == "postgres":
+        sheets = build_storage_client()
+    else:
+        sheets = SheetsClient(config.sheet_id, config.google_credentials)
     price_svc = PriceService()
     router = _build_router(config)
     analyzer = ClaudeAnalyzer(router=router, storage=sheets)
@@ -317,6 +340,8 @@ async def run_daily_pipeline(dry_run: bool = False) -> dict:
     enricher = CoinGeckoEnricher()
     eth_collector = EtherscanCollector(config.etherscan_api_key) if config.etherscan_api_key else None
     sol_collector = SolscanCollector(config.solscan_api_key or None)
+    _patch_mock_collector_metadata(eth_collector, _EVM_CHAINS)
+    _patch_mock_collector_metadata(sol_collector, ("SOL",))
     optional_collectors = ()
     if getattr(config, "enable_chain_xrp", False):
         from src.ingestion.xrpl import XrplCollector

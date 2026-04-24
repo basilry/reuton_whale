@@ -148,6 +148,20 @@ export function CuratedWatchlistPanel({
     watchlist.map((item) => {
       const isHighlight = item.tone === "critical" || item.relatedSignalCount > 0;
       const symbolLabel = item.symbol.slice(0, 4).toUpperCase();
+      const lastSeenLabel = item.lastSeenAt
+        ? language === "ko"
+          ? `최근 관측 ${item.lastSeenAt}`
+          : `Last seen ${item.lastSeenAt}`
+        : "";
+      const detailLabel = [
+        item.title,
+        item.note,
+        lastSeenLabel,
+        humanizeChain(item.chain, language),
+        copy.detailCta,
+      ]
+        .filter(Boolean)
+        .join(" ");
 
       return (
         <button
@@ -161,7 +175,7 @@ export function CuratedWatchlistPanel({
           onPointerEnter={() => loadCuratedWalletDetailModal().catch(() => undefined)}
           onFocus={() => loadCuratedWalletDetailModal().catch(() => undefined)}
           onTouchStart={() => loadCuratedWalletDetailModal().catch(() => undefined)}
-          aria-label={`${item.title} ${humanizeChain(item.chain, language)} ${copy.detailCta}`}
+          aria-label={detailLabel}
         >
           <div style={itemCopyStyle}>
             <div style={avatarStyle} aria-hidden="true">{symbolLabel}</div>
