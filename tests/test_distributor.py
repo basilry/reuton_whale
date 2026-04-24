@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from telegram.error import BadRequest, Forbidden, NetworkError, RetryAfter
+from telegram.error import BadRequest, Conflict, Forbidden, NetworkError, RetryAfter
 
 from src.distributor.formatters import (
     format_daily_brief,
@@ -162,6 +162,21 @@ class TestWhaleScopeBot:
         bot = WhaleScopeBot(token="test-token", sheets_client=MagicMock(spec=SheetsClient))
         bot.build()
         assert mock_app.add_handler.call_count == 7
+        mock_app.add_error_handler.assert_called_once_with(bot.handle_error)
+
+    @pytest.mark.asyncio
+    async def test_handle_error_logs_polling_conflict_without_reraising(self):
+        from src.distributor.telegram_bot import WhaleScopeBot
+
+        bot = WhaleScopeBot(token="test-token", sheets_client=MagicMock(spec=SheetsClient))
+        context = MagicMock()
+        context.error = Conflict("terminated by other getUpdates request")
+
+        with patch("src.distributor.telegram_bot.logger") as mock_logger:
+            await bot.handle_error(update=None, context=context)
+
+        mock_logger.error.assert_called_once()
+        assert "getUpdates conflict" in mock_logger.error.call_args.args[0]
 
     @patch("src.distributor.telegram_bot.Application")
     @pytest.mark.asyncio

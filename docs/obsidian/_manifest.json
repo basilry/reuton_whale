@@ -1,6 +1,6 @@
 {
   "generated_at": "2026-04-24",
-  "count": 84,
+  "count": 85,
   "entries": [
     {
       "file": "Top 10 Liquid Coins - Whale Wallets (2026.4 Updated).md",
@@ -675,6 +675,14 @@
       "title": "WhaleScope Vercel PostgreSQL/SSE 배포 반영 확인 보고서",
       "slug": "WhaleScope-Vercel-PostgreSQL-SSE-배포반영-확인보고서",
       "category": "verification-report"
+    },
+    {
+      "file": "2026-04-24-06-WhaleScope-Telegram-Bot-Conflict-진단-및-수정.md",
+      "date": "2026-04-24",
+      "seq": "06",
+      "title": "WhaleScope Telegram Bot Conflict 진단 및 수정",
+      "slug": "WhaleScope-Telegram-Bot-Conflict-진단-및-수정",
+      "category": "incident-report"
     }
   ]
 }

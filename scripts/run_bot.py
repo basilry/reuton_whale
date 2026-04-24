@@ -18,8 +18,8 @@ def main() -> None:
     bot = WhaleScopeBot(token=config.telegram_token, sheets_client=sheets)
     app = bot.build()
 
-    logger.info("Starting WhaleScope bot polling...")
-    app.run_polling(stop_signals=None)
+    logger.info("Starting WhaleScope bot polling with drop_pending_updates=true...")
+    app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":

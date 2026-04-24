@@ -7,7 +7,7 @@ from collections.abc import Callable
 
 from telegram import Update
 from telegram.constants import ParseMode
-from telegram.error import BadRequest, Forbidden, NetworkError, RetryAfter, TimedOut
+from telegram.error import BadRequest, Conflict, Forbidden, NetworkError, RetryAfter, TimedOut
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -64,7 +64,29 @@ class WhaleScopeBot:
         self._app.add_handler(CommandHandler("language", self.handle_language))
         self._app.add_handler(CommandHandler("help", self.handle_help))
         self._app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
+        self._app.add_error_handler(self.handle_error)
         return self._app
+
+    async def handle_error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        error = getattr(context, "error", None)
+        if isinstance(error, Conflict):
+            logger.error(
+                "Telegram getUpdates conflict detected. Only one polling bot "
+                "instance may run per TELEGRAM_BOT_TOKEN. Stop duplicate Render "
+                "bot services or stale deploy instances, then restart this worker."
+            )
+            return
+
+        if isinstance(error, BaseException):
+            logger.error(
+                "Telegram bot handler error update=%s: %s",
+                update,
+                error,
+                exc_info=(type(error), error, error.__traceback__),
+            )
+            return
+
+        logger.error("Telegram bot handler error update=%s: %s", update, error)
 
     async def send_daily_brief(
         self,
