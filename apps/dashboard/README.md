@@ -1,6 +1,6 @@
 # WhaleScope Dashboard
 
-Next.js App Router dashboards for the WhaleScope Google Sheets backend. This package covers two routes:
+Next.js App Router dashboards for the WhaleScope PostgreSQL-backed dashboard. This package covers two routes:
 
 - `/` for the user-facing insight home
 - `/admin` for the operations/admin dashboard
@@ -14,7 +14,7 @@ UI chrome defaults to light theme when a visitor has no saved preference. The da
 
 ## What It Shows
 
-The dashboards are read-only. They do not collect blockchain data by themselves. They read the sheets populated by the Python workers and render:
+The dashboards are read-only. They do not collect blockchain data by themselves. In production they read PostgreSQL rows populated by the Python workers. Google Sheets remains a legacy/mirror fallback path.
 
 - overview metrics from `transactions`, `signals`, `daily_brief`, `subscribers`, and `system_log`
 - latest Korean daily brief
@@ -29,8 +29,9 @@ The dashboards are read-only. They do not collect blockchain data by themselves.
 | Part | Runtime | Responsibility |
 |---|---|---|
 | Dashboard UI | Vercel / Next.js | Render `/` user-facing view and `/admin` operations view |
-| Data source | Google Sheets | MVP persistent store |
-| Pipeline | Render Cron Job | Run `python -m src.pipeline.run_all` and write Sheets |
+| Data source | PostgreSQL | Primary operational store for dashboard reads |
+| Legacy mirror | Google Sheets | Optional low-volume/manual verification path |
+| Pipeline | Render Cron Job | Run `python -m src.pipeline.run_all` and write PostgreSQL |
 | Telegram bot | Render Worker | Handle user commands |
 | Telegram listener | Render Worker | Listen to public whale alert channels |
 
@@ -40,7 +41,7 @@ Do not merge the Python workers into this Vercel app. Vercel should only serve t
 
 `/` is the user-facing view. It is meant for human-readable briefings, market mood, signal summaries, watchlist context, and Telegram onboarding. It should avoid raw worker logs and JSON-like operational details.
 
-`/admin` is the operator-facing view. It is meant for checking pipeline health, Sheets-backed snapshots, and the latest operational state. The Telegram listener card is based on `system_log` rows where `run_type=telethon_listener`, and falls back to the latest `tg_whale_events` timestamp only when no listener heartbeat exists. It can show waiting, auth-required, attention-needed, or healthy states independently from Google Sheets connectivity.
+`/admin` is the operator-facing view. It is meant for checking pipeline health, PostgreSQL-backed snapshots, and the latest operational state. The Telegram listener card is based on `system_log` rows where `run_type=telethon_listener`, and falls back to the latest `tg_whale_events` timestamp only when no listener heartbeat exists. It can show waiting, auth-required, attention-needed, or healthy states independently from generic storage connectivity.
 
 `/insights` is retained only for compatibility and redirects to `/`.
 
@@ -48,10 +49,10 @@ Do not merge the Python workers into this Vercel app. Vercel should only serve t
 
 - Node.js 20+
 - npm
-- Google Spreadsheet initialized by `python -m scripts.init_sheets`
-- Google service account shared to the Spreadsheet
-- `GOOGLE_SHEET_ID`
-- `GOOGLE_CREDENTIALS_JSON`
+- PostgreSQL initialized by `python -m scripts.init_postgres`
+- `DATABASE_URL`
+- `DASHBOARD_DATA_BACKEND=postgres`
+- Google Spreadsheet credentials only when running legacy Sheets fallback/mirror paths
 
 ## Environment
 
@@ -61,7 +62,7 @@ Layout:
 
 | File | Purpose | Commit? |
 |---|---|---|
-| `/02015_reuton_whale/.env` | Server secrets (`GOOGLE_*`, `TELEGRAM_*`, API keys) | Never |
+| `/02015_reuton_whale/.env` | Server secrets (`DATABASE_URL`, `GOOGLE_*`, `TELEGRAM_*`, API keys) | Never |
 | `apps/dashboard/.env` | Public `NEXT_PUBLIC_*` defaults | Yes |
 | `apps/dashboard/.env.local` | Per-developer overrides (usually empty) | Never |
 
@@ -77,15 +78,18 @@ Bootstrap a new checkout:
 ```bash
 # From the repository root, fill in secrets:
 cp .env.example .env
-# Edit .env with your GOOGLE_SHEET_ID, GOOGLE_CREDENTIALS_JSON, TELEGRAM_*.
+# Edit .env with your DATABASE_URL, DASHBOARD_DATA_BACKEND, GOOGLE_* fallback, TELEGRAM_*.
 ```
 
 Current required values:
 
 | Variable | Required | Scope | Description |
 |---|---:|---|---|
-| `GOOGLE_SHEET_ID` | Yes | server-only | Spreadsheet ID, not the full URL |
-| `GOOGLE_CREDENTIALS_JSON` | Yes | server-only | Full service account JSON as a single-line string |
+| `DATABASE_URL` | Yes in production | server-only | PostgreSQL connection URL. Required when `DASHBOARD_DATA_BACKEND=postgres`. |
+| `DASHBOARD_DATA_BACKEND` | Yes in production | server-only | Set to `postgres` for the current production deployment. Defaults to `sheets` for legacy compatibility. |
+| `POSTGRES_SSLMODE` | No | server-only | Use `disable` only for local non-SSL Postgres. Render/Vercel production should omit it or use SSL. |
+| `GOOGLE_SHEET_ID` | Legacy/fallback | server-only | Spreadsheet ID, not the full URL |
+| `GOOGLE_CREDENTIALS_JSON` | Legacy/fallback | server-only | Full service account JSON as a single-line string |
 | `NEXT_PUBLIC_APP_NAME` | No | public | Display-only app name |
 | `NEXT_PUBLIC_TELEGRAM_CHANNEL_USERNAME` | No* | public | Public Telegram channel handle without the leading `@`. Current WhaleScope public channel: `whalescope_alertz` (<https://t.me/whalescope_alertz>). Used by the user home CTA and the internal `/api/qr` endpoint to build the public channel link and QR image. `NEXT_PUBLIC_TELEGRAM_BROADCAST_CHANNEL` remains a one-release fallback only. *No* = not required for the app to boot, but the Telegram CTA will switch into an unavailable state (no outbound link, no QR) when unset. |
 | `NEXT_PUBLIC_TELEGRAM_BROADCAST_CHANNEL` | No | public | Legacy fallback for older deployments. Prefer `NEXT_PUBLIC_TELEGRAM_CHANNEL_USERNAME`. |
@@ -155,7 +159,7 @@ curl -sS "http://127.0.0.1:3000/api/system-log?limit=2"
 | `/api/language` | Public cookie read/write endpoint for dashboard chrome language (`ko`, `en`) |
 | `/api/admin/session` | Browser session login/logout for `/admin` |
 
-All routes use the Node.js runtime and read Google Sheets on the server side.
+All routes use the Node.js runtime and read the selected server-side backend. Production uses PostgreSQL; legacy/local fallback can still use Google Sheets.
 
 The curated wallet registry prefers Sheets-backed rows from `curated_wallets`. If that tab is empty or unavailable, the dashboard falls back to the legacy `watched_addresses` tab. If both tabs are unavailable, the dashboard uses the in-repo seed unless `WHALESCOPE_CURATED_DISABLE_SEED=1` is set, in which case the user-home watchlist becomes intentionally empty. Watchlist toggles are written as append-only override rows so the latest value wins without needing an in-place sheet update.
 
@@ -176,6 +180,8 @@ Register these environment variables in Vercel Project Settings:
 
 - `GOOGLE_SHEET_ID`
 - `GOOGLE_CREDENTIALS_JSON`
+- `DATABASE_URL`
+- `DASHBOARD_DATA_BACKEND=postgres`
 - `NEXT_PUBLIC_APP_NAME`
 - `NEXT_PUBLIC_TELEGRAM_CHANNEL_USERNAME` (set to `whalescope_alertz` to activate the Telegram CTA)
 - `NEXT_PUBLIC_TELEGRAM_BROADCAST_CHANNEL` only if you still need the legacy fallback during migration
@@ -183,13 +189,13 @@ Register these environment variables in Vercel Project Settings:
 
 The `/admin` page uses the same `DASHBOARD_PASSWORD` value to mint a short-lived httpOnly cookie session. That keeps the operator browser authenticated across page loads and protected API calls without weakening the existing header-based API path.
 
-Keep `GOOGLE_CREDENTIALS_JSON` as a server-only environment variable. The service account only needs read access for the dashboard, but the same account may have editor access because the Python pipeline writes to the same sheet.
+Keep `DATABASE_URL` and `GOOGLE_CREDENTIALS_JSON` as server-only environment variables. `pg` is a runtime dependency of the server bundle and must remain in `apps/dashboard/package.json` dependencies.
 
 ## Troubleshooting
 
 ### Dashboard shows fallback data
 
-Check that `GOOGLE_SHEET_ID` and `GOOGLE_CREDENTIALS_JSON` exist in `.env.local` or Vercel env. Also verify the service account email has access to the Spreadsheet.
+For production, check that `DASHBOARD_DATA_BACKEND=postgres` and `DATABASE_URL` exist in Vercel env. If intentionally using legacy Sheets mode, check that `GOOGLE_SHEET_ID` and `GOOGLE_CREDENTIALS_JSON` exist in `.env.local` or Vercel env and that the service account email has access to the Spreadsheet.
 
 For local development, these values may also live in the repository root `.env`. If you changed env values while `next dev` is running, restart the dev server.
 
@@ -203,7 +209,15 @@ This means the dashboard is deployed in production without `DASHBOARD_PASSWORD`.
 
 ### Dashboard is empty
 
-The dashboard only reads Sheets. Run the backend first:
+The dashboard only reads the configured backend. For current production, initialize Postgres and run the pipeline first:
+
+```bash
+python -m scripts.init_postgres
+python -m scripts.migrate_sheets_to_postgres --days 7 --truncate-before
+python -m src.pipeline.run_all
+```
+
+For legacy Sheets mode:
 
 ```bash
 python -m scripts.init_sheets
@@ -220,3 +234,5 @@ This is expected when neither `NEXT_PUBLIC_TELEGRAM_CHANNEL_USERNAME` nor the le
 ### Vercel build succeeds but runtime API fails
 
 Most runtime failures are env or permission issues. Check Vercel Runtime Logs for `/api/dashboard` and confirm the env values are set in the same Vercel environment that served the deployment.
+
+If logs mention `Cannot find package 'pg'`, confirm the deployed commit includes the static `pg` import in `apps/dashboard/lib/postgres.ts` and that `pg` exists in `apps/dashboard/package.json` dependencies. Vercel file tracing must include `node_modules/pg/**` for the Postgres backend.

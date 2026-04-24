@@ -1737,14 +1737,23 @@ function buildSourceHealth(args: {
     args.rowCounts.signals +
     args.rowCounts.system_log;
   const newsRss = summarizeNewsRss(args.latestNewsRssRow ?? null);
+  const sourceLabel = args.source === "postgres" ? "Live Postgres" : "Live Sheets";
+  const sourceDescription =
+    args.source === "postgres"
+      ? "PostgreSQL 운영 데이터를 정상적으로 읽고 있습니다."
+      : "Google Sheets 운영 데이터를 정상적으로 읽고 있습니다.";
+  const emptyDescription =
+    args.source === "postgres"
+      ? "PostgreSQL 연결은 되었지만 운영 테이블이 아직 비어 있습니다."
+      : "Google Sheets 연결은 되었지만 운영 탭이 아직 비어 있습니다.";
 
   if (totalRows === 0) {
     return {
       connected: true,
       mode: "live",
-      label: "Live Sheets",
+      label: sourceLabel,
       description: [
-        "Google Sheets 연결은 되었지만 운영 탭이 아직 비어 있습니다.",
+        emptyDescription,
         newsRss.summary,
       ]
         .filter(Boolean)
@@ -1777,9 +1786,9 @@ function buildSourceHealth(args: {
   return {
     connected: true,
     mode: "live",
-    label: "Live Sheets",
+    label: sourceLabel,
     description: [
-      "Google Sheets 운영 데이터를 정상적으로 읽고 있습니다.",
+      sourceDescription,
       newsRss.summary,
     ]
       .filter(Boolean)

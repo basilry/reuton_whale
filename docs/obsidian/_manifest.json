@@ -1,6 +1,6 @@
 {
   "generated_at": "2026-04-24",
-  "count": 83,
+  "count": 84,
   "entries": [
     {
       "file": "Top 10 Liquid Coins - Whale Wallets (2026.4 Updated).md",
@@ -667,6 +667,14 @@
       "title": "WhaleScope PostgreSQL 전환 개선계획 — Render Cron 유지 전제",
       "slug": "WhaleScope-PostgreSQL전환-개선계획-RenderCron유지",
       "category": "execution-plan"
+    },
+    {
+      "file": "2026-04-24-05-WhaleScope-Vercel-PostgreSQL-SSE-배포반영-확인보고서.md",
+      "date": "2026-04-24",
+      "seq": "05",
+      "title": "WhaleScope Vercel PostgreSQL/SSE 배포 반영 확인 보고서",
+      "slug": "WhaleScope-Vercel-PostgreSQL-SSE-배포반영-확인보고서",
+      "category": "verification-report"
     }
   ]
 }
