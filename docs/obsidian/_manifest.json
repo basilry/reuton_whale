@@ -1,6 +1,6 @@
 {
   "generated_at": "2026-04-24",
-  "count": 85,
+  "count": 86,
   "entries": [
     {
       "file": "Top 10 Liquid Coins - Whale Wallets (2026.4 Updated).md",
@@ -683,6 +683,14 @@
       "title": "WhaleScope Telegram Bot Conflict 진단 및 수정",
       "slug": "WhaleScope-Telegram-Bot-Conflict-진단-및-수정",
       "category": "incident-report"
+    },
+    {
+      "file": "2026-04-24-07-WhaleScope-Telegram-메시지-미수신-원인분석-보고서.md",
+      "date": "2026-04-24",
+      "seq": "07",
+      "title": "WhaleScope Telegram 메시지 미수신 원인분석 보고서",
+      "slug": "WhaleScope-Telegram-메시지-미수신-원인분석-보고서",
+      "category": "incident-analysis"
     }
   ]
 }
