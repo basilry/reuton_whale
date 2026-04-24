@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-23",
-  "count": 79,
+  "generated_at": "2026-04-24",
+  "count": 82,
   "entries": [
     {
       "file": "Top 10 Liquid Coins - Whale Wallets (2026.4 Updated).md",
@@ -635,6 +635,30 @@
       "title": "WhaleScope `/about` 과제소개페이지 구현·설계문서 통합 · 작업 기록",
       "slug": "WhaleScope-과제소개페이지-설계문서통합-작업기록",
       "category": "implementation-report"
+    },
+    {
+      "file": "2026-04-24-01-WhaleScope-Sheets-10M셀한도-진단리포트.md",
+      "date": "2026-04-24",
+      "seq": "01",
+      "title": "WhaleScope 운영 장애 — Google Sheets 10M 셀 워크북 한도 초과 진단 리포트",
+      "slug": "WhaleScope-Sheets-10M셀한도-진단리포트",
+      "category": "diagnostic-report"
+    },
+    {
+      "file": "2026-04-24-02-WhaleScope-Sheets-10M한도-Option-A-실행계획.md",
+      "date": "2026-04-24",
+      "seq": "02",
+      "title": "WhaleScope 운영 장애 복구 — Option A 실행 계획",
+      "slug": "WhaleScope-Sheets-10M한도-Option-A-실행계획",
+      "category": "execution-plan"
+    },
+    {
+      "file": "2026-04-24-03-WhaleScope-Sheets-10M복구-검증리포트.md",
+      "date": "2026-04-24",
+      "seq": "03",
+      "title": "WhaleScope Sheets 10M 복구 검증 리포트",
+      "slug": "WhaleScope-Sheets-10M복구-검증리포트",
+      "category": "verification-report"
     }
   ]
 }
