@@ -18,6 +18,7 @@ const STREAM_HEADERS = {
   Connection: "keep-alive",
   "X-Accel-Buffering": "no",
 } as const;
+const STREAM_MAX_LIFETIME_MS = 50_000;
 
 function encodeSseFrame(params: {
   event?: string;
@@ -146,6 +147,7 @@ export async function GET(request: Request): Promise<Response> {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       let closed = false;
+      let lifetimeTimer: ReturnType<typeof setTimeout> | null = null;
       const streamAbort = new AbortController();
       const sentVersions = new Map<string, string>();
 
@@ -155,6 +157,10 @@ export async function GET(request: Request): Promise<Response> {
         }
 
         closed = true;
+        if (lifetimeTimer) {
+          clearTimeout(lifetimeTimer);
+          lifetimeTimer = null;
+        }
         streamAbort.abort();
         try {
           controller.close();
@@ -247,6 +253,15 @@ export async function GET(request: Request): Promise<Response> {
       pushFrame(encodeSseFrame({ comment: "connected", retry: LIVE_UPDATE_POLL_INTERVAL_MS }));
       pushEvent("status", status);
       pushEvent("heartbeat", heartbeatPayload());
+      lifetimeTimer = setTimeout(() => {
+        pushFrame(
+          encodeSseFrame({
+            comment: "closing-before-platform-timeout",
+            retry: LIVE_UPDATE_POLL_INTERVAL_MS,
+          }),
+        );
+        shutdown();
+      }, STREAM_MAX_LIFETIME_MS);
 
       void pollLoop();
       void heartbeatLoop();

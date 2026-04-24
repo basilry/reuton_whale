@@ -1,5 +1,6 @@
 import { getDashboardPostgresEnv } from "./env";
 import { parseDateTimeSafe } from "./format";
+import { Pool } from "pg";
 import {
   DASHBOARD_TABS,
   SERVICE_HEALTH_V2_HEADERS,
@@ -16,7 +17,6 @@ type PoolLike = {
   query<Row extends Record<string, unknown>>(sql: string, params?: unknown[]): Promise<QueryResult<Row>>;
   end(): Promise<void>;
 };
-type PgModule = { Pool: new (config: Record<string, unknown>) => PoolLike };
 
 const TABLES = new Set<string>([
   ...Object.keys(TAB_HEADERS),
@@ -109,34 +109,19 @@ const OPTIONAL_HEADERS: Record<string, readonly string[]> = {
 
 let pool: PoolLike | null = null;
 
-async function loadPg(): Promise<PgModule> {
-  // Keep the import opaque to Next's bundler so local builds can still pass
-  // before node_modules is refreshed. Production must install `pg`.
-  const importer = new Function("specifier", "return import(specifier)") as (
-    specifier: string,
-  ) => Promise<PgModule>;
-  try {
-    return await importer("pg");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Postgres dashboard backend requires the pg package: ${message}`);
-  }
-}
-
 async function getPool(): Promise<PoolLike> {
   if (pool) {
     return pool;
   }
   const { databaseUrl } = getDashboardPostgresEnv();
-  const pg = await loadPg();
-  pool = new pg.Pool({
+  pool = new Pool({
     connectionString: databaseUrl,
     ssl:
       process.env.POSTGRES_SSLMODE?.trim().toLowerCase() === "disable"
         ? false
         : { rejectUnauthorized: false },
     max: 3,
-  });
+  }) as PoolLike;
   return pool;
 }
 
