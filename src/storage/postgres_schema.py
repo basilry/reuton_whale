@@ -19,6 +19,7 @@ TABLE_NAMES = (
     "channel_health",
     "news_feed",
     "curated_wallets",
+    "wallet_detail_profiles",
     "curated_wallet_balances",
     "whale_stories",
     "analysis_log",
@@ -266,6 +267,23 @@ CREATE_TABLE_STATEMENTS = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS wallet_detail_profiles (
+      wallet_id text PRIMARY KEY,
+      entity_id text,
+      address text,
+      chain text,
+      title text,
+      thesis text,
+      behavior_summary text,
+      watch_reason text,
+      risk_note text,
+      data_status text,
+      tags jsonb,
+      source text,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS curated_wallet_balances (
       wallet_id text PRIMARY KEY,
       chain text,
@@ -420,6 +438,9 @@ CREATE_INDEX_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS idx_channel_health_ts ON channel_health (ts DESC)",
     "CREATE INDEX IF NOT EXISTS idx_news_feed_last_seen_at ON news_feed (last_seen_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_curated_wallets_active_priority ON curated_wallets (is_active, display_priority)",
+    "CREATE INDEX IF NOT EXISTS idx_wallet_detail_profiles_entity_id ON wallet_detail_profiles (entity_id)",
+    "CREATE INDEX IF NOT EXISTS idx_wallet_detail_profiles_address ON wallet_detail_profiles (address)",
+    "CREATE INDEX IF NOT EXISTS idx_wallet_detail_profiles_updated_at ON wallet_detail_profiles (updated_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_whale_stories_published_at ON whale_stories (published_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_user_interests_chat_id ON user_interests (chat_id)",
     "CREATE INDEX IF NOT EXISTS idx_subscribers_status ON subscribers (status)",

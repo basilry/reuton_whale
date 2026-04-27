@@ -54,6 +54,18 @@ type WalletDetailBalance = {
   updatedAt?: string;
 };
 
+type WalletDetailAnalysis = {
+  title: string;
+  thesis?: string;
+  behaviorSummary?: string;
+  watchReason?: string;
+  riskNote?: string;
+  dataStatus?: string;
+  tags: string[];
+  source?: string;
+  updatedAt?: string;
+};
+
 export type CuratedWalletDetailPayload = {
   wallet: {
     id: string;
@@ -74,6 +86,7 @@ export type CuratedWalletDetailPayload = {
     approxBalance?: string;
     updatedAt?: string;
   };
+  analysis?: WalletDetailAnalysis;
   entity: {
     id?: string;
     matchedOn: string;
@@ -340,6 +353,16 @@ export function CuratedWalletDetailModal({
             modalClose: "지갑 상세 닫기",
             overviewTitle: "핵심 요약",
             overviewLead: "대표 주소와 최근 관측 흐름을 한 번에 봅니다.",
+            analysisTitle: "지갑 분석",
+            analysisLead: "이 지갑을 왜 봐야 하는지와 현재 데이터 상태를 사람이 읽는 문장으로 정리합니다.",
+            analysisThesis: "핵심 관찰",
+            analysisBehavior: "행동 패턴",
+            analysisWatchReason: "관찰 이유",
+            analysisRiskNote: "해석 주의점",
+            analysisDataStatus: "데이터 상태",
+            analysisSource: "프로필 출처",
+            analysisUpdatedAt: "프로필 업데이트",
+            noAnalysis: "분석 프로필이 아직 기록되지 않았습니다. wallet_detail_profiles 테이블 시드가 필요합니다.",
             entityWalletsTitle: "같은 엔티티로 묶인 주소",
             entityWalletsLead: "대표 주소가 아닌 보조 주소도 함께 확인합니다.",
             balancesTitle: "잔고 스냅샷",
@@ -387,6 +410,16 @@ export function CuratedWalletDetailModal({
             modalClose: "Close wallet detail",
             overviewTitle: "Overview",
             overviewLead: "Representative address and recent context in one place.",
+            analysisTitle: "Wallet analysis",
+            analysisLead: "Explains why this wallet matters and what data is currently available in human terms.",
+            analysisThesis: "Core read",
+            analysisBehavior: "Behavior pattern",
+            analysisWatchReason: "Why watch it",
+            analysisRiskNote: "Interpretation guardrail",
+            analysisDataStatus: "Data status",
+            analysisSource: "Profile source",
+            analysisUpdatedAt: "Profile updated",
+            noAnalysis: "No analysis profile has been recorded yet. Seed the wallet_detail_profiles table.",
             entityWalletsTitle: "Addresses under the same entity",
             entityWalletsLead: "Secondary addresses are listed together with the representative one.",
             balancesTitle: "Balance snapshots",
@@ -666,6 +699,83 @@ export function CuratedWalletDetailModal({
 
           {data ? (
             <>
+              <section className={styles.section}>
+                <div className={styles.sectionHeader}>
+                  <div>
+                    <h4 className={styles.sectionTitle}>
+                      {data.analysis?.title || copy.analysisTitle}
+                    </h4>
+                    <p className={styles.sectionLead}>{copy.analysisLead}</p>
+                  </div>
+                </div>
+
+                {data.analysis ? (
+                  <div className={styles.analysisGrid}>
+                    {data.analysis.thesis ? (
+                      <article className={styles.analysisCard}>
+                        <span className={styles.metricLabel}>{copy.analysisThesis}</span>
+                        <p className={styles.analysisText}>{data.analysis.thesis}</p>
+                      </article>
+                    ) : null}
+                    {data.analysis.behaviorSummary ? (
+                      <article className={styles.analysisCard}>
+                        <span className={styles.metricLabel}>{copy.analysisBehavior}</span>
+                        <p className={styles.analysisText}>{data.analysis.behaviorSummary}</p>
+                      </article>
+                    ) : null}
+                    {data.analysis.watchReason ? (
+                      <article className={styles.analysisCard}>
+                        <span className={styles.metricLabel}>{copy.analysisWatchReason}</span>
+                        <p className={styles.analysisText}>{data.analysis.watchReason}</p>
+                      </article>
+                    ) : null}
+                    {data.analysis.riskNote ? (
+                      <article className={styles.analysisCard}>
+                        <span className={styles.metricLabel}>{copy.analysisRiskNote}</span>
+                        <p className={styles.analysisText}>{data.analysis.riskNote}</p>
+                      </article>
+                    ) : null}
+                    {data.analysis.dataStatus ? (
+                      <article className={styles.analysisCard}>
+                        <span className={styles.metricLabel}>{copy.analysisDataStatus}</span>
+                        <p className={styles.analysisText}>{data.analysis.dataStatus}</p>
+                      </article>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className={styles.emptyState}>
+                    <p className={styles.stateBody}>{copy.noAnalysis}</p>
+                  </div>
+                )}
+
+                {data.analysis ? (
+                  <div className={styles.analysisFooter}>
+                    {data.analysis.tags.length > 0 ? (
+                      <div className={styles.tagList}>
+                        {data.analysis.tags.map((tag) => (
+                          <span key={`analysis-${tag}`} className={styles.tag}>
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div className={styles.analysisMeta}>
+                      {data.analysis.source ? (
+                        <span>
+                          {copy.analysisSource}: {data.analysis.source}
+                        </span>
+                      ) : null}
+                      {data.analysis.updatedAt ? (
+                        <span>
+                          {copy.analysisUpdatedAt}:{" "}
+                          {formatKstDateTime(data.analysis.updatedAt, copy.unresolved)}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+
               <section className={styles.heroCard}>
                 <div className={styles.section}>
                   <div className={styles.sectionHeader}>

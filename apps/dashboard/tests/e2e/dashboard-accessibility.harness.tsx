@@ -176,6 +176,17 @@ export function buildWalletDetailPayload(
       approxBalance: "$12.4M",
       updatedAt: "2026-04-19T00:00:00.000Z",
     },
+    analysis: {
+      title: "Alpha Treasury wallet analysis",
+      thesis: "A representative exchange-linked wallet used to read large BTC treasury movement.",
+      behaviorSummary: "Historically behaves as a custody or treasury staging address rather than a retail wallet.",
+      watchReason: "Watch for sudden outflows, repeated exchange deposits, and movements that coincide with market news.",
+      riskNote: "Labels and balances are registry-backed context and must not be treated as investment advice.",
+      dataStatus: "Seeded profile is available even when no recent linked transfer exists.",
+      tags: ["exchange", "treasury", "seed-profile"],
+      source: "e2e-fixture",
+      updatedAt: "2026-04-19T00:00:00.000Z",
+    },
     entity: {
       id: "alpha-treasury-entity",
       matchedOn: "entity_id",

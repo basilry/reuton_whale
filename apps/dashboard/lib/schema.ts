@@ -5,6 +5,7 @@ export const TAB_SYSTEM_LOG = "system_log" as const;
 export const TAB_SUBSCRIBERS = "subscribers" as const;
 export const TAB_TG_WHALE_EVENTS = "tg_whale_events" as const;
 export const TAB_CURATED_WALLETS = "curated_wallets" as const;
+export const TAB_WALLET_DETAIL_PROFILES = "wallet_detail_profiles" as const;
 export const TAB_WATCHED_ADDRESSES = "watched_addresses" as const;
 export const TAB_WALLET_ALIASES = "wallet_aliases" as const;
 export const TAB_WATCHLIST_OVERRIDES = "watchlist_overrides" as const;
@@ -116,6 +117,22 @@ export const CURATED_WALLETS_HEADERS = [
   "display_priority",
   "is_active",
   "created_at",
+  "updated_at",
+] as const;
+
+export const WALLET_DETAIL_PROFILES_HEADERS = [
+  "wallet_id",
+  "entity_id",
+  "address",
+  "chain",
+  "title",
+  "thesis",
+  "behavior_summary",
+  "watch_reason",
+  "risk_note",
+  "data_status",
+  "tags",
+  "source",
   "updated_at",
 ] as const;
 
@@ -294,6 +311,22 @@ export interface CuratedWalletRow {
   updated_at: string;
 }
 
+export interface WalletDetailProfileRow {
+  wallet_id: string;
+  entity_id: string;
+  address: string;
+  chain: string;
+  title: string;
+  thesis: string;
+  behavior_summary: string;
+  watch_reason: string;
+  risk_note: string;
+  data_status: string;
+  tags: string;
+  source: string;
+  updated_at: string;
+}
+
 export interface WatchedAddressRow {
   address: string;
   chain: string;
@@ -388,6 +421,7 @@ export interface SheetRowMap {
   subscribers: SubscriberRow;
   tg_whale_events: TgWhaleEventRow;
   curated_wallets: CuratedWalletRow;
+  wallet_detail_profiles: WalletDetailProfileRow;
   watched_addresses: WatchedAddressRow;
   wallet_aliases: WalletAliasRow;
   watchlist_overrides: WatchlistOverrideRow;
@@ -405,6 +439,7 @@ export const TAB_HEADERS = {
   subscribers: SUBSCRIBERS_HEADERS,
   tg_whale_events: TG_WHALE_EVENTS_HEADERS,
   curated_wallets: CURATED_WALLETS_HEADERS,
+  wallet_detail_profiles: WALLET_DETAIL_PROFILES_HEADERS,
   watched_addresses: WATCHED_ADDRESSES_HEADERS,
   wallet_aliases: WALLET_ALIASES_HEADERS,
   watchlist_overrides: WATCHLIST_OVERRIDES_HEADERS,

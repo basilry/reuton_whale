@@ -59,6 +59,7 @@ const TAB_TTLS: Record<SheetTabName, number> = {
   news_feed:                WARM_TTL_MS,
   curated_wallet_balances:  WARM_TTL_MS,
   curated_wallets:          COLD_TTL_MS,
+  wallet_detail_profiles:   COLD_TTL_MS,
   watched_addresses:        COLD_TTL_MS,
   wallet_aliases:           COLD_TTL_MS,
   watchlist_overrides:      COLD_TTL_MS,

@@ -35,6 +35,7 @@ const TIME_COLUMNS: Record<string, readonly string[]> = {
   subscribers: ["updated_at", "created_at"],
   tg_whale_events: ["collected_at", "tg_date"],
   curated_wallets: ["updated_at", "created_at"],
+  wallet_detail_profiles: ["updated_at"],
   watched_addresses: ["added_at"],
   wallet_aliases: [],
   watchlist_overrides: ["updated_at"],

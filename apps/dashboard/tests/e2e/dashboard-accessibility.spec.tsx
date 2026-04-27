@@ -100,6 +100,8 @@ test("curated wallet modal passes axe and preserves focus semantics", async ({
 
   await expect(dialog).toBeVisible();
   await expect(closeButton).toBeFocused();
+  await expect(dialog.getByText(/alpha treasury wallet analysis/i)).toBeVisible();
+  await expect(dialog.getByText(/seeded profile is available/i)).toBeVisible();
 
   const results = await new AxeBuilder({ page }).include('[role="dialog"]').analyze();
   expect(results.violations).toEqual([]);

@@ -17,6 +17,7 @@ import type {
   SheetRowMap,
   SignalRow,
   TransactionRow,
+  WalletDetailProfileRow,
 } from "@/lib/schema";
 import { readSheetRows } from "@/lib/sheets";
 import type { CuratedWalletEntry } from "@/lib/types";
@@ -73,6 +74,48 @@ function normalizeEvidenceHashes(value: string): string[] {
     .split(/[,|\s]+/)
     .map((item) => compactString(item).toLowerCase())
     .filter(Boolean);
+}
+
+function normalizeProfileTags(value: string): string[] {
+  const parsed = parseJsonSafe<unknown>(value);
+  if (Array.isArray(parsed)) {
+    return parsed.map((item) => compactString(String(item))).filter(Boolean);
+  }
+  return compactString(value)
+    .split(/[,|]/)
+    .map((item) => compactString(item))
+    .filter(Boolean);
+}
+
+function matchesWalletProfile(
+  row: WalletDetailProfileRow,
+  walletIds: Set<string>,
+  walletAddresses: Set<string>,
+  entityId: string | undefined,
+): boolean {
+  return (
+    walletIds.has(normalizeKey(row.wallet_id)) ||
+    walletAddresses.has(normalizeKey(row.address)) ||
+    (entityId ? normalizeKey(row.entity_id) === normalizeKey(entityId) : false)
+  );
+}
+
+function normalizeWalletAnalysis(row: WalletDetailProfileRow | null) {
+  if (!row) {
+    return undefined;
+  }
+
+  return {
+    title: compactString(row.title) || "지갑 분석",
+    thesis: compactString(row.thesis),
+    behaviorSummary: compactString(row.behavior_summary),
+    watchReason: compactString(row.watch_reason),
+    riskNote: compactString(row.risk_note),
+    dataStatus: compactString(row.data_status),
+    tags: normalizeProfileTags(row.tags),
+    source: compactString(row.source),
+    updatedAt: compactString(row.updated_at),
+  };
 }
 
 function resolveWalletMatch(
@@ -266,8 +309,9 @@ export async function GET(
       orderedEntityWallets.map((wallet) => normalizeKey(wallet.address)).filter(Boolean),
     );
 
-    const [curatedRows, transactionRows, signalRows, balanceRows] = await Promise.all([
+    const [curatedRows, profileRows, transactionRows, signalRows, balanceRows] = await Promise.all([
       readOptionalRows("curated_wallets"),
+      readOptionalRows("wallet_detail_profiles"),
       readOptionalRows("transactions"),
       readOptionalRows("signals"),
       readOptionalRows("curated_wallet_balances"),
@@ -276,6 +320,10 @@ export async function GET(
     const matchingCuratedRows = curatedRows.filter((row) =>
       matchesEntityWallet(row, walletIds, walletAddresses, representative.entityId),
     );
+    const matchingProfileRow =
+      profileRows.find((row) =>
+        matchesWalletProfile(row, walletIds, walletAddresses, representative.entityId),
+      ) ?? null;
     const matchingTransactions = newestFirst(transactionRows, (row) => {
       return parseDateTimeSafe(row.created_at) ?? parseDateTimeSafe(row.timestamp);
     }).filter((row) => {
@@ -363,6 +411,7 @@ export async function GET(
           compactString(latestBalanceRow?.updated_at ?? representativeCuratedRow?.updated_at ?? "") ||
           undefined,
       },
+      analysis: normalizeWalletAnalysis(matchingProfileRow),
       entity: {
         id: representative.entityId,
         matchedOn: resolved.matchedOn,

@@ -100,6 +100,7 @@ TAB_SIGNALS = "signals"
 TAB_WEEKLY_TREND = "weekly_trend"
 TAB_USER_INTERESTS = "user_interests"
 TAB_CURATED_WALLETS = "curated_wallets"
+TAB_WALLET_DETAIL_PROFILES = "wallet_detail_profiles"
 TAB_WALLET_ALIASES = "wallet_aliases"
 TAB_WATCHLIST_OVERRIDES = "watchlist_overrides"
 TAB_NEWS_FEED = "news_feed"
@@ -153,6 +154,22 @@ CURATED_WALLETS_HEADERS = [
     "source_url", "note", "entity_id", "is_representative",
     "narrative_tags", "display_priority", "is_active",
     "created_at", "updated_at",
+]
+
+WALLET_DETAIL_PROFILES_HEADERS = [
+    "wallet_id",
+    "entity_id",
+    "address",
+    "chain",
+    "title",
+    "thesis",
+    "behavior_summary",
+    "watch_reason",
+    "risk_note",
+    "data_status",
+    "tags",
+    "source",
+    "updated_at",
 ]
 
 WALLET_ALIASES_HEADERS = [
@@ -292,6 +309,7 @@ ALL_TABS.extend([
     TAB_WEEKLY_TREND,
     TAB_USER_INTERESTS,
     TAB_CURATED_WALLETS,
+    TAB_WALLET_DETAIL_PROFILES,
     TAB_WALLET_ALIASES,
     TAB_WATCHLIST_OVERRIDES,
     TAB_NEWS_FEED,
@@ -314,6 +332,7 @@ TAB_HEADERS.update({
     TAB_WEEKLY_TREND: WEEKLY_TREND_HEADERS,
     TAB_USER_INTERESTS: USER_INTERESTS_HEADERS,
     TAB_CURATED_WALLETS: CURATED_WALLETS_HEADERS,
+    TAB_WALLET_DETAIL_PROFILES: WALLET_DETAIL_PROFILES_HEADERS,
     TAB_WALLET_ALIASES: WALLET_ALIASES_HEADERS,
     TAB_WATCHLIST_OVERRIDES: WATCHLIST_OVERRIDES_HEADERS,
     TAB_NEWS_FEED: NEWS_FEED_HEADERS,
