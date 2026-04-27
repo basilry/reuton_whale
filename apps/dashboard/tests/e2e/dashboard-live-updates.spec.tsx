@@ -473,9 +473,11 @@ test.describe("live updates stream", () => {
     });
 
     await expect(status).toContainText("Reconnecting");
-    await expect(status).toHaveAttribute("title", /Retrying the stream in 1s\./);
+    await expect(status).toHaveAttribute("title", /Retrying the stream in 10s\./);
     await expect
-      .poll(async () => page.evaluate(() => window.__mockEventSource?.instanceCount() ?? 0))
+      .poll(async () => page.evaluate(() => window.__mockEventSource?.instanceCount() ?? 0), {
+        timeout: 12_000,
+      })
       .toBe(2);
   });
 

@@ -51,7 +51,10 @@ const KIND_ALIASES: Record<string, LiveUpdateKind | null> = {
 };
 const MIN_REFRESH_INTERVAL_MS = 8_000;
 const REFRESH_DEBOUNCE_MS = 1_500;
-const RECONNECT_BACKOFF_MS = [1_000, 2_000, 5_000, 10_000, 30_000] as const;
+// Vercel closes the SSE route before the 60s function limit; pair the server's
+// 50s stream lifetime with a 10s first reconnect delay to keep Redis reads
+// close to one poll per minute per open tab.
+const RECONNECT_BACKOFF_MS = [10_000, 30_000, 60_000, 60_000, 60_000] as const;
 
 function parseStreamPayload(rawData: string): StreamPayload | null {
   try {
