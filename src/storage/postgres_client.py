@@ -44,11 +44,16 @@ INSERT_TRANSACTION_SQL = """
     INSERT INTO transactions (
       raw_response_hash, hash, timestamp, blockchain, symbol, amount, amount_usd,
       from_address, from_owner_type, from_owner, to_address, to_owner_type,
-      to_owner, created_at
+      to_owner, created_at, last_seen_at, seen_count
     )
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s, now()))
-    ON CONFLICT (raw_response_hash) DO NOTHING
-    RETURNING id
+    VALUES (
+      %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+      COALESCE(%s, now()), COALESCE(%s, now()), COALESCE(%s, 1)
+    )
+    ON CONFLICT (raw_response_hash) DO UPDATE SET
+      last_seen_at = GREATEST(transactions.last_seen_at, EXCLUDED.last_seen_at),
+      seen_count = COALESCE(transactions.seen_count, 1) + 1
+    RETURNING id, (xmax = 0) AS inserted
 """
 
 INSERT_ADDRESS_ACTIVITY_SQL = """
@@ -115,9 +120,14 @@ INSERT_DAILY_BRIEF_SQL = """
 INSERT_BROADCAST_LOG_SQL = """
     INSERT INTO broadcast_log (
       ts, kind, dedup_key, chat_id, message_id, status, error, message_length,
-      content_hash, signal_count, transaction_count, slot_key, delivery_mode
+      content_hash, signal_count, transaction_count, slot_key, delivery_mode,
+      decision, reason, fallback_source, candidate_signal_count,
+      candidate_transaction_count, last_channel_delivery_at, next_expected_at
     )
-    VALUES (COALESCE(%s, now()), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    VALUES (
+      COALESCE(%s, now()), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+      %s, %s, %s, %s, %s, %s, %s
+    )
 """
 
 INSERT_BRIEF_COST_LEDGER_SQL = """
@@ -333,6 +343,20 @@ def _format_rows(rows: list[dict[str, object]], headers: list[str]) -> list[dict
     ]
 
 
+def _row_was_inserted(row: object) -> bool:
+    if row is None:
+        return False
+    if isinstance(row, dict):
+        return bool(row.get("inserted", True))
+    try:
+        return bool(row["inserted"])  # type: ignore[index]
+    except Exception:
+        pass
+    if isinstance(row, (tuple, list)) and len(row) >= 2:
+        return bool(row[1])
+    return True
+
+
 def _build_system_log_entry(level: str, category: str, payload: dict | None) -> dict:
     payload = payload or {}
     schema_keys = set(SYSTEM_LOG_HEADERS)
@@ -432,9 +456,11 @@ class PostgresClient:
                                 _text(row.get("to_owner_type")),
                                 _text(row.get("to_owner")),
                                 _timestamp(row.get("created_at")),
+                                _timestamp(row.get("last_seen_at")),
+                                _int(row.get("seen_count")),
                             ),
                         )
-                        if cur.fetchone() is not None:
+                        if _row_was_inserted(cur.fetchone()):
                             inserted += 1
             return inserted
         except StorageError:
@@ -529,6 +555,22 @@ class PostgresClient:
             "transactions",
             TRANSACTIONS_HEADERS,
             time_expr="COALESCE(created_at, timestamp)",
+            since=since,
+            limit=limit,
+        )
+        return _format_rows(rows, TRANSACTIONS_HEADERS)
+
+    def list_recent_observed_transactions(
+        self,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
+        if limit == 0:
+            return []
+        rows = self._select_rows(
+            "transactions",
+            TRANSACTIONS_HEADERS,
+            time_expr="COALESCE(last_seen_at, created_at, timestamp)",
             since=since,
             limit=limit,
         )
@@ -711,6 +753,13 @@ class PostgresClient:
                             _int(entry.get("transaction_count")),
                             _text(entry.get("slot_key")),
                             _text(entry.get("delivery_mode")),
+                            _text(entry.get("decision")),
+                            _text(entry.get("reason"), max_length=1000),
+                            _text(entry.get("fallback_source")),
+                            _int(entry.get("candidate_signal_count")),
+                            _int(entry.get("candidate_transaction_count")),
+                            _timestamp(entry.get("last_channel_delivery_at")),
+                            _timestamp(entry.get("next_expected_at")),
                         ),
                     )
         except StorageError:
@@ -886,6 +935,7 @@ class PostgresClient:
             "watched_addresses",
             WATCHED_ADDRESSES_HEADERS,
             time_expr="COALESCE(added_at, now())",
+            tie_breaker="address",
         )
         formatted = _format_rows(rows, WATCHED_ADDRESSES_HEADERS)
         return {
@@ -1122,6 +1172,7 @@ class PostgresClient:
             time_expr="COALESCE(updated_at, created_at)",
             filters=filters,
             params=params,
+            tie_breaker="chat_id",
         )
         return _format_rows(rows, SUBSCRIBERS_HEADERS)
 
@@ -1287,6 +1338,7 @@ class PostgresClient:
         limit: int | None = None,
         filters: list[str] | None = None,
         params: list[object] | None = None,
+        tie_breaker: str = "id",
     ) -> list[dict[str, object]]:
         where = list(filters or [])
         query_params = list(params or [])
@@ -1299,12 +1351,15 @@ class PostgresClient:
         if limit is not None and limit > 0:
             sql = (
                 f"SELECT {columns} FROM {table}{where_clause} "
-                f"ORDER BY {time_expr} DESC, id DESC LIMIT %s"
+                f"ORDER BY {time_expr} DESC, {tie_breaker} DESC LIMIT %s"
             )
             query_params.append(limit)
             reverse = True
         else:
-            sql = f"SELECT {columns} FROM {table}{where_clause} ORDER BY {time_expr} ASC, id ASC"
+            sql = (
+                f"SELECT {columns} FROM {table}{where_clause} "
+                f"ORDER BY {time_expr} ASC, {tie_breaker} ASC"
+            )
             reverse = False
 
         try:

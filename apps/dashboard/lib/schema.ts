@@ -26,6 +26,8 @@ export const TRANSACTIONS_HEADERS = [
   "to_owner_type",
   "to_owner",
   "created_at",
+  "last_seen_at",
+  "seen_count",
 ] as const;
 
 export const DAILY_BRIEF_HEADERS = [
@@ -210,6 +212,8 @@ export interface TransactionRow {
   to_owner_type: string;
   to_owner: string;
   created_at: string;
+  last_seen_at: string;
+  seen_count: string;
 }
 
 export interface DailyBriefRow {

@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-24",
-  "count": 86,
+  "generated_at": "2026-04-27",
+  "count": 89,
   "entries": [
     {
       "file": "Top 10 Liquid Coins - Whale Wallets (2026.4 Updated).md",
@@ -690,6 +690,30 @@
       "seq": "07",
       "title": "WhaleScope Telegram 메시지 미수신 원인분석 보고서",
       "slug": "WhaleScope-Telegram-메시지-미수신-원인분석-보고서",
+      "category": "incident-analysis"
+    },
+    {
+      "file": "2026-04-24-08-WhaleScope-Telegram-채널중심-개선안-및-인스턴스-아키텍처.md",
+      "date": "2026-04-24",
+      "seq": "08",
+      "title": "WhaleScope Telegram 채널 중심 개선안 및 인스턴스 아키텍처",
+      "slug": "WhaleScope-Telegram-채널중심-개선안-및-인스턴스-아키텍처",
+      "category": "improvement-plan"
+    },
+    {
+      "file": "2026-04-24-09-WhaleScope-Telegram-채널중심-개선안-구현-QA-보고서.md",
+      "date": "2026-04-24",
+      "seq": "09",
+      "title": "WhaleScope Telegram 채널 중심 개선안 구현 및 QA 보고서",
+      "slug": "WhaleScope-Telegram-채널중심-개선안-구현-QA-보고서",
+      "category": "implementation-report"
+    },
+    {
+      "file": "2026-04-27-01-WhaleScope-운영탭-수집중단-원인분석-및-개선안.md",
+      "date": "2026-04-27",
+      "seq": "01",
+      "title": "WhaleScope 운영탭 수집 중단 원인분석 및 개선안",
+      "slug": "WhaleScope-운영탭-수집중단-원인분석-및-개선안",
       "category": "incident-analysis"
     }
   ]

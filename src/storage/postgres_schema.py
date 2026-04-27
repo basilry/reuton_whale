@@ -46,7 +46,9 @@ CREATE_TABLE_STATEMENTS = (
       to_address text,
       to_owner_type text,
       to_owner text,
-      created_at timestamptz NOT NULL DEFAULT now()
+      created_at timestamptz NOT NULL DEFAULT now(),
+      last_seen_at timestamptz NOT NULL DEFAULT now(),
+      seen_count integer NOT NULL DEFAULT 1
     )
     """,
     """
@@ -172,7 +174,14 @@ CREATE_TABLE_STATEMENTS = (
       signal_count integer,
       transaction_count integer,
       slot_key text,
-      delivery_mode text
+      delivery_mode text,
+      decision text,
+      reason text,
+      fallback_source text,
+      candidate_signal_count integer,
+      candidate_transaction_count integer,
+      last_channel_delivery_at timestamptz,
+      next_expected_at timestamptz
     )
     """,
     """
@@ -361,8 +370,35 @@ CREATE_TABLE_STATEMENTS = (
     """,
 )
 
+MIGRATION_STATEMENTS = (
+    "ALTER TABLE IF EXISTS transactions ADD COLUMN IF NOT EXISTS last_seen_at timestamptz",
+    "ALTER TABLE IF EXISTS transactions ADD COLUMN IF NOT EXISTS seen_count integer",
+    """
+    UPDATE transactions
+    SET last_seen_at = COALESCE(last_seen_at, created_at, timestamp, now())
+    WHERE last_seen_at IS NULL
+    """,
+    """
+    UPDATE transactions
+    SET seen_count = COALESCE(seen_count, 1)
+    WHERE seen_count IS NULL
+    """,
+    "ALTER TABLE IF EXISTS transactions ALTER COLUMN last_seen_at SET DEFAULT now()",
+    "ALTER TABLE IF EXISTS transactions ALTER COLUMN seen_count SET DEFAULT 1",
+    "ALTER TABLE IF EXISTS transactions ALTER COLUMN last_seen_at SET NOT NULL",
+    "ALTER TABLE IF EXISTS transactions ALTER COLUMN seen_count SET NOT NULL",
+    "ALTER TABLE IF EXISTS broadcast_log ADD COLUMN IF NOT EXISTS decision text",
+    "ALTER TABLE IF EXISTS broadcast_log ADD COLUMN IF NOT EXISTS reason text",
+    "ALTER TABLE IF EXISTS broadcast_log ADD COLUMN IF NOT EXISTS fallback_source text",
+    "ALTER TABLE IF EXISTS broadcast_log ADD COLUMN IF NOT EXISTS candidate_signal_count integer",
+    "ALTER TABLE IF EXISTS broadcast_log ADD COLUMN IF NOT EXISTS candidate_transaction_count integer",
+    "ALTER TABLE IF EXISTS broadcast_log ADD COLUMN IF NOT EXISTS last_channel_delivery_at timestamptz",
+    "ALTER TABLE IF EXISTS broadcast_log ADD COLUMN IF NOT EXISTS next_expected_at timestamptz",
+)
+
 CREATE_INDEX_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions (created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_transactions_last_seen_at ON transactions (last_seen_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_transactions_hash ON transactions (hash)",
     "CREATE INDEX IF NOT EXISTS idx_transactions_chain_symbol ON transactions (blockchain, symbol)",
     "CREATE INDEX IF NOT EXISTS idx_address_activity_collected_at ON address_activity (collected_at DESC)",
@@ -391,7 +427,7 @@ CREATE_INDEX_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS idx_watchlist_overrides_updated_at ON watchlist_overrides (updated_at DESC)",
 )
 
-SCHEMA_STATEMENTS = (*CREATE_TABLE_STATEMENTS, *CREATE_INDEX_STATEMENTS)
+SCHEMA_STATEMENTS = (*CREATE_TABLE_STATEMENTS, *MIGRATION_STATEMENTS, *CREATE_INDEX_STATEMENTS)
 
 
 def iter_schema_statements() -> tuple[str, ...]:
@@ -403,6 +439,7 @@ def schema_summary() -> dict[str, object]:
     return {
         "tables": TABLE_NAMES,
         "table_count": len(CREATE_TABLE_STATEMENTS),
+        "migration_count": len(MIGRATION_STATEMENTS),
         "index_count": len(CREATE_INDEX_STATEMENTS),
         "statement_count": len(SCHEMA_STATEMENTS),
     }

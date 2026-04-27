@@ -27,6 +27,8 @@ TRANSACTIONS_HEADERS = [
     "to_owner_type",
     "to_owner",
     "created_at",
+    "last_seen_at",
+    "seen_count",
 ]
 
 DAILY_BRIEF_HEADERS = [
@@ -199,6 +201,13 @@ BROADCAST_LOG_HEADERS = [
     "transaction_count",
     "slot_key",
     "delivery_mode",
+    "decision",
+    "reason",
+    "fallback_source",
+    "candidate_signal_count",
+    "candidate_transaction_count",
+    "last_channel_delivery_at",
+    "next_expected_at",
 ]
 
 LLM_BUDGET_LOG_HEADERS = [

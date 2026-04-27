@@ -5,9 +5,12 @@ import json
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from src.channel.message_formatter import format_event_alert_message, format_market_pulse_message
+from src.channel.message_planner import FallbackSnapshot, plan_periodic_channel_message
+from src.channel.policy import DEFAULT_MARKET_PULSE_MIN_INTERVAL
 from src.notify.telegram_broadcast import TelegramBroadcastAdapter
 from src.observability.service_health import append_service_heartbeat
-from src.pipeline.common import build_sheets_client, init_run_result, load_pipeline_env, safe_float
+from src.pipeline.common import build_sheets_client, init_run_result, load_pipeline_env
 from src.storage.queries import now_iso
 from src.utils.logger import get_logger
 from src.utils.errors import StorageError
@@ -25,16 +28,8 @@ _TERMINAL_RUN_STATUSES = {
     "skipped_duplicate_content",
 }
 _PERIODIC_MESSAGE_MAX_LENGTH = 1500
-
-
-def _format_compact_usd(value: float) -> str:
-    if value >= 1_000_000_000:
-        return f"${value / 1_000_000_000:,.2f}B"
-    if value >= 1_000_000:
-        return f"${value / 1_000_000:,.1f}M"
-    if value >= 1_000:
-        return f"${value / 1_000:,.1f}K"
-    return f"${value:,.0f}"
+_BROADCAST_LOG_LOOKBACK = timedelta(hours=24)
+_FALLBACK_NEWS_LOOKBACK = timedelta(hours=6)
 
 
 def _slot_window(now: datetime) -> tuple[datetime, datetime, datetime]:
@@ -65,93 +60,17 @@ def _health_for_status(status: object) -> str:
     return "error"
 
 
-def _owner_label(row: dict, prefix: str) -> str:
-    return str(
-        row.get(f"{prefix}_owner")
-        or row.get(f"{prefix}_owner_type")
-        or row.get(f"{prefix}_address")
-        or "unknown"
-    ).strip()
-
-
-def _movement_label(row: dict) -> str:
-    from_type = str(row.get("from_owner_type") or "").strip().lower()
-    to_type = str(row.get("to_owner_type") or "").strip().lower()
-    if from_type == "exchange" and to_type == "exchange":
-        return "거래소 간 이동"
-    if from_type == "exchange":
-        return "거래소 유출"
-    if to_type == "exchange":
-        return "거래소 유입"
-    return "지갑 간 이동"
-
-
-def _transaction_sort_key(row: dict) -> tuple[float, float]:
-    amount_usd = safe_float(row.get("amount_usd"))
-    amount_token = safe_float(row.get("amount"))
-    return (amount_usd, amount_token)
-
-
-def _format_transaction_line(row: dict) -> str:
-    symbol = str(row.get("symbol") or "UNKNOWN").strip().upper()
-    amount_usd = safe_float(row.get("amount_usd"))
-    if amount_usd > 0:
-        amount_label = _format_compact_usd(amount_usd)
-    else:
-        amount_token = safe_float(row.get("amount"))
-        if amount_token >= 100:
-            amount_label = f"{amount_token:,.0f} {symbol}"
-        else:
-            amount_label = f"{amount_token:,.2f}".rstrip("0").rstrip(".")
-            amount_label = f"{amount_label} {symbol}"
-    return (
-        f"• {symbol} · {amount_label} · {_movement_label(row)} · "
-        f"{_owner_label(row, 'from')} → {_owner_label(row, 'to')}"
-    )
-
-
-def _format_signal_line(row: dict) -> str:
-    severity = str(row.get("severity") or "info").strip().upper()
-    summary = str(row.get("summary") or "").strip() or "시그널 요약 없음"
-    rule = str(row.get("rule") or "signal").strip()
-    source = str(row.get("source") or "").strip()
-    meta = " · ".join(part for part in [severity, rule, source] if part)
-    return f"• {summary}" if not meta else f"• {summary} ({meta})"
-
-
 def _build_periodic_message(
     *,
     slot_start_kst: datetime,
     signal_rows: list[dict],
     transaction_rows: list[dict],
 ) -> str:
-    lines = [
-        "<b>WhaleScope Periodic Update</b>",
-        f"<i>{slot_start_kst.strftime('%Y-%m-%d %H:%M')} KST · recent 15m</i>",
-    ]
-
-    if signal_rows:
-        lines.extend(["", "<b>Signals</b>"])
-        for row in signal_rows[:5]:
-            lines.append(_format_signal_line(row))
-
-    if transaction_rows:
-        lines.extend(["", "<b>Transactions</b>"])
-        ranked_rows = sorted(transaction_rows, key=_transaction_sort_key, reverse=True)[:5]
-        for row in ranked_rows:
-            lines.append(_format_transaction_line(row))
-
-    total_volume = sum(safe_float(row.get("amount_usd")) for row in transaction_rows)
-    lines.extend(
-        [
-            "",
-            (
-                f"<i>signals={len(signal_rows)} | tx={len(transaction_rows)} | "
-                f"volume={_format_compact_usd(total_volume)}</i>"
-            ),
-        ]
+    return format_event_alert_message(
+        slot_start_kst=slot_start_kst,
+        signal_rows=signal_rows,
+        transaction_rows=transaction_rows,
     )
-    return "\n".join(lines).strip()
 
 
 def _clip_periodic_message(text: str, *, limit: int = _PERIODIC_MESSAGE_MAX_LENGTH) -> str:
@@ -197,6 +116,98 @@ def _has_recent_duplicate_content(
             continue
         return True
     return False
+
+
+def _load_fallback_snapshot(sheets, *, now: datetime) -> FallbackSnapshot:
+    daily_brief = None
+    get_latest_daily_brief = getattr(sheets, "get_latest_daily_brief", None)
+    if callable(get_latest_daily_brief):
+        try:
+            daily_brief = get_latest_daily_brief()
+        except StorageError as exc:
+            logger.warning("Periodic fallback daily_brief read failed: %s", exc)
+
+    news_rows: list[dict] = []
+    list_news_feed = getattr(sheets, "list_news_feed", None)
+    if callable(list_news_feed):
+        try:
+            news_rows = list_news_feed(since=now - _FALLBACK_NEWS_LOOKBACK, limit=5)
+        except StorageError as exc:
+            logger.warning("Periodic fallback news_feed read failed: %s", exc)
+
+    market_snapshot = _load_market_snapshot_fallback(sheets, now=now)
+    return FallbackSnapshot.from_parts(
+        daily_brief=daily_brief,
+        news_rows=news_rows,
+        market_snapshot=market_snapshot,
+    )
+
+
+def _load_market_snapshot_fallback(sheets, *, now: datetime) -> dict | None:
+    get_latest_market_snapshot = getattr(sheets, "get_latest_market_snapshot", None)
+    if callable(get_latest_market_snapshot):
+        try:
+            snapshot = get_latest_market_snapshot()
+            return dict(snapshot) if snapshot else None
+        except StorageError as exc:
+            logger.warning("Periodic fallback market snapshot read failed: %s", exc)
+
+    list_market_snapshots = getattr(sheets, "list_market_snapshots", None)
+    if not callable(list_market_snapshots):
+        return None
+    try:
+        rows = list_market_snapshots(since=now - _FALLBACK_NEWS_LOOKBACK, limit=10)
+    except TypeError:
+        try:
+            rows = list_market_snapshots()
+        except StorageError as exc:
+            logger.warning("Periodic fallback market snapshots read failed: %s", exc)
+            return None
+    except StorageError as exc:
+        logger.warning("Periodic fallback market snapshots read failed: %s", exc)
+        return None
+    return dict(rows[-1]) if rows else None
+
+
+def _list_recent_broadcast_rows(sheets, *, now: datetime) -> list[dict]:
+    try:
+        return sheets.list_broadcast_log(kind=None, since=now - _BROADCAST_LOG_LOOKBACK, limit=200)
+    except StorageError as exc:
+        logger.warning("Periodic channel cadence log read failed: %s", exc)
+        return []
+
+
+def _list_candidate_transactions(sheets, *, since: datetime, limit: int) -> list[dict]:
+    list_recent_observed = getattr(sheets, "list_recent_observed_transactions", None)
+    if callable(list_recent_observed):
+        try:
+            return list_recent_observed(since=since, limit=limit)
+        except StorageError as exc:
+            logger.warning(
+                "Periodic observed transaction read failed, falling back to created_at window: %s",
+                exc,
+            )
+    return sheets.list_transactions(since=since, limit=limit)
+
+
+def _append_attempt_log(sheets, attempt, metadata: dict[str, object]) -> None:
+    try:
+        entry = attempt.to_sheet_row()
+        entry.update(metadata)
+        sheets.append_broadcast_log(entry)
+    except Exception as exc:
+        logger.warning(
+            "Failed to persist broadcast log kind=%s status=%s: %s",
+            getattr(attempt, "kind", ""),
+            getattr(attempt, "status", ""),
+            exc,
+        )
+
+
+def _quiet_skip_status(reason: str) -> str:
+    if reason == "market_pulse_interval_not_elapsed":
+        return "skipped_window"
+    return "skipped_empty"
 
 
 def _record_broadcast_heartbeat(
@@ -273,10 +284,34 @@ def run_broadcast_periodic() -> dict[str, object]:
         return result
 
     signal_rows = sheets.list_signals(since=window_start, limit=20)
-    transaction_rows = sheets.list_transactions(since=window_start, limit=50)
+    transaction_rows = _list_candidate_transactions(sheets, since=window_start, limit=50)
     slot_key = slot_start_kst.strftime("%Y%m%dT%H%M")
     dedup_key = f"broadcast_periodic:{slot_key}"
+
+    fallback_snapshot = FallbackSnapshot()
+    recent_broadcast_rows: list[dict] = []
     if not signal_rows and not transaction_rows:
+        fallback_snapshot = _load_fallback_snapshot(sheets, now=now)
+        recent_broadcast_rows = _list_recent_broadcast_rows(sheets, now=now)
+
+    plan = plan_periodic_channel_message(
+        now=now,
+        signal_rows=signal_rows,
+        transaction_rows=transaction_rows,
+        fallback_snapshot=fallback_snapshot,
+        recent_broadcast_rows=recent_broadcast_rows,
+        market_pulse_min_interval=DEFAULT_MARKET_PULSE_MIN_INTERVAL,
+    )
+    plan_metadata = plan.to_broadcast_log_metadata()
+
+    if not plan.should_broadcast:
+        skip_status = _quiet_skip_status(plan.reason)
+        details = (
+            f"decision={plan.decision}; reason={plan.reason}; "
+            f"fallback={plan.fallback_source or 'none'}; "
+            f"signals={plan.candidate_signal_count}; "
+            f"transactions={plan.candidate_transaction_count}; recent_window=15m"
+        )
         sheets.append_broadcast_log(
             {
                 "ts": now_iso(),
@@ -284,41 +319,51 @@ def run_broadcast_periodic() -> dict[str, object]:
                 "dedup_key": dedup_key,
                 "chat_id": env.telegram_broadcast_chat,
                 "message_id": "",
-                "status": "skipped_empty",
-                "error": "signals=0; transactions=0; recent_window=15m",
+                "status": skip_status,
+                "error": details,
                 "message_length": 0,
                 "content_hash": "",
-                "signal_count": 0,
-                "transaction_count": 0,
+                "signal_count": plan.candidate_signal_count,
+                "transaction_count": plan.candidate_transaction_count,
                 "slot_key": slot_key,
                 "delivery_mode": "skipped",
+                **plan_metadata,
             }
         )
         result.update(
-            status="skipped_empty",
+            status=skip_status,
             finished_at=now_iso(),
             errors="[]",
-            details="signals=0; transactions=0; recent_window=15m",
+            details=details,
         )
         sheets.log_run(result)
-        _record_broadcast_heartbeat(sheets, result, processed_count=0)
+        _record_broadcast_heartbeat(
+            sheets,
+            result,
+            processed_count=plan.candidate_signal_count + plan.candidate_transaction_count,
+        )
         return result
 
     broadcaster = TelegramBroadcastAdapter(
         token=env.telegram_broadcast_token or env.telegram_token,
         chat_id=env.telegram_broadcast_chat,
-        storage=sheets,
+        storage=None,
         enabled=env.telegram_broadcast_enabled,
         dry_run=env.telegram_broadcast_dry_run,
         dry_run_reason="TELEGRAM_BROADCAST_DRY_RUN is true",
     )
-    message = _clip_periodic_message(
-        _build_periodic_message(
+    if plan.decision == "event_alert":
+        message_body = _build_periodic_message(
             slot_start_kst=slot_start_kst,
-            signal_rows=signal_rows,
-            transaction_rows=transaction_rows,
+            signal_rows=list(plan.signal_rows),
+            transaction_rows=list(plan.transaction_rows),
         )
-    )
+    else:
+        message_body = format_market_pulse_message(
+            now_kst=now.astimezone(_KST),
+            fallback=plan.fallback,
+        )
+    message = _clip_periodic_message(message_body)
     content_hash = _content_hash(message)
     if _has_recent_duplicate_content(
         sheets,
@@ -337,20 +382,22 @@ def run_broadcast_periodic() -> dict[str, object]:
                 "error": "matched previous content hash within 1h",
                 "message_length": len(message),
                 "content_hash": content_hash,
-                "signal_count": len(signal_rows),
-                "transaction_count": len(transaction_rows),
+                "signal_count": plan.candidate_signal_count,
+                "transaction_count": plan.candidate_transaction_count,
                 "slot_key": slot_key,
                 "delivery_mode": "skipped",
+                **plan_metadata,
             }
         )
         result.update(
             status="skipped_duplicate_content",
             finished_at=now_iso(),
-            transactions_count=len(transaction_rows),
+            transactions_count=plan.candidate_transaction_count,
             errors="[]",
             details=(
-                f"signals={len(signal_rows)}; transactions={len(transaction_rows)}; "
-                f"duplicate_window=60m; message_len={len(message)}"
+                f"decision={plan.decision}; signals={plan.candidate_signal_count}; "
+                f"transactions={plan.candidate_transaction_count}; duplicate_window=60m; "
+                f"message_len={len(message)}"
             ),
         )
         sheets.log_run(result)
@@ -358,38 +405,45 @@ def run_broadcast_periodic() -> dict[str, object]:
             sheets,
             result,
             channel_status="skipped_duplicate_content",
-            processed_count=len(signal_rows) + len(transaction_rows),
+            processed_count=plan.candidate_signal_count + plan.candidate_transaction_count,
         )
         logger.info(
-            "broadcast_periodic skipped duplicate content signals=%d transactions=%d slot=%s",
-            len(signal_rows),
-            len(transaction_rows),
+            "broadcast_periodic skipped duplicate content decision=%s signals=%d transactions=%d slot=%s",
+            plan.decision,
+            plan.candidate_signal_count,
+            plan.candidate_transaction_count,
             slot_key,
         )
         return result
 
+    attempt_metadata = {
+        "message_length": len(message),
+        "content_hash": content_hash,
+        "signal_count": plan.candidate_signal_count,
+        "transaction_count": plan.candidate_transaction_count,
+        "slot_key": slot_key,
+        **plan_metadata,
+    }
     attempt = broadcaster.broadcast_text(
         text=message,
         kind="broadcast_periodic",
         dedup_key=dedup_key,
-        metadata={
-            "message_length": len(message),
-            "content_hash": content_hash,
-            "signal_count": len(signal_rows),
-            "transaction_count": len(transaction_rows),
-            "slot_key": slot_key,
-        },
+        metadata=attempt_metadata,
     )
+    _append_attempt_log(sheets, attempt, plan_metadata)
     if attempt.status in {"failed", "skipped_unconfigured"}:
         errors.append(f"telegram_broadcast:{attempt.error}")
 
     result.update(
         status="completed" if not errors else "completed_with_errors",
         finished_at=now_iso(),
-        transactions_count=len(transaction_rows),
+        transactions_count=plan.candidate_transaction_count,
         errors=json.dumps(errors, ensure_ascii=False),
         details=(
-            f"signals={len(signal_rows)}; transactions={len(transaction_rows)}; "
+            f"decision={plan.decision}; reason={plan.reason}; "
+            f"fallback={plan.fallback_source or 'none'}; "
+            f"signals={plan.candidate_signal_count}; "
+            f"transactions={plan.candidate_transaction_count}; "
             f"broadcast={attempt.status}; message_len={len(message)}"
         ),
     )
@@ -398,13 +452,14 @@ def run_broadcast_periodic() -> dict[str, object]:
         sheets,
         result,
         channel_status=attempt.status,
-        processed_count=len(signal_rows) + len(transaction_rows),
+        processed_count=plan.candidate_signal_count + plan.candidate_transaction_count,
     )
     logger.info(
-        "broadcast_periodic finished status=%s signals=%d transactions=%d broadcast=%s",
+        "broadcast_periodic finished status=%s decision=%s signals=%d transactions=%d broadcast=%s",
         result["status"],
-        len(signal_rows),
-        len(transaction_rows),
+        plan.decision,
+        plan.candidate_signal_count,
+        plan.candidate_transaction_count,
         attempt.status,
     )
     return result

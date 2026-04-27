@@ -82,7 +82,10 @@ def _read_sheet_table(sheets: SheetsClient, table: str, *, since: datetime | Non
 
 
 def _without_returning(sql: str) -> str:
-    return sql.replace("RETURNING id", "")
+    marker = sql.upper().rfind("RETURNING")
+    if marker < 0:
+        return sql
+    return sql[:marker].rstrip()
 
 
 def _transaction_params(row: dict) -> tuple[object, ...]:
@@ -101,6 +104,8 @@ def _transaction_params(row: dict) -> tuple[object, ...]:
         pg._text(row.get("to_owner_type")),
         pg._text(row.get("to_owner")),
         pg._timestamp(row.get("created_at")),
+        pg._timestamp(row.get("last_seen_at")),
+        pg._int(row.get("seen_count")),
     )
 
 
@@ -220,6 +225,13 @@ def _broadcast_log_params(row: dict) -> tuple[object, ...]:
         pg._int(row.get("transaction_count")),
         pg._text(row.get("slot_key")),
         pg._text(row.get("delivery_mode")),
+        pg._text(row.get("decision")),
+        pg._text(row.get("reason"), max_length=1000),
+        pg._text(row.get("fallback_source")),
+        pg._int(row.get("candidate_signal_count")),
+        pg._int(row.get("candidate_transaction_count")),
+        pg._timestamp(row.get("last_channel_delivery_at")),
+        pg._timestamp(row.get("next_expected_at")),
     )
 
 

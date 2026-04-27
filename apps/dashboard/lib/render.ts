@@ -719,6 +719,9 @@ export async function loadRenderObservability(): Promise<AdminRenderObservabilit
 
     const instanceResults = await Promise.all(
       trackedServices.map(async (service) => {
+        if (service.type === "cron") {
+          return [];
+        }
         try {
           const instances = await listRenderInstances(service.id);
           return instances.map((instance) => withServiceKey(instance, serviceKeyById));

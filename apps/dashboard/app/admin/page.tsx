@@ -215,6 +215,19 @@ function formatDurationSeconds(value: number): string {
   return `${(value / 1000).toFixed(1)}초`;
 }
 
+function formatAgeHours(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "기록 없음";
+  }
+  if (value < 1) {
+    return `${Math.round(value * 60).toLocaleString("ko-KR")}분`;
+  }
+  if (value < 24) {
+    return `${value.toFixed(value % 1 === 0 ? 0 : 1)}시간`;
+  }
+  return `${(value / 24).toFixed(1)}일`;
+}
+
 function formatLatencyMs(value: number | null): string {
   if (value == null || !Number.isFinite(value)) {
     return "기록 없음";
@@ -270,6 +283,124 @@ function formatTgMirrorChannels(
     .slice(0, 4)
     .map((entry) => `${entry.channel} ${formatCount(entry.count, "건")}`)
     .join(" · ");
+}
+
+function formatMaybeCount(value: number | null | undefined, suffix = "건"): string {
+  return value == null ? "기록 없음" : formatCount(value, suffix);
+}
+
+function humanizeChannelStatus(status: string | null | undefined): string {
+  switch ((status || "").toLowerCase()) {
+    case "sent":
+      return "채널 발송 완료";
+    case "dry_run":
+      return "dry-run";
+    case "skipped_empty":
+      return "보낼 후보 없음";
+    case "skipped_duplicate_content":
+      return "중복 콘텐츠 skip";
+    case "skipped_duplicate":
+      return "중복 실행 skip";
+    case "skipped_disabled":
+      return "발송 비활성";
+    case "skipped_unconfigured":
+      return "설정 미완료";
+    case "failed":
+      return "발송 실패";
+    case "degraded":
+      return "관측 대기";
+    default:
+      return status || "관측 대기";
+  }
+}
+
+function channelDeliveryTone(
+  telegram: AdminObservabilitySummary["telegram"] | null | undefined,
+): AdminTone {
+  const status = (telegram?.last_channel_status || "").toLowerCase();
+  if (status === "sent") {
+    return "good";
+  }
+  if (status === "dry_run" || status === "skipped_empty" || status === "skipped_duplicate_content" || status === "skipped_duplicate") {
+    return "neutral";
+  }
+  if (status === "failed" || status === "skipped_unconfigured") {
+    return "bad";
+  }
+  if (status === "skipped_disabled") {
+    return "warn";
+  }
+  return "neutral";
+}
+
+function humanizePublisherTokenSource(
+  source: AdminObservabilitySummary["telegram"]["publisher_token_source"] | undefined,
+): string {
+  switch (source) {
+    case "broadcast_token":
+      return "broadcast 전용 token";
+    case "telegram_token_fallback":
+      return "TELEGRAM_BOT_TOKEN fallback";
+    case "missing":
+      return "publisher token 누락";
+    default:
+      return "확인 불가";
+  }
+}
+
+function channelDeliverySummaryLine(
+  telegram: AdminObservabilitySummary["telegram"] | null | undefined,
+): string {
+  if (!telegram) {
+    return "채널 발송 observability가 아직 없습니다.";
+  }
+  return [
+    `상태 ${humanizeChannelStatus(telegram.last_channel_status)}`,
+    `실제 발송 ${formatObservedTime(telegram.last_channel_message_at ?? undefined)}`,
+    `다음 예상 ${formatObservedTime(telegram.next_expected_message_at ?? undefined)}`,
+  ].join(" · ");
+}
+
+function channelDeliveryCandidateLine(
+  telegram: AdminObservabilitySummary["telegram"] | null | undefined,
+): string {
+  if (!telegram) {
+    return "candidate count 기록 없음";
+  }
+  return [
+    `signal 후보 ${formatMaybeCount(telegram.candidate_signal_count, "건")}`,
+    `transaction 후보 ${formatMaybeCount(telegram.candidate_transaction_count, "건")}`,
+    `fallback ${telegram.fallback_source ?? "기록 없음"}`,
+  ].join(" · ");
+}
+
+function dmBotDisplay(
+  data: NormalizedDashboard,
+  telegram: AdminObservabilitySummary["telegram"] | null | undefined,
+): { status: string; tone: AdminTone; detail: string } {
+  const bot = data.serviceHealth.bot;
+  if (bot.label === "paused_intentionally") {
+    return {
+      status: "paused_intentionally",
+      tone: "neutral",
+      detail: "채널 중심 운영에서는 DM bot run_bot.py가 꺼져 있어도 필수 장애로 보지 않습니다.",
+    };
+  }
+  if (telegram && telegram.publisher_token_source !== "missing") {
+    return {
+      status: bot.status === "healthy" ? "active" : "optional",
+      tone: bot.status === "down" || bot.status === "config_required" ? "neutral" : toneForOpsStatus(bot.status),
+      detail:
+        bot.status === "down" || bot.status === "config_required"
+          ? "공개 채널 publisher token이 있으므로 DM bot 상태는 선택 기능으로 분리해서 봅니다."
+          : bot.detail,
+    };
+  }
+  return {
+    status: bot.label || humanizeOpsStatus(bot.status),
+    tone: toneForOpsStatus(bot.status),
+    detail: bot.detail,
+  };
 }
 
 function tgMirrorTone(summary: AdminObservabilitySummary["tgMirror"]): AdminTone {
@@ -431,27 +562,35 @@ function buildDataSection(data: NormalizedDashboard, rawData: DashboardData | nu
   const latestSignal = data.recentSignals[0] ? humanizeSignal(data.recentSignals[0]) : null;
   const newsSection = summary?.liveUpdates.sections.find((section) => section.section === "news");
   const briefSection = summary?.liveUpdates.sections.find((section) => section.section === "brief");
+  const ingestion = summary?.ingestion;
+  const transactionFreshnessAt =
+    ingestion?.latest_transaction_at ?? latestTransaction?.timestamp;
+  const signalFreshnessAt = ingestion?.latest_signal_at ?? latestSignal?.createdAt;
 
   const items = [
     {
       key: "transactions",
       label: "transactions",
-      source: "Sheets",
-      status: freshnessStatus(latestTransaction?.timestamp, 15),
-      tone: freshnessTone(latestTransaction?.timestamp, 15),
+      source: data.sourceHealth.source,
+      status: freshnessStatus(transactionFreshnessAt, 15),
+      tone: freshnessTone(transactionFreshnessAt, 15),
       count: rowCounts.transactions != null ? `${formatCompactCount(rowCounts.transactions)} rows` : "미제공",
-      observedAt: formatObservedTime(latestTransaction?.timestamp),
-      detail: latestTransaction ? latestTransaction.summary : "최근 거래 레코드가 없습니다.",
+      observedAt: formatObservedTime(transactionFreshnessAt),
+      detail: latestTransaction
+        ? `${latestTransaction.summary} · freshness ${formatAgeHours(ingestion?.latest_transaction_age_hours)}`
+        : "최근 거래 레코드가 없습니다.",
     },
     {
       key: "signals",
       label: "signals",
-      source: "Sheets",
-      status: freshnessStatus(latestSignal?.createdAt, 30),
-      tone: freshnessTone(latestSignal?.createdAt, 30),
+      source: data.sourceHealth.source,
+      status: freshnessStatus(signalFreshnessAt, 30),
+      tone: freshnessTone(signalFreshnessAt, 30),
       count: rowCounts.signals != null ? `${formatCompactCount(rowCounts.signals)} rows` : "미제공",
-      observedAt: formatObservedTime(latestSignal?.createdAt),
-      detail: latestSignal ? latestSignal.title : "최근 시그널 레코드가 없습니다.",
+      observedAt: formatObservedTime(signalFreshnessAt),
+      detail: latestSignal
+        ? `${latestSignal.title} · freshness ${formatAgeHours(ingestion?.latest_signal_age_hours)}`
+        : "최근 시그널 레코드가 없습니다.",
     },
     {
       key: "daily-brief",
@@ -559,6 +698,36 @@ function buildDataSection(data: NormalizedDashboard, rawData: DashboardData | nu
 
   const stats: AdminStatBlock[] = [
     {
+      label: "거래 freshness",
+      value: formatAgeHours(ingestion?.latest_transaction_age_hours),
+      detail: `최신 transactions ${formatObservedTime(ingestion?.latest_transaction_at)}`,
+      tone: freshnessTone(ingestion?.latest_transaction_at, 15),
+    },
+    {
+      label: "시그널 freshness",
+      value: formatAgeHours(ingestion?.latest_signal_age_hours),
+      detail: ingestion?.signals_last_error
+        ? `signals 최근 오류: ${clipText(ingestion.signals_last_error, 92)}`
+        : `signals 최근 실행 ${formatObservedTime(ingestion?.signals_last_run_at)} · ${ingestion?.signals_last_status ?? "상태 기록 없음"}`,
+      tone: ingestion?.signals_last_error
+        ? "bad"
+        : freshnessTone(ingestion?.latest_signal_at, 30),
+    },
+    {
+      label: "활성 감시 주소",
+      value:
+        ingestion?.watched_addresses_active_count == null
+          ? "미제공"
+          : formatCount(ingestion.watched_addresses_active_count, "개"),
+      detail: "watched_addresses enabled 기준 seed 수",
+      tone:
+        ingestion?.watched_addresses_active_count == null
+          ? "neutral"
+          : ingestion.watched_addresses_active_count > 0
+            ? "good"
+            : "warn",
+    },
+    {
       label: "브리핑 실행",
       value: summary ? formatCount(summary.brief.totalRuns, "회") : "미제공",
       detail: summary
@@ -586,6 +755,14 @@ function buildDataSection(data: NormalizedDashboard, rawData: DashboardData | nu
           : summary.periodic.latestMessageExceededCap
             ? "bad"
             : "good",
+    },
+    {
+      label: "채널 발송",
+      value: summary ? humanizeChannelStatus(summary.telegram.last_channel_status) : "미제공",
+      detail: summary
+        ? `${channelDeliveryCandidateLine(summary.telegram)} · skip ${summary.telegram.last_skip_reason ?? "없음"}`
+        : "channel delivery observability 미연결",
+      tone: channelDeliveryTone(summary?.telegram),
     },
     {
       label: "활성 구독자",
@@ -659,7 +836,10 @@ function buildConfigChecklist(data: NormalizedDashboard): AdminChecklistItem[] {
   }));
 }
 
-function buildWorkerInsights(summary: AdminObservabilitySummary | null): AdminInsightCard[] {
+function buildWorkerInsights(
+  summary: AdminObservabilitySummary | null,
+  data: NormalizedDashboard,
+): AdminInsightCard[] {
   if (!summary) {
     return [
       {
@@ -672,7 +852,24 @@ function buildWorkerInsights(summary: AdminObservabilitySummary | null): AdminIn
     ];
   }
 
+  const dmBot = dmBotDisplay(data, summary.telegram);
+
   return [
+    {
+      key: "domain-ingestion",
+      title: "온체인 수집 freshness",
+      tone: summary.ingestion.signals_last_error
+        ? "bad"
+        : freshnessTone(summary.ingestion.latest_signal_at, 30),
+      lines: [
+        `transactions 최신 ${formatObservedTime(summary.ingestion.latest_transaction_at)} · age ${formatAgeHours(summary.ingestion.latest_transaction_age_hours)}`,
+        `signals 최신 ${formatObservedTime(summary.ingestion.latest_signal_at)} · age ${formatAgeHours(summary.ingestion.latest_signal_age_hours)}`,
+        `활성 watched_addresses ${formatCount(summary.ingestion.watched_addresses_active_count, "개")} · signals 실행 ${formatObservedTime(summary.ingestion.signals_last_run_at)} · ${summary.ingestion.signals_last_status ?? "상태 기록 없음"}`,
+      ],
+      hint: summary.ingestion.signals_last_error
+        ? `signals 최근 오류: ${clipText(summary.ingestion.signals_last_error, 180)}`
+        : "Render cron 실행 상태와 실제 domain 데이터 freshness를 분리해서 봅니다.",
+    },
     {
       key: "live-updates",
       title: "SSE live updates",
@@ -692,9 +889,36 @@ function buildWorkerInsights(summary: AdminObservabilitySummary | null): AdminIn
       hint: `최근 이벤트 ${summary.liveUpdates.lastEventId ?? "기록 없음"} · 지연 ${formatLatencyMs(summary.liveUpdates.latestLatencyMs)} · reconnect ${summary.liveUpdates.reconnectCount}회`,
     },
     {
+      key: "channel-delivery",
+      title: "Channel Delivery",
+      tone: channelDeliveryTone(summary.telegram),
+      lines: [
+        channelDeliverySummaryLine(summary.telegram),
+        channelDeliveryCandidateLine(summary.telegram),
+        `비발송 사유 ${summary.telegram.last_skip_reason ?? "없음"} · token ${humanizePublisherTokenSource(summary.telegram.publisher_token_source)}`,
+      ],
+      hint: `broadcast_log 기준 최근 시도 ${formatObservedTime(summary.telegram.lastBroadcastAt)} · channel_health ${formatObservedTime(summary.telegram.lastChannelHealthAt)}`,
+    },
+    {
+      key: "telegram-instances",
+      title: "Telegram 인스턴스 상태",
+      tone:
+        dmBot.status === "paused_intentionally" || dmBot.status === "optional"
+          ? "neutral"
+          : dmBot.tone,
+      lines: [
+        `whalescope-pipeline · ${data.serviceHealth.pipeline.label || humanizeOpsStatus(data.serviceHealth.pipeline.status)} · ${formatObservedTime(data.serviceHealth.pipeline.updatedAt)}`,
+        `telegram-listener · ${data.serviceHealth.listener.label || humanizeOpsStatus(data.serviceHealth.listener.status)} · ${formatObservedTime(data.serviceHealth.listener.updatedAt || data.listenerHealth.updatedAt)}`,
+        `dm-bot · ${dmBot.status} · 선택 기능`,
+        `telegram-channel · ${humanizeChannelStatus(summary.telegram.last_channel_status)} · 멤버 ${summary.telegram.channelMemberCountLatest == null ? "기록 없음" : `${formatCompactCount(summary.telegram.channelMemberCountLatest)}명`}`,
+      ],
+      hint: dmBot.detail,
+    },
+    {
       key: "telegram-ops",
       title: "Telegram 운영",
       tone:
+        summary.telegram.last_channel_status === "failed" ||
         summary.telegram.lastBroadcastStatus === "failed"
           ? "bad"
           : summary.telegram.subscriberCountActive > 0 || summary.telegram.channelMemberCountLatest != null
@@ -705,7 +929,7 @@ function buildWorkerInsights(summary: AdminObservabilitySummary | null): AdminIn
         `24h 이탈 ${formatCount(summary.telegram.unsubscribe24h, "건")} · 이탈률 ${formatRatio(summary.telegram.unsubscribeRate24h)}`,
         `채널 멤버 ${summary.telegram.channelMemberCountLatest == null ? "기록 없음" : formatCompactCount(summary.telegram.channelMemberCountLatest)} · 24h 변화 ${formatSignedCount(summary.telegram.channelMemberDelta24h)}`,
       ],
-      hint: `최근 channel_health ${formatObservedTime(summary.telegram.lastChannelHealthAt)} · 최근 발송 ${formatObservedTime(summary.telegram.lastBroadcastAt)}`,
+      hint: `최근 channel_health ${formatObservedTime(summary.telegram.lastChannelHealthAt)} · 최근 시도 ${formatObservedTime(summary.telegram.lastBroadcastAt)} · 실제 발송 ${formatObservedTime(summary.telegram.last_channel_message_at ?? undefined)}`,
     },
     {
       key: "tg-mirror",
@@ -836,19 +1060,24 @@ function buildWorkerJobRows(
       : "비활성"
     : data.serviceHealth.dashboard.label || humanizeOpsStatus(data.serviceHealth.dashboard.status);
   const botTone: AdminTone = summary
-    ? summary.telegram.lastBroadcastStatus === "failed"
-      ? "bad"
-      : summary.telegram.subscriberCountActive > 0 || summary.telegram.channelMemberCountLatest != null
-        ? "good"
-        : "neutral"
+    ? channelDeliveryTone(summary.telegram)
     : toneForOpsStatus(data.serviceHealth.bot.status);
   const botStatus = summary
-    ? summary.telegram.lastBroadcastStatus === "failed"
-      ? "발송 실패"
-      : summary.telegram.subscriberCountActive > 0
-        ? "운영 중"
-        : "대기"
+    ? humanizeChannelStatus(summary.telegram.last_channel_status)
     : data.serviceHealth.bot.label || humanizeOpsStatus(data.serviceHealth.bot.status);
+  const dmBot = dmBotDisplay(data, summary?.telegram);
+  const ingestionSummary = summary
+    ? [
+        `domain freshness tx ${formatAgeHours(summary.ingestion.latest_transaction_age_hours)}`,
+        `signal ${formatAgeHours(summary.ingestion.latest_signal_age_hours)}`,
+        `active seeds ${formatCount(summary.ingestion.watched_addresses_active_count, "개")}`,
+        summary.ingestion.signals_last_error
+          ? `signals error ${clipText(summary.ingestion.signals_last_error, 80)}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
 
   return [
     {
@@ -863,6 +1092,7 @@ function buildWorkerJobRows(
       detail: clipText(
         [data.serviceHealth.pipeline.summary, data.serviceHealth.pipeline.detail, chainCoverageSummary]
           .concat(chainRolloutSummary ? [chainRolloutSummary] : [])
+          .concat(ingestionSummary ? [ingestionSummary] : [])
           .filter(Boolean)
           .join(" · "),
         140,
@@ -900,27 +1130,39 @@ function buildWorkerJobRows(
     },
     {
       key: "bot-telegram",
-      lane: "Bot",
-      job: "telegram bot / channel",
+      lane: "Telegram Channel",
+      job: "public channel publisher",
       status: botStatus,
       tone: botTone,
       cadence: "이벤트 기반 + 일일 점검",
       observedAt: formatObservedTime(
-        summary?.telegram.lastBroadcastAt ||
+        summary?.telegram.last_channel_message_at ||
+          summary?.telegram.lastBroadcastAt ||
           summary?.telegram.lastChannelHealthAt ||
           data.serviceHealth.bot.updatedAt,
       ),
       source: data.serviceHealth.bot.source || "subscribers / channel_health / broadcast_log",
       detail: summary
         ? clipText(
-            `활성 ${formatCount(summary.telegram.subscriberCountActive, "명")} · 일시중지 ${formatCount(summary.telegram.subscriberCountPaused, "명")} · 채널 ${summary.telegram.channelMemberCountLatest == null ? "기록 없음" : `${formatCompactCount(summary.telegram.channelMemberCountLatest)}명`}`,
+            `${channelDeliveryCandidateLine(summary.telegram)} · ${summary.telegram.last_skip_reason ?? "skip 없음"} · token ${humanizePublisherTokenSource(summary.telegram.publisher_token_source)}`,
             140,
           )
         : clipText(data.serviceHealth.bot.detail, 140),
     },
     {
+      key: "dm-bot",
+      lane: "DM Bot",
+      job: "run_bot.py (optional)",
+      status: dmBot.status,
+      tone: dmBot.tone,
+      cadence: "선택 기능",
+      observedAt: formatObservedTime(data.serviceHealth.bot.updatedAt),
+      source: data.serviceHealth.bot.source || "render / bot service",
+      detail: clipText(dmBot.detail, 140),
+    },
+    {
       key: "bot-periodic",
-      lane: "Bot",
+      lane: "Telegram Channel",
       job: "broadcast_periodic",
       status: periodicStatus,
       tone: periodicTone,
@@ -975,7 +1217,7 @@ function buildWorkerSection(data: NormalizedDashboard, rawData: DashboardData | 
   return {
     services: buildServiceCards(data),
     jobRows: buildWorkerJobRows(data, rawData),
-    insights: buildWorkerInsights(rawData?.adminObservability ?? null),
+    insights: buildWorkerInsights(rawData?.adminObservability ?? null, data),
     failureRows: buildFailureRows(data),
     runtimeChecklist: buildRuntimeChecklist(data),
     configChecklist: buildConfigChecklist(data),

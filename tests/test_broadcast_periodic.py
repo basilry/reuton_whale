@@ -14,12 +14,18 @@ class _FakeSheets:
         signal_rows: list[dict] | None = None,
         transaction_rows: list[dict] | None = None,
         broadcast_rows: list[dict] | None = None,
+        daily_brief: dict | None = None,
+        news_rows: list[dict] | None = None,
+        market_snapshot: dict | None = None,
         duplicate_in_window: bool = False,
         duplicate_error: bool = False,
     ) -> None:
         self.signal_rows = list(signal_rows or [])
         self.transaction_rows = list(transaction_rows or [])
         self.broadcast_rows = list(broadcast_rows or [])
+        self.daily_brief = dict(daily_brief) if daily_brief else None
+        self.news_rows = list(news_rows or [])
+        self.market_snapshot = dict(market_snapshot) if market_snapshot else None
         self.duplicate_in_window = duplicate_in_window
         self.duplicate_error = duplicate_error
         self.run_logs: list[dict] = []
@@ -41,6 +47,18 @@ class _FakeSheets:
         if limit is not None and limit >= 0:
             rows = rows[-limit:] if limit else []
         return rows
+
+    def get_latest_daily_brief(self) -> dict | None:
+        return dict(self.daily_brief) if self.daily_brief else None
+
+    def list_news_feed(self, since=None, limit=None) -> list[dict]:
+        rows = list(self.news_rows)
+        if limit is not None and limit >= 0:
+            rows = rows[-limit:] if limit else []
+        return rows
+
+    def get_latest_market_snapshot(self) -> dict | None:
+        return dict(self.market_snapshot) if self.market_snapshot else None
 
     def append_broadcast_log(self, entry: dict) -> None:
         self.broadcast_rows.append(dict(entry))
@@ -210,6 +228,47 @@ def test_run_broadcast_periodic_logs_skipped_empty_into_broadcast_log():
     assert sheets.broadcast_rows[-1]["status"] == "skipped_empty"
     assert sheets.broadcast_rows[-1]["delivery_mode"] == "skipped"
     assert sheets.broadcast_rows[-1]["message_length"] == 0
+    assert sheets.broadcast_rows[-1]["decision"] == "quiet_skip"
+
+
+def test_run_broadcast_periodic_sends_market_pulse_from_daily_brief_after_interval():
+    from src.pipeline.broadcast_periodic import run_broadcast_periodic
+
+    fixed_now = datetime(2026, 4, 19, 1, 15, tzinfo=timezone.utc)
+    sheets = _FakeSheets(
+        daily_brief={
+            "date": "2026-04-19",
+            "summary": "오늘 시장은 온체인 이벤트 없이 관망세입니다.",
+            "highlights": '["BTC 변동성 축소", "거래소 순유입 둔화"]',
+            "alert_count": "0",
+        },
+        broadcast_rows=[
+            {
+                "ts": (fixed_now - timedelta(hours=3)).isoformat(),
+                "kind": "daily_brief",
+                "status": "dry_run",
+                "delivery_mode": "dry_run",
+                "content_hash": "old",
+            }
+        ],
+    )
+
+    with patch("src.pipeline.broadcast_periodic.load_pipeline_env", return_value=_fake_env()), patch(
+        "src.pipeline.broadcast_periodic.build_sheets_client", return_value=sheets
+    ), patch("src.pipeline.broadcast_periodic.datetime") as mock_datetime:
+        mock_datetime.now.return_value = fixed_now
+        mock_datetime.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+        result = run_broadcast_periodic()
+
+    assert result["status"] == "completed"
+    assert sheets.broadcast_rows[-1]["status"] == "dry_run"
+    assert sheets.broadcast_rows[-1]["delivery_mode"] == "dry_run"
+    assert sheets.broadcast_rows[-1]["decision"] == "market_pulse"
+    assert sheets.broadcast_rows[-1]["fallback_source"] == "daily_brief"
+    assert sheets.broadcast_rows[-1]["candidate_signal_count"] == 0
+    assert sheets.broadcast_rows[-1]["candidate_transaction_count"] == 0
+    assert sheets.broadcast_rows[-1]["next_expected_at"] == (fixed_now - timedelta(hours=1)).isoformat()
+    assert sheets.broadcast_rows[-1]["message_length"] > 0
 
 
 def test_run_broadcast_periodic_continues_when_duplicate_guard_read_fails():

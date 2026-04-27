@@ -27,24 +27,24 @@ const TABLES = new Set<string>([
   "llm_budget_log",
 ]);
 
-const TIME_EXPR: Record<string, string> = {
-  transactions: "COALESCE(created_at, timestamp)",
-  daily_brief: "COALESCE(created_at, date::text::timestamptz)",
-  signals: "created_at",
-  system_log: "COALESCE(finished_at, started_at)",
-  subscribers: "COALESCE(updated_at, created_at)",
-  tg_whale_events: "COALESCE(collected_at, tg_date)",
-  curated_wallets: "COALESCE(updated_at, created_at)",
-  watched_addresses: "COALESCE(added_at, now())",
-  wallet_aliases: "now()",
-  watchlist_overrides: "COALESCE(updated_at, now())",
-  news_feed: "COALESCE(last_seen_at, fetched_at, published_at)",
-  curated_wallet_balances: "updated_at",
-  service_health: "ts",
-  channel_health: "ts",
-  brief_cost_ledger: "ts",
-  broadcast_log: "ts",
-  llm_budget_log: "ts",
+const TIME_COLUMNS: Record<string, readonly string[]> = {
+  transactions: ["last_seen_at", "created_at", "timestamp"],
+  daily_brief: ["created_at"],
+  signals: ["created_at"],
+  system_log: ["finished_at", "started_at", "created_at"],
+  subscribers: ["updated_at", "created_at"],
+  tg_whale_events: ["collected_at", "tg_date"],
+  curated_wallets: ["updated_at", "created_at"],
+  watched_addresses: ["added_at"],
+  wallet_aliases: [],
+  watchlist_overrides: ["updated_at"],
+  news_feed: ["last_seen_at", "fetched_at", "published_at"],
+  curated_wallet_balances: ["updated_at"],
+  service_health: ["ts"],
+  channel_health: ["ts"],
+  brief_cost_ledger: ["ts"],
+  broadcast_log: ["ts"],
+  llm_budget_log: ["ts"],
 };
 const TIE_BREAKER_ID_TABLES = new Set([
   "transactions",
@@ -108,6 +108,7 @@ const OPTIONAL_HEADERS: Record<string, readonly string[]> = {
 };
 
 let pool: PoolLike | null = null;
+const tableColumnCache = new Map<string, Promise<Set<string>>>();
 
 async function getPool(): Promise<PoolLike> {
   if (pool) {
@@ -136,6 +137,41 @@ function quoteIdent(identifier: string): string {
   return `"${identifier.replace(/"/g, "\"\"")}"`;
 }
 
+function quoteColumn(identifier: string): string {
+  return `"${identifier.replace(/"/g, "\"\"")}"`;
+}
+
+async function existingColumns(table: string): Promise<Set<string>> {
+  assertTableName(table);
+  let cached = tableColumnCache.get(table);
+  if (!cached) {
+    cached = getPool().then(async (pool) => {
+      const result = await pool.query<{ column_name: string }>(
+        `SELECT column_name
+           FROM information_schema.columns
+          WHERE table_name = $1
+            AND table_schema NOT IN ('pg_catalog', 'information_schema')`,
+        [table],
+      );
+      return new Set(result.rows.map((row) => row.column_name));
+    });
+    tableColumnCache.set(table, cached);
+  }
+  return cached;
+}
+
+function timeExpressionFor(table: string, columns: Set<string>): string {
+  const candidates = TIME_COLUMNS[table] ?? [];
+  const available = candidates.filter((column) => columns.has(column));
+  if (available.length === 0) {
+    return "now()";
+  }
+  if (available.length === 1) {
+    return quoteColumn(available[0]);
+  }
+  return `COALESCE(${available.map(quoteColumn).join(", ")})`;
+}
+
 function rowToStrings(
   row: Record<string, unknown>,
   headers: readonly string[],
@@ -162,15 +198,23 @@ async function queryRows<Row extends Record<string, unknown>>(
   options: { limit?: number } = {},
 ): Promise<Row[]> {
   const pool = await getPool();
-  const columns = headers.map((header) => `"${header.replace(/"/g, "\"\"")}"`).join(", ");
-  const timeExpr = TIME_EXPR[table] ?? "now()";
+  const existing = await existingColumns(table);
+  if (existing.size === 0) {
+    return [];
+  }
+  const selectedHeaders = headers.filter((header) => existing.has(header));
+  if (selectedHeaders.length === 0) {
+    return [];
+  }
+  const columns = selectedHeaders.map(quoteColumn).join(", ");
+  const timeExpr = timeExpressionFor(table, existing);
   const params: unknown[] = [];
   const { limit } = options;
   const limitClause = limit && limit > 0 ? " LIMIT $1" : "";
   if (limitClause) {
     params.push(limit);
   }
-  const tieBreaker = TIE_BREAKER_ID_TABLES.has(table) ? ", id DESC" : "";
+  const tieBreaker = TIE_BREAKER_ID_TABLES.has(table) && existing.has("id") ? ", id DESC" : "";
   const sql = `SELECT ${columns} FROM ${quoteIdent(table)} ORDER BY ${timeExpr} DESC${tieBreaker}${limitClause}`;
   const result = await pool.query<Row>(sql, params);
   return result.rows.reverse();
@@ -200,13 +244,15 @@ async function readTransactionsAggregate(): Promise<{
   const pool = await getPool();
   const [rows, countResult] = await Promise.all([
     queryRows<Record<string, unknown>>("transactions", TAB_HEADERS.transactions, { limit: 200 }),
-    pool.query<{ count: string }>("SELECT count(*)::text AS count FROM transactions"),
+    pool
+      .query<{ count: string }>("SELECT count(*)::text AS count FROM transactions")
+      .catch(() => ({ rows: [{ count: "0" }] })),
   ]);
   const txRows = rows.map((row) => rowToStrings(row, TAB_HEADERS.transactions)) as unknown as TransactionRow[];
   let latestAt: string | null = null;
   let latestMs = -Infinity;
   for (const row of txRows) {
-    const ts = row.created_at || row.timestamp;
+    const ts = row.last_seen_at || row.created_at || row.timestamp;
     const parsed = parseDateTimeSafe(ts);
     if (parsed != null && parsed > latestMs) {
       latestMs = parsed;

@@ -31,6 +31,47 @@ from src.storage.schema import (
 from src.utils.errors import StorageQuotaExceeded
 
 
+class _RecordingPostgresCursor:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple | None]] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    def execute(self, sql: str, params: tuple | None = None) -> None:
+        self.calls.append((sql, params))
+
+    def fetchall(self):
+        return []
+
+
+class _RecordingPostgresConnection:
+    def __init__(self, cursor: _RecordingPostgresCursor) -> None:
+        self._cursor = cursor
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    def cursor(self) -> _RecordingPostgresCursor:
+        return self._cursor
+
+
+def _make_postgres_client_with_cursor(cursor: _RecordingPostgresCursor):
+    from src.storage.postgres_client import PostgresClient
+
+    connection = _RecordingPostgresConnection(cursor)
+    return PostgresClient(
+        "postgresql://user:pass@example.com/db",
+        connect_func=lambda *args, **kwargs: connection,
+    )
+
+
 class TestSchema:
     def test_all_tabs_count(self):
         assert len(ALL_TABS) == len(set(ALL_TABS))
@@ -40,6 +81,9 @@ class TestSchema:
 
     def test_transactions_has_raw_response_hash(self):
         assert "raw_response_hash" in TRANSACTIONS_HEADERS
+
+    def test_transactions_headers_include_observation_metadata(self):
+        assert TRANSACTIONS_HEADERS[-2:] == ["last_seen_at", "seen_count"]
 
     def test_no_duplicate_headers(self):
         for tab, headers in TAB_HEADERS.items():
@@ -98,6 +142,33 @@ class TestSchema:
             "duration_ms",
             "source_name",
         ]
+
+
+class TestPostgresNaturalKeySelects:
+    def test_list_watched_addresses_orders_by_address_without_id(self):
+        cursor = _RecordingPostgresCursor()
+        client = _make_postgres_client_with_cursor(cursor)
+
+        assert client.list_watched_addresses() == {}
+
+        sql, params = cursor.calls[-1]
+        assert "FROM watched_addresses" in sql
+        assert "ORDER BY COALESCE(added_at, now()) ASC, address ASC" in sql
+        assert ", id ASC" not in sql
+        assert params == ()
+
+    def test_list_subscribers_orders_by_chat_id_without_id(self):
+        cursor = _RecordingPostgresCursor()
+        client = _make_postgres_client_with_cursor(cursor)
+
+        assert client.list_subscribers(statuses=["active"]) == []
+
+        sql, params = cursor.calls[-1]
+        assert "FROM subscribers" in sql
+        assert "status = ANY(%s)" in sql
+        assert "ORDER BY COALESCE(updated_at, created_at) ASC, chat_id ASC" in sql
+        assert ", id ASC" not in sql
+        assert params == (["active"],)
 
 
 class TestQueries:
@@ -224,8 +295,10 @@ class TestSheetsClient:
         mock_ws = MagicMock()
         mock_ss.worksheet.return_value = mock_ws
         hash_col = TRANSACTIONS_HEADERS.index("raw_response_hash")
+        seen_count_col = TRANSACTIONS_HEADERS.index("seen_count")
         existing_row = [""] * len(TRANSACTIONS_HEADERS)
         existing_row[hash_col] = "abc"
+        existing_row[seen_count_col] = "3"
         mock_ws.get_all_values.return_value = [TRANSACTIONS_HEADERS, existing_row]
 
         txs = [
@@ -234,7 +307,30 @@ class TestSheetsClient:
         ]
         count = client.append_transactions(txs)
         assert count == 1
+        mock_ws.batch_update.assert_called_once()
+        refresh_payload = mock_ws.batch_update.call_args[0][0]
+        assert refresh_payload[0]["range"] == "O2:P2"
+        assert refresh_payload[0]["values"][0][1] == "4"
         mock_ws.append_rows.assert_called_once()
+
+    def test_append_transactions_deduplicates_within_batch_and_counts_observations(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        mock_ws.get_all_values.return_value = [TRANSACTIONS_HEADERS]
+
+        count = client.append_transactions(
+            [
+                {"raw_response_hash": "abc", "hash": "h1"},
+                {"raw_response_hash": "abc", "hash": "h1"},
+            ]
+        )
+
+        assert count == 1
+        row = mock_ws.append_rows.call_args[0][0][0]
+        assert row[TRANSACTIONS_HEADERS.index("seen_count")] == "2"
+        assert row[TRANSACTIONS_HEADERS.index("last_seen_at")]
+        mock_ws.batch_update.assert_not_called()
 
     def test_append_transactions_empty_sheet(self):
         client, mock_ss = self._make_client()
@@ -244,6 +340,39 @@ class TestSheetsClient:
 
         count = client.append_transactions([{"raw_response_hash": "x", "hash": "h"}])
         assert count == 1
+
+    def test_list_recent_observed_transactions_filters_by_last_seen_at(self):
+        client, mock_ss = self._make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+        last_seen_col = TRANSACTIONS_HEADERS.index("last_seen_at")
+        created_col = TRANSACTIONS_HEADERS.index("created_at")
+        hash_col = TRANSACTIONS_HEADERS.index("raw_response_hash")
+        old_created_recent_seen = [""] * len(TRANSACTIONS_HEADERS)
+        old_created_recent_seen[hash_col] = "recent-observed"
+        old_created_recent_seen[created_col] = "2026-04-23T00:00:00+00:00"
+        old_created_recent_seen[last_seen_col] = "2026-04-24T01:00:00+00:00"
+        old_created_old_seen = [""] * len(TRANSACTIONS_HEADERS)
+        old_created_old_seen[hash_col] = "old-observed"
+        old_created_old_seen[created_col] = "2026-04-23T00:00:00+00:00"
+        old_created_old_seen[last_seen_col] = "2026-04-23T23:00:00+00:00"
+        old_created_newer_seen = [""] * len(TRANSACTIONS_HEADERS)
+        old_created_newer_seen[hash_col] = "newer-observed"
+        old_created_newer_seen[created_col] = "2026-04-23T00:00:00+00:00"
+        old_created_newer_seen[last_seen_col] = "2026-04-24T02:00:00+00:00"
+        mock_ws.get_all_values.return_value = [
+            TRANSACTIONS_HEADERS,
+            old_created_newer_seen,
+            old_created_old_seen,
+            old_created_recent_seen,
+        ]
+
+        rows = client.list_recent_observed_transactions(
+            since=datetime.fromisoformat("2026-04-24T00:00:00+00:00"),
+            limit=1,
+        )
+
+        assert [row["raw_response_hash"] for row in rows] == ["newer-observed"]
 
     def test_append_transactions_maps_cell_limit_to_quota_without_retry(self):
         client = self._make_uninitialized_client()
@@ -318,6 +447,13 @@ class TestSheetsClient:
                 "transaction_count": 4,
                 "slot_key": "20260419T1015",
                 "delivery_mode": "dry_run",
+                "decision": "market_pulse",
+                "reason": "market_pulse_interval_elapsed",
+                "fallback_source": "daily_brief",
+                "candidate_signal_count": 0,
+                "candidate_transaction_count": 0,
+                "last_channel_delivery_at": "2026-04-19T08:15:00+00:00",
+                "next_expected_at": "2026-04-19T10:15:00+00:00",
             }
         )
 
@@ -326,6 +462,10 @@ class TestSheetsClient:
         assert row[BROADCAST_LOG_HEADERS.index("message_length")] == "1500"
         assert row[BROADCAST_LOG_HEADERS.index("content_hash")] == "abc123"
         assert row[BROADCAST_LOG_HEADERS.index("delivery_mode")] == "dry_run"
+        assert row[BROADCAST_LOG_HEADERS.index("decision")] == "market_pulse"
+        assert row[BROADCAST_LOG_HEADERS.index("fallback_source")] == "daily_brief"
+        assert row[BROADCAST_LOG_HEADERS.index("candidate_signal_count")] == "0"
+        assert row[BROADCAST_LOG_HEADERS.index("candidate_transaction_count")] == "0"
 
     def test_append_service_health_extends_schema_and_writes_v2_metadata(self):
         client, mock_ss = self._make_client()

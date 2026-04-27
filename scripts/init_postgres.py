@@ -59,6 +59,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "SQL summary: "
             f"{summary['table_count']} CREATE TABLE statements, "
+            f"{summary['migration_count']} migration statements, "
             f"{summary['index_count']} CREATE INDEX statements"
         )
         print("Tables: " + ", ".join(summary["tables"]))

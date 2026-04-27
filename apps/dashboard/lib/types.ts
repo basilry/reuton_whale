@@ -9,6 +9,18 @@ export type DashboardMetrics = {
   latestRunStatus: string;
   latestRunErrorCount: number;
   lastUpdatedAt?: string;
+  last_channel_message_at?: string | null;
+  last_channel_status?: string | null;
+  last_skip_reason?: string | null;
+  candidate_signal_count?: number | null;
+  candidate_transaction_count?: number | null;
+  fallback_source?: string | null;
+  next_expected_message_at?: string | null;
+  publisher_token_source?: AdminTelegramPublisherTokenSource;
+  latest_transaction_age_hours?: number | null;
+  latest_signal_age_hours?: number | null;
+  watched_addresses_active_count?: number | null;
+  signals_last_error?: string | null;
 };
 
 export type AdminObservabilityRatioSummary = {
@@ -154,6 +166,22 @@ export type AdminTgMirrorObservability = {
   channels: AdminTgMirrorChannelEntry[];
 };
 
+export type AdminTelegramPublisherTokenSource =
+  | "broadcast_token"
+  | "telegram_token_fallback"
+  | "missing";
+
+export type AdminTelegramChannelDeliverySummary = {
+  last_channel_message_at: string | null;
+  last_channel_status: string | null;
+  last_skip_reason: string | null;
+  candidate_signal_count: number | null;
+  candidate_transaction_count: number | null;
+  fallback_source: string | null;
+  next_expected_message_at: string | null;
+  publisher_token_source: AdminTelegramPublisherTokenSource;
+};
+
 export type AdminTelegramObservability = {
   subscriberCountActive: number;
   subscriberCountPaused: number;
@@ -167,6 +195,17 @@ export type AdminTelegramObservability = {
   lastBroadcastAt?: string;
   lastBroadcastDeliveryMode?: string;
   lastBroadcastStatus?: string;
+} & AdminTelegramChannelDeliverySummary;
+
+export type AdminIngestionObservability = {
+  latest_transaction_at?: string;
+  latest_signal_at?: string;
+  latest_transaction_age_hours: number | null;
+  latest_signal_age_hours: number | null;
+  watched_addresses_active_count: number;
+  signals_last_run_at?: string;
+  signals_last_status?: string;
+  signals_last_error?: string;
 };
 
 export type RenderServiceKey = "pipeline" | "listener" | "bot";
@@ -296,6 +335,7 @@ export type AdminRenderObservability = {
 };
 
 export type AdminObservabilitySummary = {
+  ingestion: AdminIngestionObservability;
   brief: AdminBriefObservability;
   periodic: AdminBroadcastObservability;
   liveUpdates: AdminLiveUpdatesObservability;

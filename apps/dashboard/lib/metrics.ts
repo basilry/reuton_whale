@@ -56,6 +56,8 @@ import type {
   AdminRenderObservability,
   AdminObservabilitySummary,
   AdminLiveUpdateSectionObservability,
+  AdminTelegramChannelDeliverySummary,
+  AdminTelegramPublisherTokenSource,
   AdminTgMirrorObservability,
   AdminTelegramObservability,
   BriefMarketMood,
@@ -196,6 +198,18 @@ export interface DashboardMetrics {
   latestRunStatus: string;
   latestRunErrorCount: number;
   lastUpdatedAt?: string;
+  last_channel_message_at: string | null;
+  last_channel_status: string | null;
+  last_skip_reason: string | null;
+  candidate_signal_count: number | null;
+  candidate_transaction_count: number | null;
+  fallback_source: string | null;
+  next_expected_message_at: string | null;
+  publisher_token_source: AdminTelegramPublisherTokenSource;
+  latest_transaction_age_hours: number | null;
+  latest_signal_age_hours: number | null;
+  watched_addresses_active_count: number | null;
+  signals_last_error: string | null;
   rowCounts: RowCounts;
   latestStatus: string | null;
   errorCount: number;
@@ -284,8 +298,14 @@ function envText(name: string): string {
       return process.env.DASHBOARD_PASSWORD?.trim() ?? "";
     case "TELEGRAM_BOT_TOKEN":
       return process.env.TELEGRAM_BOT_TOKEN?.trim() ?? "";
+    case "TELEGRAM_BROADCAST_BOT_TOKEN":
+      return process.env.TELEGRAM_BROADCAST_BOT_TOKEN?.trim() ?? "";
     case "TELEGRAM_BROADCAST_CHAT":
       return process.env.TELEGRAM_BROADCAST_CHAT?.trim() ?? "";
+    case "TELEGRAM_BROADCAST_ENABLED":
+      return process.env.TELEGRAM_BROADCAST_ENABLED?.trim() ?? "";
+    case "TELEGRAM_BROADCAST_DRY_RUN":
+      return process.env.TELEGRAM_BROADCAST_DRY_RUN?.trim() ?? "";
     case "NEXT_PUBLIC_TELEGRAM_CHANNEL_USERNAME":
       return process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_USERNAME?.trim() ?? "";
     case "NEXT_PUBLIC_TELEGRAM_BROADCAST_CHANNEL":
@@ -715,8 +735,7 @@ function buildChainRolloutObservability(args: {
 }): AdminChainRolloutObservability {
   const seedCounts = new Map<string, number>();
   for (const row of args.watchedAddressRows) {
-    const enabledValue = compactString(row.enabled).toLowerCase();
-    if (enabledValue === "false" || enabledValue === "0" || enabledValue === "no") {
+    if (!watchedAddressIsActive(row)) {
       continue;
     }
     const chain = canonicalWatchChain(row.chain);
@@ -840,6 +859,11 @@ function buildChainRolloutObservability(args: {
       .map((entry) => entry.chain),
     entries,
   };
+}
+
+function watchedAddressIsActive(row: WatchedAddressRow): boolean {
+  const enabledValue = compactString(row.enabled).toLowerCase();
+  return !["false", "0", "no", "n", "off", "disabled", "inactive"].includes(enabledValue);
 }
 
 function serviceHealthAliases(row: ServiceHealthRow | null): string[] {
@@ -1501,8 +1525,41 @@ function withOptionalServiceOverride(
     updatedAt: updatedAt || fallback.updatedAt,
     source:
       rowValue(overrideRow, ["source", "origin"]) ||
-      parsed?.sourceName ||
+    parsed?.sourceName ||
       fallback.source,
+  };
+}
+
+function optionalDmBotServiceHealth(service: OpsServiceHealth): OpsServiceHealth {
+  if (!telegramChannelConfigured() || telegramPublisherTokenSource() === "missing") {
+    return service;
+  }
+
+  const diagnosticText = `${service.summary} ${service.detail}`.toLowerCase();
+  const subscriberDeliveryOnly =
+    diagnosticText.includes("subscriber_delivery") &&
+    !diagnosticText.includes("channel_health") &&
+    !diagnosticText.includes("sendmessage") &&
+    !diagnosticText.includes("channel_status\":\"failed") &&
+    !diagnosticText.includes("channel_status:failed");
+
+  if (!subscriberDeliveryOnly) {
+    return service;
+  }
+
+  return {
+    ...service,
+    status: "waiting",
+    label: "DM optional",
+    summary:
+      "공개 채널 publisher 구성은 감지되었습니다. subscriber DM delivery 오류는 채널 중심 운영의 선택 기능으로 분리합니다.",
+    detail: [
+      "과거 subscriber DM delivery 오류가 service_health에 남아 있지만 공개 채널 발송 경로와는 분리된 선택 기능입니다.",
+      "DM bot을 다시 활성화하려면 최신 Postgres 자연키 조회 수정이 Render에 배포되어야 합니다.",
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    source: service.source ? `${service.source} + dm_optional` : "dm_optional",
   };
 }
 
@@ -1664,15 +1721,54 @@ function mergeRenderServiceHealth(args: {
 
   const relatedInstances = args.render.instances.filter((item) => item.serviceKey === args.serviceKey);
   const relatedLogs = args.render.logs.filter((item) => item.serviceKey === args.serviceKey);
+  const runningInstances = relatedInstances.filter((item) => item.state === "running").length;
+  const errorLogs = relatedLogs.filter((item) => item.level === "error").length;
+  const warnLogs = relatedLogs.filter((item) => item.level === "warn").length;
+  const dmBotOptional =
+    args.serviceKey === "bot" &&
+    telegramChannelConfigured() &&
+    telegramPublisherTokenSource() !== "missing";
+  const dmBotPaused =
+    dmBotOptional &&
+    (service.status.kind === "suspended" ||
+      (service.type === "worker" && relatedInstances.length > 0 && runningInstances === 0));
+
+  if (dmBotPaused) {
+    const detailSegments = [
+      args.base.detail,
+      renderServiceStatusLabel(service),
+      relatedInstances.length > 0
+        ? `인스턴스 ${relatedInstances.length}개 (running ${runningInstances})`
+        : undefined,
+      "채널 중심 운영에서는 DM bot run_bot.py를 paused_intentionally로 둘 수 있습니다.",
+      service.lastDeployAt ? `최근 배포: ${service.lastDeployAt}` : undefined,
+    ].filter(Boolean);
+
+    return {
+      ...args.base,
+      status: "waiting",
+      label: "paused_intentionally",
+      summary: [
+        args.base.summary,
+        "DM bot은 선택 기능이며 공개 채널 publisher 상태를 우선합니다.",
+      ].join(" · "),
+      detail: detailSegments.join(" · "),
+      updatedAt: latestTimestamp(
+        args.base.updatedAt,
+        service.updatedAt,
+        service.lastDeployAt,
+        args.render.lastLogAt,
+      ),
+      source: args.base.source ? `${args.base.source} + render(optional)` : "render(optional)",
+    };
+  }
+
   const platformStatus = renderServiceStatusToOpsStatus({
     service,
     instances: relatedInstances,
     logs: relatedLogs,
   });
   const mergedStatus = chooseMoreSevereStatus(args.base.status, platformStatus);
-  const runningInstances = relatedInstances.filter((item) => item.state === "running").length;
-  const errorLogs = relatedLogs.filter((item) => item.level === "error").length;
-  const warnLogs = relatedLogs.filter((item) => item.level === "warn").length;
   const detailSegments = [
     args.base.detail,
     renderServiceStatusLabel(service),
@@ -1892,12 +1988,9 @@ function buildBotService(args: {
   latestChannelHealth: OptionalSheetRow | null;
   overrideRow: OptionalSheetRow | null;
 }): OpsServiceHealth {
-  const tokenConfigured = Boolean(envText("TELEGRAM_BOT_TOKEN"));
-  const broadcastChatConfigured = Boolean(
-    envText("TELEGRAM_BROADCAST_CHAT") ||
-      envText("NEXT_PUBLIC_TELEGRAM_CHANNEL_USERNAME") ||
-      envText("NEXT_PUBLIC_TELEGRAM_BROADCAST_CHANNEL"),
-  );
+  const publisherTokenSource = telegramPublisherTokenSource();
+  const tokenConfigured = publisherTokenSource !== "missing";
+  const broadcastChatConfigured = telegramChannelConfigured();
   const broadcastEnabled = envEnabled("TELEGRAM_BROADCAST_ENABLED", false);
   const dryRun = envEnabled("TELEGRAM_BROADCAST_DRY_RUN", true);
   const channelStatus = rowValue(args.latestChannelHealth, ["status"]);
@@ -1913,9 +2006,9 @@ function buildBotService(args: {
 
   if (!tokenConfigured) {
     status = "config_required";
-    label = "토큰 누락";
-    summary = "TELEGRAM_BOT_TOKEN이 설정되지 않았습니다.";
-    detail = "구독 봇과 브로드캐스트 모두 동작할 수 없습니다.";
+    label = "publisher 토큰 누락";
+    summary = "공개 채널 발송용 Telegram token이 설정되지 않았습니다.";
+    detail = "TELEGRAM_BROADCAST_BOT_TOKEN 또는 TELEGRAM_BOT_TOKEN fallback을 확인하세요. DM bot은 선택 기능입니다.";
   } else if (!broadcastChatConfigured) {
     status = "config_required";
     label = "채널 미설정";
@@ -1934,7 +2027,7 @@ function buildBotService(args: {
     summary = dryRun
       ? "브로드캐스트가 dry-run 상태입니다."
       : "브로드캐스트가 비활성화되어 있습니다.";
-    detail = "운영 전환 전 shadow 모드 구성을 유지하고 있습니다.";
+    detail = "운영 전환 전 shadow 모드 구성을 유지하고 있습니다. DM bot run_bot.py는 채널 중심 운영에서 optional입니다.";
   } else if (args.latestBroadcastLog?.status.toLowerCase().includes("failed")) {
     status = "down";
     label = "발송 실패";
@@ -1948,7 +2041,7 @@ function buildBotService(args: {
     summary =
       args.subscriberCount > 0
         ? `${args.subscriberCount.toLocaleString("ko-KR")}명의 구독자에게 알림을 보낼 준비가 되어 있습니다.`
-        : "공개 채널과 봇 토큰 구성이 확인되었습니다.";
+        : "공개 채널과 publisher token 구성이 확인되었습니다.";
     detail = channelUpdatedAt
       ? `최근 channel_health 시각: ${channelUpdatedAt}`
       : broadcastUpdatedAt
@@ -1956,19 +2049,21 @@ function buildBotService(args: {
         : "최근 bot 헬스 기록이 없습니다.";
   }
 
-  return withOptionalServiceOverride(
-    "bot",
-    {
-      name: "bot",
-      title: SERVICE_TITLES.bot,
-      status,
-      label,
-      summary,
-      detail,
-      updatedAt: latestTimestamp(channelUpdatedAt, broadcastUpdatedAt),
-      source: args.latestChannelHealth ? "channel_health" : "subscribers/system_log",
-    },
-    args.overrideRow,
+  return optionalDmBotServiceHealth(
+    withOptionalServiceOverride(
+      "bot",
+      {
+        name: "bot",
+        title: SERVICE_TITLES.bot,
+        status,
+        label,
+        summary,
+        detail,
+        updatedAt: latestTimestamp(channelUpdatedAt, broadcastUpdatedAt),
+        source: args.latestChannelHealth ? "channel_health" : "subscribers/system_log",
+      },
+      args.overrideRow,
+    ),
   );
 }
 
@@ -2067,6 +2162,7 @@ function buildOperatorChecks(args: {
   );
   const liveUpdatesEnv = getLiveUpdatesEnv();
   const renderEnv = getRenderEnvState();
+  const publisherTokenSource = telegramPublisherTokenSource();
 
   checks.push({
     key: "google_sheets",
@@ -2160,11 +2256,14 @@ function buildOperatorChecks(args: {
   });
   checks.push({
     key: "telegram_bot",
-    label: "Telegram bot token",
-    status: envText("TELEGRAM_BOT_TOKEN") ? "ok" : "missing",
-    detail: envText("TELEGRAM_BOT_TOKEN")
-      ? args.services.bot.summary
-      : "TELEGRAM_BOT_TOKEN이 없어 구독 봇/브로드캐스트가 동작하지 않습니다.",
+    label: "Telegram publisher token",
+    status: publisherTokenSource === "missing" ? "missing" : "ok",
+    detail:
+      publisherTokenSource === "broadcast_token"
+        ? "TELEGRAM_BROADCAST_BOT_TOKEN으로 공개 채널 발송 token이 분리되어 있습니다. DM bot은 선택 기능입니다."
+        : publisherTokenSource === "telegram_token_fallback"
+          ? "TELEGRAM_BOT_TOKEN fallback으로 공개 채널 발송이 가능합니다. production에서는 broadcast 전용 token 분리를 권장합니다."
+          : "TELEGRAM_BROADCAST_BOT_TOKEN 또는 TELEGRAM_BOT_TOKEN이 없어 공개 채널 발송이 동작하지 않습니다.",
   });
   checks.push({
     key: "telegram_channel",
@@ -2616,6 +2715,165 @@ function buildTgMirrorObservability(args: {
   };
 }
 
+function telegramPublisherTokenSource(): AdminTelegramPublisherTokenSource {
+  if (envText("TELEGRAM_BROADCAST_BOT_TOKEN")) {
+    return "broadcast_token";
+  }
+  if (envText("TELEGRAM_BOT_TOKEN")) {
+    return "telegram_token_fallback";
+  }
+  return "missing";
+}
+
+function telegramChannelConfigured(): boolean {
+  return Boolean(
+    envText("TELEGRAM_BROADCAST_CHAT") ||
+      envText("NEXT_PUBLIC_TELEGRAM_CHANNEL_USERNAME") ||
+      envText("NEXT_PUBLIC_TELEGRAM_BROADCAST_CHANNEL"),
+  );
+}
+
+function nextQuarterHourIso(now = new Date()): string {
+  const next = new Date(now);
+  const minute = next.getUTCMinutes();
+  const remainder = 15 - (minute % 15);
+  next.setUTCMinutes(minute + (remainder === 0 ? 15 : remainder), 0, 0);
+  return next.toISOString();
+}
+
+function latestBroadcastTimestamp(row: OptionalSheetRow | null): string {
+  return rowValue(row, ["ts", "created_at", "updated_at"]);
+}
+
+function broadcastRowStatus(row: OptionalSheetRow | null): string {
+  return rowValue(row, ["status", "state"]).toLowerCase();
+}
+
+function isSentBroadcastRow(row: OptionalSheetRow): boolean {
+  const status = broadcastRowStatus(row);
+  const deliveryMode = rowValue(row, ["delivery_mode"]).toLowerCase();
+  return status === "sent" || deliveryMode === "live";
+}
+
+function countFromBroadcastRow(
+  row: OptionalSheetRow | null,
+  keys: string[],
+  detailKey: "signals" | "transactions",
+): number | null {
+  const direct = rowNumber(row, keys);
+  if (direct != null && Number.isFinite(direct)) {
+    return Math.trunc(direct);
+  }
+
+  const detailText = [
+    rowValue(row, ["error"]),
+    rowValue(row, ["details", "detail", "message"]),
+  ]
+    .filter(Boolean)
+    .join("; ");
+  const match = detailText.match(new RegExp(`${detailKey}\\s*=\\s*(\\d+)`, "i"));
+  if (!match) {
+    return null;
+  }
+  return parseIntSafe(match[1]) ?? null;
+}
+
+function inferBroadcastFallbackSource(row: OptionalSheetRow | null): string | null {
+  const explicit = rowValue(row, [
+    "fallback_source",
+    "source",
+    "candidate_source",
+    "market_source",
+  ]);
+  if (explicit) {
+    return explicit;
+  }
+
+  const kind = rowValue(row, ["kind", "run_type", "message_kind"]).toLowerCase();
+  const status = broadcastRowStatus(row);
+  if (kind === "daily_brief" || kind === "broadcast_daily") {
+    return "daily_brief";
+  }
+  if (status === "skipped_empty") {
+    return "none";
+  }
+  return null;
+}
+
+function describeBroadcastSkipReason(row: OptionalSheetRow | null): string | null {
+  if (!row) {
+    return null;
+  }
+
+  const status = broadcastRowStatus(row);
+  const error = rowValue(row, ["error", "reason", "details", "detail"]);
+  switch (status) {
+    case "sent":
+      return null;
+    case "dry_run":
+      return "dry-run 상태라 실제 채널 발송 없이 로그만 기록했습니다.";
+    case "skipped_empty":
+      return "최근 슬롯에 발송 후보 signal/transaction이 없습니다.";
+    case "skipped_duplicate_content":
+      return "최근 1시간 내 같은 콘텐츠가 이미 기록되어 중복 발송을 막았습니다.";
+    case "skipped_duplicate":
+      return "현재 슬롯은 이미 처리되어 중복 실행을 건너뛰었습니다.";
+    case "skipped_disabled":
+      return "TELEGRAM_BROADCAST_ENABLED가 꺼져 있어 실제 발송하지 않았습니다.";
+    case "skipped_unconfigured":
+      return "채널 chat 또는 publisher token 설정이 부족합니다.";
+    case "failed":
+      return error || "Telegram sendMessage 호출이 실패했습니다.";
+    default:
+      return status.startsWith("skipped") || error ? error || status : null;
+  }
+}
+
+function buildTelegramChannelDeliverySummary(args: {
+  broadcastRows: OptionalSheetRow[];
+}): AdminTelegramChannelDeliverySummary {
+  const latestBroadcastRow = latestOptionalRow(
+    args.broadcastRows,
+    ["ts", "created_at", "updated_at"],
+  );
+  const latestSentRow = latestOptionalRow(
+    args.broadcastRows.filter(isSentBroadcastRow),
+    ["ts", "created_at", "updated_at"],
+  );
+  const explicitNextExpected = rowValue(latestBroadcastRow, [
+    "next_expected_message_at",
+    "next_expected_at",
+  ]);
+  const tokenSource = telegramPublisherTokenSource();
+
+  return {
+    last_channel_message_at: latestSentRow
+      ? latestBroadcastTimestamp(latestSentRow) || null
+      : null,
+    last_channel_status: latestBroadcastRow
+      ? broadcastRowStatus(latestBroadcastRow) || "degraded"
+      : "degraded",
+    last_skip_reason: describeBroadcastSkipReason(latestBroadcastRow),
+    candidate_signal_count: countFromBroadcastRow(
+      latestBroadcastRow,
+      ["signal_count", "candidate_signal_count", "signals"],
+      "signals",
+    ),
+    candidate_transaction_count: countFromBroadcastRow(
+      latestBroadcastRow,
+      ["transaction_count", "candidate_transaction_count", "transactions"],
+      "transactions",
+    ),
+    fallback_source: inferBroadcastFallbackSource(latestBroadcastRow),
+    next_expected_message_at:
+      explicitNextExpected ||
+      (tokenSource === "missing" || !telegramChannelConfigured()
+        ? null
+        : nextQuarterHourIso()),
+    publisher_token_source: tokenSource,
+  };
+}
+
 function buildTelegramObservability(args: {
   subscriberRows: SubscriberRow[];
   channelHealthRows: OptionalSheetRow[];
@@ -2661,6 +2919,9 @@ function buildTelegramObservability(args: {
     args.broadcastRows,
     ["ts", "created_at", "updated_at"],
   );
+  const channelDelivery = buildTelegramChannelDeliverySummary({
+    broadcastRows: args.broadcastRows,
+  });
 
   return {
     subscriberCountActive: activeRows.length,
@@ -2682,6 +2943,7 @@ function buildTelegramObservability(args: {
       rowValue(latestBroadcastRow, ["delivery_mode"]) || undefined,
     lastBroadcastStatus:
       rowValue(latestBroadcastRow, ["status"]) || undefined,
+    ...channelDelivery,
   };
 }
 
@@ -2807,6 +3069,61 @@ function latestPeriodicSendAt(
   return latestPeriodicRun?.finished_at || latestPeriodicRun?.started_at;
 }
 
+function boundedOptionalText(value: string | undefined, maxLength: number): string | undefined {
+  const trimmed = compactString(value);
+  if (!trimmed) {
+    return undefined;
+  }
+  return trimmed.length > maxLength ? `${trimmed.slice(0, maxLength - 1).trimEnd()}…` : trimmed;
+}
+
+function systemLogHasMeaningfulError(row: SystemLogRow): boolean {
+  const status = compactString(row.status).toLowerCase();
+  const errors = compactString(row.errors);
+  const details = compactString(row.details).toLowerCase();
+  return Boolean(
+    errors ||
+      status.includes("error") ||
+      status.includes("fail") ||
+      details.includes("failed") ||
+      details.includes("error"),
+  );
+}
+
+function buildIngestionObservability(args: {
+  latestTransactionAt?: string;
+  latestSignalAt?: string;
+  watchedAddressRows: WatchedAddressRow[];
+  systemLogRows: SystemLogRow[];
+}) {
+  const latestSignalsRun = latestSystemLog(
+    args.systemLogRows.filter((row) => compactString(row.run_type).toLowerCase() === "signals"),
+  );
+  const latestError = boundedOptionalText(
+    latestSignalsRun && systemLogHasMeaningfulError(latestSignalsRun)
+      ? latestSignalsRun.errors || latestSignalsRun.details
+      : undefined,
+    220,
+  );
+
+  return {
+    latest_transaction_at: args.latestTransactionAt,
+    latest_signal_at: args.latestSignalAt,
+    latest_transaction_age_hours:
+      minutesSince(args.latestTransactionAt) == null
+        ? null
+        : Number(((minutesSince(args.latestTransactionAt) ?? 0) / 60).toFixed(1)),
+    latest_signal_age_hours:
+      minutesSince(args.latestSignalAt) == null
+        ? null
+        : Number(((minutesSince(args.latestSignalAt) ?? 0) / 60).toFixed(1)),
+    watched_addresses_active_count: args.watchedAddressRows.filter(watchedAddressIsActive).length,
+    signals_last_run_at: latestSignalsRun?.finished_at || latestSignalsRun?.started_at || undefined,
+    signals_last_status: latestSignalsRun?.status || undefined,
+    signals_last_error: latestError,
+  };
+}
+
 async function buildAdminObservabilitySummary(args: {
   briefLedgerRows: OptionalSheetRow[];
   llmBudgetRows: OptionalSheetRow[];
@@ -2816,6 +3133,8 @@ async function buildAdminObservabilitySummary(args: {
   tgWhaleEventRows: TgWhaleEventRow[];
   channelHealthRows: OptionalSheetRow[];
   systemLogRows: SystemLogRow[];
+  latestTransactionAt?: string;
+  latestSignalAt?: string;
   latestBrief: DashboardBrief | null;
   latestNewsRssLog: SystemLogRow | null;
   serviceHealthRows: OptionalSheetRow[];
@@ -2823,6 +3142,12 @@ async function buildAdminObservabilitySummary(args: {
 }): Promise<AdminObservabilitySummary> {
   const sinceMs = Date.now() - ADMIN_OBSERVABILITY_WINDOW_MS;
   const chainCoverage = buildChainCoverageObservability(args.serviceHealthRows);
+  const ingestion = buildIngestionObservability({
+    latestTransactionAt: args.latestTransactionAt,
+    latestSignalAt: args.latestSignalAt,
+    watchedAddressRows: args.watchedAddressRows,
+    systemLogRows: args.systemLogRows,
+  });
   const chainRollout = buildChainRolloutObservability({
     watchedAddressRows: args.watchedAddressRows,
     chainCoverage,
@@ -2894,6 +3219,7 @@ async function buildAdminObservabilitySummary(args: {
   });
 
   return {
+    ingestion,
     brief: {
       windowHours: ADMIN_OBSERVABILITY_WINDOW_HOURS,
       totalRuns: briefTotalRuns,
@@ -3021,6 +3347,10 @@ export async function getDashboardData(options?: {
   );
   const currentLatestBrief = latestBrief(snapshot.daily_brief);
   const normalizedBrief = normalizeBrief(currentLatestBrief);
+  const transactionUpdatedAt = snapshot.transactionsLatestAt ?? undefined;
+  const signalUpdatedAt = latestTimestampFromIterable(
+    snapshot.signals.map((row) => row.created_at),
+  );
   const adminObservability = includeAdminExtras
     ? await buildAdminObservabilitySummary({
         briefLedgerRows: briefCostLedgerRows,
@@ -3031,19 +3361,20 @@ export async function getDashboardData(options?: {
         tgWhaleEventRows: snapshot.tg_whale_events,
         channelHealthRows,
         systemLogRows: snapshot.system_log,
+        latestTransactionAt: transactionUpdatedAt,
+        latestSignalAt: signalUpdatedAt,
         latestBrief: normalizedBrief,
         latestNewsRssLog,
         serviceHealthRows,
         render: renderObservability,
       })
     : null;
+  const telegramChannelMetrics =
+    adminObservability?.telegram ??
+    buildTelegramChannelDeliverySummary({ broadcastRows: [] });
   const latestRunErrorCount = errorCountForRun(currentLatestRunRow);
   const latestRunStatus = currentLatestRun?.status ?? "unknown";
   const latestRunUpdatedAt = currentLatestRun?.finished_at || currentLatestRun?.started_at || undefined;
-  const transactionUpdatedAt = snapshot.transactionsLatestAt ?? undefined;
-  const signalUpdatedAt = latestTimestampFromIterable(
-    snapshot.signals.map((row) => row.created_at),
-  );
   const briefUpdatedAt = currentLatestBrief?.created_at || currentLatestBrief?.date || undefined;
   const rowCounts: RowCounts = {
     transactions: snapshot.transactionsTotal,
@@ -3205,6 +3536,21 @@ export async function getDashboardData(options?: {
       latestRunStatus,
       latestRunErrorCount,
       lastUpdatedAt: sourceHealth.lastUpdatedAt ?? latestRunUpdatedAt,
+      last_channel_message_at: telegramChannelMetrics.last_channel_message_at,
+      last_channel_status: telegramChannelMetrics.last_channel_status,
+      last_skip_reason: telegramChannelMetrics.last_skip_reason,
+      candidate_signal_count: telegramChannelMetrics.candidate_signal_count,
+      candidate_transaction_count: telegramChannelMetrics.candidate_transaction_count,
+      fallback_source: telegramChannelMetrics.fallback_source,
+      next_expected_message_at: telegramChannelMetrics.next_expected_message_at,
+      publisher_token_source: telegramChannelMetrics.publisher_token_source,
+      latest_transaction_age_hours:
+        adminObservability?.ingestion.latest_transaction_age_hours ?? null,
+      latest_signal_age_hours:
+        adminObservability?.ingestion.latest_signal_age_hours ?? null,
+      watched_addresses_active_count:
+        adminObservability?.ingestion.watched_addresses_active_count ?? null,
+      signals_last_error: adminObservability?.ingestion.signals_last_error ?? null,
       rowCounts,
       latestStatus: currentLatestRun?.status ?? null,
       errorCount: latestRunErrorCount,

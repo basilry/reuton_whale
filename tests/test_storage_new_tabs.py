@@ -539,6 +539,10 @@ class TestBroadcastAndBriefCostLedger:
                 "transaction_count": 3,
                 "slot_key": "20260419T1015",
                 "delivery_mode": "dry_run",
+                "decision": "event_alert",
+                "reason": "signals_or_transactions_available",
+                "candidate_signal_count": 2,
+                "candidate_transaction_count": 3,
             }
         )
 
@@ -546,6 +550,9 @@ class TestBroadcastAndBriefCostLedger:
         assert row[BROADCAST_LOG_HEADERS.index("message_length")] == "1499"
         assert row[BROADCAST_LOG_HEADERS.index("content_hash")] == "abc123"
         assert row[BROADCAST_LOG_HEADERS.index("delivery_mode")] == "dry_run"
+        assert row[BROADCAST_LOG_HEADERS.index("decision")] == "event_alert"
+        assert row[BROADCAST_LOG_HEADERS.index("candidate_signal_count")] == "2"
+        assert row[BROADCAST_LOG_HEADERS.index("candidate_transaction_count")] == "3"
 
     def test_append_brief_cost_ledger_serializes_entry(self):
         client, mock_ss = _make_client()

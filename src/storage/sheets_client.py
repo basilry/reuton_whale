@@ -275,24 +275,93 @@ class SheetsClient:
         with self._write_lock:
             try:
                 ws = self._worksheet(TAB_TRANSACTIONS)
-                existing_hashes = set()
                 all_values = ws.get_all_values()
+                self._ensure_append_only_header_schema(
+                    ws,
+                    all_values,
+                    list(TRANSACTIONS_HEADERS),
+                    tab_name=TAB_TRANSACTIONS,
+                )
+                existing: dict[str, tuple[int, int]] = {}
                 if len(all_values) > 1:
                     hash_col = TRANSACTIONS_HEADERS.index("raw_response_hash")
-                    existing_hashes = {row[hash_col] for row in all_values[1:]}
+                    seen_count_col = TRANSACTIONS_HEADERS.index("seen_count")
+                    for offset, row in enumerate(all_values[1:]):
+                        digest = row[hash_col] if hash_col < len(row) else ""
+                        if not digest:
+                            continue
+                        seen_count = (
+                            row[seen_count_col] if seen_count_col < len(row) else ""
+                        )
+                        existing[digest] = (
+                            offset + 2,
+                            self._int_value(seen_count, default=1),
+                        )
 
-                new_rows = []
+                now = now_iso()
+                new_entries: list[dict] = []
+                pending_new_by_hash: dict[str, dict] = {}
+                refresh_counts: dict[int, int] = {}
                 for tx in transactions:
-                    if tx.get("raw_response_hash") in existing_hashes:
+                    digest = str(tx.get("raw_response_hash") or "").strip()
+                    if digest and digest in existing:
+                        row_idx, current_seen_count = existing[digest]
+                        if row_idx > 0:
+                            refresh_counts[row_idx] = (
+                                refresh_counts.get(row_idx, current_seen_count) + 1
+                            )
+                        else:
+                            pending_entry = pending_new_by_hash.get(digest)
+                            if pending_entry is not None:
+                                pending_entry["last_seen_at"] = now
+                                pending_entry["seen_count"] = (
+                                    self._int_value(
+                                        pending_entry.get("seen_count"),
+                                        default=1,
+                                    )
+                                    + 1
+                                )
                         continue
-                    tx.setdefault("created_at", now_iso())
-                    new_rows.append(dict_to_row(tx, TRANSACTIONS_HEADERS))
+                    entry = dict(tx)
+                    entry.setdefault("created_at", now)
+                    entry["last_seen_at"] = entry.get("last_seen_at") or now
+                    entry["seen_count"] = entry.get("seen_count") or 1
+                    new_entries.append(entry)
+                    if digest:
+                        pending_new_by_hash[digest] = entry
+                        existing[digest] = (
+                            -1,
+                            self._int_value(entry["seen_count"], default=1),
+                        )
 
-                if new_rows:
+                if refresh_counts:
+                    last_seen_col = TRANSACTIONS_HEADERS.index("last_seen_at")
+                    seen_count_col = TRANSACTIONS_HEADERS.index("seen_count")
+                    last_seen_letter = _column_letter(last_seen_col + 1)
+                    seen_count_letter = _column_letter(seen_count_col + 1)
+                    ws.batch_update(
+                        [
+                            {
+                                "range": (
+                                    f"{last_seen_letter}{row_idx}:"
+                                    f"{seen_count_letter}{row_idx}"
+                                ),
+                                "values": [[now, str(seen_count)]],
+                            }
+                            for row_idx, seen_count in sorted(refresh_counts.items())
+                        ],
+                        value_input_option="RAW",
+                    )
+
+                if new_entries:
+                    new_rows = [
+                        dict_to_row(entry, TRANSACTIONS_HEADERS)
+                        for entry in new_entries
+                    ]
                     ws.append_rows(new_rows, value_input_option="RAW")
                 logger.info("Appended %d transactions (%d duplicates skipped)",
-                            len(new_rows), len(transactions) - len(new_rows))
-                return len(new_rows)
+                            len(new_entries), len(transactions) - len(new_entries))
+                return len(new_entries)
             except gspread.exceptions.APIError as e:
                 _raise_storage_error("append transactions", e)
 
@@ -326,6 +395,48 @@ class SheetsClient:
             return rows
         except gspread.exceptions.APIError as e:
             raise StorageError(f"Failed to list transactions: {e}") from e
+
+    @retry(max_retries=3, base_delay=2.0)
+    def list_recent_observed_transactions(
+        self,
+        since: datetime | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
+        try:
+            ws = self._worksheet(TAB_TRANSACTIONS)
+            all_values = ws.get_all_values()
+            if len(all_values) <= 1:
+                return []
+
+            rows = [row_to_dict(row, TRANSACTIONS_HEADERS) for row in all_values[1:]]
+            observed_rows: list[tuple[datetime, dict]] = []
+            fallback_time = datetime.min.replace(tzinfo=timezone.utc)
+            for row in rows:
+                row_time = _parse_row_time(
+                    row.get("last_seen_at")
+                    or row.get("created_at")
+                    or row.get("timestamp", "")
+                )
+                observed_rows.append((row_time or fallback_time, row))
+
+            if since is not None:
+                filtered: list[tuple[datetime, dict]] = []
+                for row_time, row in observed_rows:
+                    if row_time == fallback_time:
+                        continue
+                    if row_time.tzinfo is None and since.tzinfo is not None:
+                        row_time = row_time.replace(tzinfo=since.tzinfo)
+                    if row_time >= since:
+                        filtered.append((row_time, row))
+                observed_rows = filtered
+
+            observed_rows.sort(key=lambda item: item[0])
+            rows = [row for _, row in observed_rows]
+            if limit is not None and limit >= 0:
+                rows = rows[-limit:] if limit else []
+            return rows
+        except gspread.exceptions.APIError as e:
+            raise StorageError(f"Failed to list recent observed transactions: {e}") from e
 
     # --- daily_brief ---
 
@@ -840,6 +951,13 @@ class SheetsClient:
                     "transaction_count": self._int_value(entry.get("transaction_count")),
                     "slot_key": str(entry.get("slot_key", "")),
                     "delivery_mode": str(entry.get("delivery_mode", "")),
+                    "decision": str(entry.get("decision", "")),
+                    "reason": str(entry.get("reason", ""))[:1000],
+                    "fallback_source": str(entry.get("fallback_source", "")),
+                    "candidate_signal_count": self._int_value(entry.get("candidate_signal_count")),
+                    "candidate_transaction_count": self._int_value(entry.get("candidate_transaction_count")),
+                    "last_channel_delivery_at": str(entry.get("last_channel_delivery_at", "")),
+                    "next_expected_at": str(entry.get("next_expected_at", "")),
                 }
                 ws.append_row(
                     dict_to_row(normalized, BROADCAST_LOG_HEADERS),
