@@ -536,6 +536,15 @@ class PostgresClient:
         except Exception as exc:
             raise StorageError(f"Failed to append address activity: {exc}") from exc
 
+    def list_address_activity(self, since: datetime | None = None) -> list[dict]:
+        rows = self._select_rows(
+            "address_activity",
+            ADDRESS_ACTIVITY_HEADERS,
+            time_expr="COALESCE(block_time, collected_at)",
+            since=since,
+        )
+        return _format_rows(rows, ADDRESS_ACTIVITY_HEADERS)
+
     def log_run(self, row: dict) -> None:
         try:
             with self._connect() as conn:

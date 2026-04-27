@@ -237,6 +237,23 @@ def test_list_recent_observed_transactions_filters_by_last_seen_at() -> None:
     assert params == (since, 5)
 
 
+def test_list_address_activity_filters_by_block_time_or_collected_at() -> None:
+    cursor = RecordingCursor(fetchone_result=None)
+    client = PostgresClient(
+        "postgresql://user:pass@example.com/db",
+        connect_func=_connect_with_cursor(cursor),
+    )
+    since = datetime(2026, 4, 27, tzinfo=timezone.utc)
+
+    assert client.list_address_activity(since=since) == []
+
+    sql, params = cursor.calls[-1]
+    assert "FROM address_activity" in sql
+    assert "COALESCE(block_time, collected_at) >= %s" in sql
+    assert "ORDER BY COALESCE(block_time, collected_at) ASC, id ASC" in sql
+    assert params == (since,)
+
+
 def test_list_watched_addresses_orders_by_address_not_id() -> None:
     cursor = RecordingCursor(fetchone_result=None)
     client = PostgresClient(
