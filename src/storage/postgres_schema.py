@@ -278,8 +278,11 @@ CREATE_TABLE_STATEMENTS = (
       watch_reason text,
       risk_note text,
       data_status text,
+      approx_balance_label text,
       tags jsonb,
       source text,
+      source_ref text,
+      source_url text,
       updated_at timestamptz NOT NULL DEFAULT now()
     )
     """,
@@ -412,6 +415,9 @@ MIGRATION_STATEMENTS = (
     "ALTER TABLE IF EXISTS broadcast_log ADD COLUMN IF NOT EXISTS candidate_transaction_count integer",
     "ALTER TABLE IF EXISTS broadcast_log ADD COLUMN IF NOT EXISTS last_channel_delivery_at timestamptz",
     "ALTER TABLE IF EXISTS broadcast_log ADD COLUMN IF NOT EXISTS next_expected_at timestamptz",
+    "ALTER TABLE IF EXISTS wallet_detail_profiles ADD COLUMN IF NOT EXISTS approx_balance_label text",
+    "ALTER TABLE IF EXISTS wallet_detail_profiles ADD COLUMN IF NOT EXISTS source_ref text",
+    "ALTER TABLE IF EXISTS wallet_detail_profiles ADD COLUMN IF NOT EXISTS source_url text",
 )
 
 CREATE_INDEX_STATEMENTS = (

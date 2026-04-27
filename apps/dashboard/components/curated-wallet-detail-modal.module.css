@@ -165,6 +165,31 @@
   color: var(--on-surface-variant);
 }
 
+.noticeCard {
+  display: grid;
+  gap: var(--space-2xs);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent-soft) 80%, transparent), transparent),
+    var(--surface-container);
+}
+
+.noticeTitle {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  color: var(--on-surface);
+}
+
+.noticeBody {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading-relaxed);
+  color: var(--on-surface-variant);
+}
+
 .analysisGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -55,8 +55,11 @@ class WalletProfile:
     watch_reason: str
     risk_note: str
     data_status: str
+    approx_balance_label: str
     tags: list[str]
     source: str = SOURCE
+    source_ref: str = ""
+    source_url: str = ""
 
 
 def display_database_url(database_url: str) -> str:
@@ -142,7 +145,10 @@ def build_profile(row: dict[str, Any]) -> WalletProfile:
     subcategory = clean_text(row.get("owner_subcategory"))
     tier = clean_text(row.get("tier"))
     approx_balance = clean_text(row.get("approx_balance"))
+    approx_balance_label = approx_balance or "원본 큐레이션 문서에 잔고 수치 없음"
     note = clean_text(row.get("note"))
+    source_url = clean_text(row.get("source_url"))
+    public_source_url = source_url if source_url.startswith(("https://", "http://")) else ""
     thesis, behavior, watch = category_copy(category, subcategory)
 
     balance_part = f" 등록 잔고는 약 {approx_balance}입니다." if approx_balance else ""
@@ -172,7 +178,10 @@ def build_profile(row: dict[str, Any]) -> WalletProfile:
         watch_reason=watch,
         risk_note=risk,
         data_status=data_status,
+        approx_balance_label=approx_balance_label,
         tags=tags,
+        source_ref=clean_text(row.get("source_ref")) or "obsidian_top10_liquid_coins",
+        source_url=public_source_url,
     )
 
 
@@ -302,12 +311,13 @@ def upsert_profiles(
         INSERT INTO wallet_detail_profiles (
           wallet_id, entity_id, address, chain, title, thesis,
           behavior_summary, watch_reason, risk_note, data_status,
-          tags, source, updated_at
+          approx_balance_label, tags, source, source_ref, source_url, updated_at
         )
         VALUES (
           %(wallet_id)s, %(entity_id)s, %(address)s, %(chain)s, %(title)s, %(thesis)s,
           %(behavior_summary)s, %(watch_reason)s, %(risk_note)s, %(data_status)s,
-          %(tags)s::jsonb, %(source)s, now()
+          %(approx_balance_label)s, %(tags)s::jsonb, %(source)s, %(source_ref)s,
+          %(source_url)s, now()
         )
         ON CONFLICT (wallet_id) DO UPDATE SET
           entity_id = EXCLUDED.entity_id,
@@ -319,8 +329,11 @@ def upsert_profiles(
           watch_reason = EXCLUDED.watch_reason,
           risk_note = EXCLUDED.risk_note,
           data_status = EXCLUDED.data_status,
+          approx_balance_label = EXCLUDED.approx_balance_label,
           tags = EXCLUDED.tags,
           source = EXCLUDED.source,
+          source_ref = EXCLUDED.source_ref,
+          source_url = EXCLUDED.source_url,
           updated_at = EXCLUDED.updated_at
         {conflict_guard}
         RETURNING (xmax = 0) AS inserted

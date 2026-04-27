@@ -61,8 +61,11 @@ type WalletDetailAnalysis = {
   watchReason?: string;
   riskNote?: string;
   dataStatus?: string;
+  approxBalanceLabel?: string;
   tags: string[];
   source?: string;
+  sourceRef?: string;
+  sourceUrl?: string;
   updatedAt?: string;
 };
 
@@ -368,7 +371,7 @@ export function CuratedWalletDetailModal({
             balancesTitle: "잔고 스냅샷",
             balancesLead: "현재 시트에서 읽을 수 있는 최신 잔고 정보입니다.",
             balanceCompositionTitle: "잔고 구성",
-            balanceCompositionLead: "추적 가능한 잔고 값을 기준으로 상위 보유분만 비중으로 보여줍니다.",
+            balanceCompositionLead: "USD 환산 잔고가 확인된 항목만 비중 차트로 보여줍니다.",
             activityTitle: "최근 온체인 이동",
             activityLead: "해당 엔티티 주소가 직접 연관된 최신 거래입니다.",
             signalsTitle: "연결된 시그널",
@@ -382,11 +385,16 @@ export function CuratedWalletDetailModal({
             balance: "최신 잔고",
             representative: "대표 주소",
             viewSource: "출처 열기",
+            sourceReference: "출처",
+            noPublicSource: "공개 URL 없음",
+            profileOnlyTitle: "현재는 큐레이션 프로필 기반 상세입니다.",
+            profileOnlyBody:
+              "이 지갑 주소와 직접 매칭된 최근 거래·시그널은 아직 없습니다. 실시간 수집 데이터가 같은 주소 또는 증거 해시로 연결되면 이 숫자가 자동으로 채워집니다.",
             unresolved: "데이터 대기",
             noTags: "등록된 태그 없음",
             noAliases: "등록된 별칭 없음",
             noBalances: "표시 가능한 잔고 스냅샷이 없습니다.",
-            noBalanceComposition: "수치형 잔고 값이 부족해 구성 차트를 만들지 못했습니다.",
+            noBalanceComposition: "USD 환산 잔고가 부족해 구성 차트를 만들지 않았습니다.",
             noActivity: "연결된 거래가 아직 없습니다.",
             noSignals: "연결된 시그널이 아직 없습니다.",
             inflow: "유입",
@@ -426,7 +434,7 @@ export function CuratedWalletDetailModal({
             balancesLead: "Latest balance rows available from the sheet-backed registry.",
             balanceCompositionTitle: "Balance composition",
             balanceCompositionLead:
-              "Shows the tracked balance split using the largest balance rows available.",
+              "Shows composition only when USD-normalized balances are available.",
             activityTitle: "Recent on-chain activity",
             activityLead: "Latest transfers directly involving this entity's addresses.",
             signalsTitle: "Linked signals",
@@ -440,11 +448,16 @@ export function CuratedWalletDetailModal({
             balance: "Latest balance",
             representative: "Representative",
             viewSource: "Open source",
+            sourceReference: "Source",
+            noPublicSource: "No public URL",
+            profileOnlyTitle: "This detail is currently backed by the curated profile.",
+            profileOnlyBody:
+              "No recent transactions or signals are directly matched to this wallet address yet. These counts will fill in when live telemetry connects by address or evidence hash.",
             unresolved: "Waiting for data",
             noTags: "No narrative tags yet",
             noAliases: "No aliases yet",
             noBalances: "No balance snapshots are available.",
-            noBalanceComposition: "There is not enough numeric balance data to draw a composition chart.",
+            noBalanceComposition: "There is not enough USD-normalized balance data to draw a composition chart.",
             noActivity: "No related transfers yet.",
             noSignals: "No linked signals yet.",
             inflow: "Inflow",
@@ -792,6 +805,10 @@ export function CuratedWalletDetailModal({
                       >
                         {copy.viewSource}
                       </a>
+                    ) : data.wallet.sourceRef ? (
+                      <span className={styles.pill}>
+                        {copy.sourceReference}: {data.wallet.sourceRef} · {copy.noPublicSource}
+                      </span>
                     ) : null}
                   </div>
 
@@ -834,6 +851,12 @@ export function CuratedWalletDetailModal({
                       </p>
                     </div>
                   </div>
+                  {data.stats.relatedSignalCount === 0 && data.stats.recentTransactionCount === 0 ? (
+                    <div className={styles.noticeCard}>
+                      <p className={styles.noticeTitle}>{copy.profileOnlyTitle}</p>
+                      <p className={styles.noticeBody}>{copy.profileOnlyBody}</p>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className={styles.section}>

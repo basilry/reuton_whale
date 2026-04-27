@@ -131,8 +131,11 @@ export const WALLET_DETAIL_PROFILES_HEADERS = [
   "watch_reason",
   "risk_note",
   "data_status",
+  "approx_balance_label",
   "tags",
   "source",
+  "source_ref",
+  "source_url",
   "updated_at",
 ] as const;
 
@@ -322,8 +325,11 @@ export interface WalletDetailProfileRow {
   watch_reason: string;
   risk_note: string;
   data_status: string;
+  approx_balance_label: string;
   tags: string;
   source: string;
+  source_ref: string;
+  source_url: string;
   updated_at: string;
 }
 

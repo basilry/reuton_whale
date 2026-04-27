@@ -69,6 +69,37 @@ function parseNumberLoose(value: string | undefined | null): number | null {
   return matched ? parseFloatSafe(matched[0]) : null;
 }
 
+function parseUsdBalanceValue(value: string | undefined | null): number | null {
+  const text = compactString(value);
+  if (!text || !/(?:\$|usd|usdt|usdc)/i.test(text)) {
+    return null;
+  }
+
+  const normalized = text.replaceAll(",", "");
+  const matched = normalized.match(/-?\d+(?:\.\d+)?\s*([kmbt])?/i);
+  if (!matched) {
+    return null;
+  }
+
+  const base = parseFloatSafe(matched[0].replace(/[kmbt]/gi, "").trim());
+  if (base == null) {
+    return null;
+  }
+
+  const suffix = matched[1]?.toLowerCase();
+  const multiplier =
+    suffix === "k"
+      ? 1_000
+      : suffix === "m"
+        ? 1_000_000
+        : suffix === "b"
+          ? 1_000_000_000
+          : suffix === "t"
+            ? 1_000_000_000_000
+            : 1;
+  return base * multiplier;
+}
+
 function normalizeEvidenceHashes(value: string): string[] {
   return compactString(value)
     .split(/[,|\s]+/)
@@ -85,6 +116,30 @@ function normalizeProfileTags(value: string): string[] {
     .split(/[,|]/)
     .map((item) => compactString(item))
     .filter(Boolean);
+}
+
+function publicHttpUrl(value: string | undefined | null): string | undefined {
+  const text = compactString(value);
+  if (!text) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(text);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function firstPublicHttpUrl(...values: Array<string | undefined | null>): string | undefined {
+  for (const value of values) {
+    const url = publicHttpUrl(value);
+    if (url) {
+      return url;
+    }
+  }
+  return undefined;
 }
 
 function matchesWalletProfile(
@@ -112,8 +167,11 @@ function normalizeWalletAnalysis(row: WalletDetailProfileRow | null) {
     watchReason: compactString(row.watch_reason),
     riskNote: compactString(row.risk_note),
     dataStatus: compactString(row.data_status),
+    approxBalanceLabel: compactString(row.approx_balance_label),
     tags: normalizeProfileTags(row.tags),
     source: compactString(row.source),
+    sourceRef: compactString(row.source_ref),
+    sourceUrl: publicHttpUrl(row.source_url),
     updatedAt: compactString(row.updated_at),
   };
 }
@@ -382,6 +440,33 @@ export async function GET(
       matchingBalances.find((row) => normalizeKey(row.wallet_id) === normalizeKey(representative.id)) ??
       matchingBalances[0] ??
       null;
+    const profileBalanceLabel = compactString(matchingProfileRow?.approx_balance_label ?? "");
+    const latestBalanceLabel =
+      compactString(latestBalanceRow?.approx_balance ?? representativeCuratedRow?.approx_balance ?? "") ||
+      profileBalanceLabel ||
+      undefined;
+    const latestBalanceSourceRef =
+      compactString(
+        latestBalanceRow?.source_ref ??
+          representativeCuratedRow?.source_ref ??
+          matchingProfileRow?.source_ref ??
+          "",
+      ) ||
+      compactString(matchingProfileRow?.source ?? "") ||
+      undefined;
+    const latestBalanceSourceUrl = firstPublicHttpUrl(
+      latestBalanceRow?.source_url ??
+        "",
+      representativeCuratedRow?.source_url ?? "",
+      matchingProfileRow?.source_url ?? "",
+    );
+    const latestBalanceUpdatedAt =
+      compactString(
+        latestBalanceRow?.updated_at ??
+          representativeCuratedRow?.updated_at ??
+          matchingProfileRow?.updated_at ??
+          "",
+      ) || undefined;
 
     const payload = sanitizeForRsc({
       wallet: {
@@ -398,18 +483,10 @@ export async function GET(
         focusSymbols: representative.focusSymbols ?? [],
         aliases: representative.aliases ?? [],
         narrativeTags: representative.narrativeTags ?? [],
-        sourceRef: compactString(
-          latestBalanceRow?.source_ref ?? representativeCuratedRow?.source_ref ?? "",
-        ) || undefined,
-        sourceUrl: compactString(
-          latestBalanceRow?.source_url ?? representativeCuratedRow?.source_url ?? "",
-        ) || undefined,
-        approxBalance:
-          compactString(latestBalanceRow?.approx_balance ?? representativeCuratedRow?.approx_balance ?? "") ||
-          undefined,
-        updatedAt:
-          compactString(latestBalanceRow?.updated_at ?? representativeCuratedRow?.updated_at ?? "") ||
-          undefined,
+        sourceRef: latestBalanceSourceRef,
+        sourceUrl: latestBalanceSourceUrl,
+        approxBalance: latestBalanceLabel,
+        updatedAt: latestBalanceUpdatedAt,
       },
       analysis: normalizeWalletAnalysis(matchingProfileRow),
       entity: {
@@ -434,44 +511,46 @@ export async function GET(
         inflowUsd,
         outflowUsd,
         netflowUsd: inflowUsd - outflowUsd,
-        latestBalance:
-          compactString(latestBalanceRow?.approx_balance ?? representativeCuratedRow?.approx_balance ?? "") ||
-          undefined,
-        latestBalanceUpdatedAt:
-          compactString(latestBalanceRow?.updated_at ?? representativeCuratedRow?.updated_at ?? "") ||
-          undefined,
+        latestBalance: latestBalanceLabel,
+        latestBalanceUpdatedAt,
       },
       balances:
         matchingBalances.length > 0
-          ? matchingBalances.slice(0, 8).map((row) => ({
-              walletId: compactString(row.wallet_id),
-              label:
-                compactString(row.owner_label) ||
-                orderedEntityWallets.find((wallet) => normalizeKey(wallet.id) === normalizeKey(row.wallet_id))
-                  ?.label ||
-                shortAddress(row.address),
-              chain: compactString(row.chain) || "unknown",
-              approxBalance: compactString(row.approx_balance) || "-",
-              approxBalanceValue: parseNumberLoose(row.approx_balance),
-              sourceRef: compactString(row.source_ref) || undefined,
-              sourceUrl: compactString(row.source_url) || undefined,
-              note: compactString(row.note) || undefined,
-              isActive: normalizeKey(row.is_active) !== "false",
-              updatedAt: compactString(row.updated_at) || undefined,
-            }))
+          ? matchingBalances.slice(0, 8).map((row) => {
+              const rowBalanceLabel =
+                compactString(row.approx_balance) ||
+                (normalizeKey(row.wallet_id) === normalizeKey(representative.id) ? profileBalanceLabel : "") ||
+                "-";
+              return {
+                walletId: compactString(row.wallet_id),
+                label:
+                  compactString(row.owner_label) ||
+                  orderedEntityWallets.find((wallet) => normalizeKey(wallet.id) === normalizeKey(row.wallet_id))
+                    ?.label ||
+                  shortAddress(row.address),
+                chain: compactString(row.chain) || "unknown",
+                approxBalance: rowBalanceLabel,
+                approxBalanceValue: parseUsdBalanceValue(rowBalanceLabel),
+                sourceRef: compactString(row.source_ref) || latestBalanceSourceRef,
+                sourceUrl: publicHttpUrl(row.source_url) ?? latestBalanceSourceUrl,
+                note: compactString(row.note) || undefined,
+                isActive: normalizeKey(row.is_active) !== "false",
+                updatedAt: compactString(row.updated_at) || undefined,
+              };
+            })
           : representativeCuratedRow
             ? [
                 {
                   walletId: representative.id,
                   label: representative.label,
                   chain: representative.chain,
-                  approxBalance: compactString(representativeCuratedRow.approx_balance) || "-",
-                  approxBalanceValue: parseNumberLoose(representativeCuratedRow.approx_balance),
-                  sourceRef: compactString(representativeCuratedRow.source_ref) || undefined,
-                  sourceUrl: compactString(representativeCuratedRow.source_url) || undefined,
+                  approxBalance: latestBalanceLabel ?? "-",
+                  approxBalanceValue: parseUsdBalanceValue(latestBalanceLabel),
+                  sourceRef: latestBalanceSourceRef,
+                  sourceUrl: latestBalanceSourceUrl,
                   note: compactString(representativeCuratedRow.note) || undefined,
                   isActive: normalizeKey(representativeCuratedRow.is_active) !== "false",
-                  updatedAt: compactString(representativeCuratedRow.updated_at) || undefined,
+                  updatedAt: latestBalanceUpdatedAt,
                 },
               ]
             : [],
@@ -513,7 +592,7 @@ export async function GET(
           curatedWallets: true,
           transactions: matchingTransactions.length > 0,
           signals: matchingSignals.length > 0,
-          balances: matchingBalances.length > 0,
+          balances: matchingBalances.length > 0 || Boolean(latestBalanceLabel),
         },
       },
     });
