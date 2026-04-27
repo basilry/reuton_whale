@@ -539,8 +539,8 @@ export function AboutClient({ entries, logCount, onePagerHtml, readmeHtml }: Abo
                   <td>
                     <strong>Codex</strong>
                   </td>
-                  <td>리서치·스켈레톤</td>
-                  <td>초기 폴더 구조, 탐지 규칙 의사코드</td>
+                  <td>병렬 개발·QA·운영 문서화</td>
+                  <td>PostgreSQL 전환, 운영 장애 분석, 유저홈 품질 점검, 빌드/테스트 검증</td>
                 </tr>
                 <tr>
                   <td>
@@ -727,7 +727,7 @@ export function AboutClient({ entries, logCount, onePagerHtml, readmeHtml }: Abo
             className={`prose-editorial${activeTab === "timeline" ? " is-active" : ""}`}
           >
             <header style={{ marginBottom: 24 }}>
-              <p className="panel-head-eyebrow">Decision Log · Day 1 → Day 10</p>
+              <p className="panel-head-eyebrow">Decision Log · Day 1 → Day 12</p>
               <h2 className="panel-head-title">가설은 어떻게 갱신되었는가</h2>
             </header>
 
@@ -769,13 +769,21 @@ export function AboutClient({ entries, logCount, onePagerHtml, readmeHtml }: Abo
               <li>Sheets L1 + Redis L2 dual-role 정식화</li>
             </ul>
 
-            <h3 id="tl-5">유지된 결정</h3>
+            <h3 id="tl-5">Day 11–12 · 운영 DB 전환과 품질 회복</h3>
+            <ul>
+              <li>Sheets 10M cell 한도를 계기로 Render PostgreSQL을 primary storage로 전환</li>
+              <li>Telegram은 개인 DM bot과 공개 채널 broadcast를 분리해 channel-first 운영으로 정리</li>
+              <li>Postgres table key 가정 오류를 복구하고 감시 주소 seed를 production DB에 재주입</li>
+              <li>유저홈 fallback 브리핑에는 USD 환산 대기, 이전 감지 사례, 데이터 품질 상태를 명시</li>
+            </ul>
+
+            <h3 id="tl-6">유지된 결정</h3>
             <blockquote>
-              &quot;탐지는 규칙, 설명은 LLM&quot; — 1일차부터 유지된 단일 원칙. 아키텍처 흔들림 없이 10일 내내
+              &quot;탐지는 규칙, 설명은 LLM&quot; — 1일차부터 유지된 단일 원칙. 아키텍처 흔들림 없이 12일 내내
               파이프라인의 분업이 유지됨.
             </blockquote>
 
-            <h3 id="tl-6">회고 — 다음에 바꾼다면</h3>
+            <h3 id="tl-7">회고 — 다음에 바꾼다면</h3>
             <ul>
               <li>Day 1에 Next.js로 바로 시작 — Streamlit에서의 2일 투자는 회수되지 않았다</li>
               <li>시장 컨텍스트(가격·매크로) 연결을 Day 5 이전에 — 규칙 품질 상한이 데이터 폭에 묶인다</li>
@@ -792,9 +800,9 @@ export function AboutClient({ entries, logCount, onePagerHtml, readmeHtml }: Abo
           >
             <header className="panel-md-header">
               <div>
-                <p className="panel-head-eyebrow">Session Log · 2026-04-14 → 2026-04-23</p>
+                <p className="panel-head-eyebrow">Session Log · 2026-04-14 → 2026-04-27</p>
                 <h2 className="panel-head-title">
-                  10일간의 작업 로그 — <span className="tabular-nums">{logCount}</span>개 세션
+                  12일간의 작업 로그 — <span className="tabular-nums">{logCount}</span>개 세션
                 </h2>
                 <p style={{ fontSize: 14, marginTop: 8, maxWidth: "65ch" }}>
                   프로젝트 기간 동안 Obsidian에 축적된 설계 / 리뷰 / 개선 이행 문서를 일자별로 열람합니다.

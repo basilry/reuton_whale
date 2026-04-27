@@ -68,6 +68,12 @@ export default async function AboutPage() {
                 </span>
                 Day 7 · MVP 제출
               </span>
+              <span className="hero-chip hero-chip--secondary">
+                <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: 14 }}>
+                  storage
+                </span>
+                2026-04-27 · 운영 복구 기록 반영
+              </span>
             </div>
 
             <h1 id="hero-title" className="hero-title">
@@ -79,8 +85,8 @@ export default async function AboutPage() {
 
             <p className="hero-lead">
               온체인 고래 지갑의 이동을 <strong>규칙 엔진 + LLM 라우터</strong>로 해석하고, 한국어 2–3문장
-              컨텍스트로 매일 09:00·15:00·21:00 큐레이션합니다. Streamlit 프로토타입에서 Next.js + Google
-              Sheets + Upstash Redis로 재설계했습니다.
+              컨텍스트로 매일 09:00·15:00·21:00 큐레이션합니다. Streamlit 프로토타입에서 Next.js + Render
+              PostgreSQL + Upstash Redis로 재설계했습니다.
             </p>
 
             <p className="hero-sub">
@@ -208,7 +214,7 @@ export default async function AboutPage() {
                   • First Load JS <span className="tabular-nums" style={{ fontWeight: 700 }}>206</span> kB
                 </li>
                 <li>• 6 체인 상시 + 4 체인 카나리</li>
-                <li>• Sheets L1 + Redis L2 dual-cache</li>
+                <li>• PostgreSQL primary + Sheets legacy/mirror</li>
               </ul>
             </article>
 
@@ -250,10 +256,10 @@ export default async function AboutPage() {
               <strong style={{ fontWeight: 700 }}>WhaleScope · /about</strong>
               <span className="small">
                 문서 최종 갱신{" "}
-                <time dateTime="2026-04-23" className="tabular-nums" style={{ fontWeight: 700 }}>
-                  2026-04-23
+                <time dateTime="2026-04-27" className="tabular-nums" style={{ fontWeight: 700 }}>
+                  2026-04-27
                 </time>{" "}
-                · 빌드 <span className="tabular-nums" style={{ fontWeight: 700 }}>v0.9.3</span>
+                · 빌드 <span className="tabular-nums" style={{ fontWeight: 700 }}>v0.9.5</span>
               </span>
               <span className="small">
                 이 페이지의 원본 문서는 GitHub <code>ONE_PAGER.md</code> · <code>README.md</code>에서 확인할 수

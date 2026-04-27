@@ -1,6 +1,6 @@
 {
   "generated_at": "2026-04-27",
-  "count": 89,
+  "count": 90,
   "entries": [
     {
       "file": "Top 10 Liquid Coins - Whale Wallets (2026.4 Updated).md",
@@ -715,6 +715,14 @@
       "title": "WhaleScope 운영탭 수집 중단 원인분석 및 개선안",
       "slug": "WhaleScope-운영탭-수집중단-원인분석-및-개선안",
       "category": "incident-analysis"
+    },
+    {
+      "file": "2026-04-27-02-WhaleScope-유저홈-점검-및-개선안.md",
+      "date": "2026-04-27",
+      "seq": "02",
+      "title": "WhaleScope 유저홈 점검 및 개선안",
+      "slug": "WhaleScope-유저홈-점검-및-개선안",
+      "category": "improvement-plan"
     }
   ]
 }
