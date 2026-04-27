@@ -315,6 +315,11 @@ def _fallback_importance_score(amount_usd: float | None) -> float:
 
 
 def _fallback_highlights(top_items: list[dict]) -> list[str]:
+    """Return JSON-array-ready highlight strings.
+
+    Keep each highlight as one string item. Numeric grouping commas (for
+    example ``210,592``) are safe as long as storage writes this list as JSON.
+    """
     highlights: list[str] = []
     for item in top_items[:4]:
         symbol = str(item.get("symbol") or "UNKNOWN")
@@ -327,6 +332,19 @@ def _fallback_highlights(top_items: list[dict]) -> list[str]:
             amount_label = f"{_format_token_amount(token_amount)} {symbol}"
         highlights.append(f"{symbol} · {amount_label} · {movement}")
     return highlights
+
+
+def _serialize_fallback_top_transactions(top_items: list[dict]) -> list[dict]:
+    serialized = _serialize_top_transactions(top_items)
+    for output, source in zip(serialized, top_items):
+        output["amount_token"] = source.get("amount_token")
+        output["amount_usd_known"] = bool(
+            source.get("amount_usd_known", output.get("amount_usd_known", True))
+        )
+        output["movement_label"] = source.get("movement_label", "")
+        if not output.get("interpretation"):
+            output["interpretation"] = source.get("interpretation", "")
+    return serialized
 
 
 def _bounded_score(value: float) -> int:
@@ -532,6 +550,22 @@ def _fallback_summary(
     symbol = str(top_item.get("symbol") or "UNKNOWN")
     direction = str(top_item.get("movement_label") or "온체인 이동")
     amount_usd = top_item.get("amount_usd")
+    if priced_count == 0 and transaction_count > 0:
+        amount_token = _format_token_amount(safe_float(top_item.get("amount_token")))
+        if "거래소 유입" in direction or "거래소 유출" in direction:
+            interpretation = (
+                f"대표 이동 성격은 {direction}이나 가격 미확인 상태라 방향성 판단은 보류합니다."
+            )
+        else:
+            interpretation = "거래소 유입/유출 신호는 아직 확인되지 않아 방향성 판단을 보류합니다."
+        return (
+            "최근 60분은 시그널 기반 일반 브리핑이 아닌 가격 미확인 거래 fallback입니다. "
+            f"관측량: 온체인 이동 {transaction_count}건. "
+            f"가격 품질: USD 환산 0건 / 미확인 {transaction_count}건. "
+            f"대표 이동: {symbol} {amount_token} {symbol} 수량, {direction}. "
+            f"해석: {interpretation}"
+        )
+
     if amount_usd not in (None, "") and safe_float(amount_usd) > 0:
         return (
             f"최근 60분 온체인 대형 이동 {transaction_count}건 감지. "
@@ -542,7 +576,7 @@ def _fallback_summary(
     amount_token = _format_token_amount(safe_float(top_item.get("amount_token")))
     return (
         f"최근 60분 온체인 이동 {transaction_count}건 감지. "
-        f"대표 이동은 {symbol} {amount_token}건 규모이며 성격은 {direction}입니다. "
+        f"대표 이동은 {symbol} {amount_token} {symbol} 수량이며 성격은 {direction}입니다. "
         "USD 환산은 현재 가격 응답 지연으로 일부 보류되었습니다."
     )
 
@@ -671,7 +705,7 @@ def _build_transaction_fallback_brief(
             top_item=top_item,
         ),
         "top_transactions": json.dumps(
-            _serialize_top_transactions(top_items),
+            _serialize_fallback_top_transactions(top_items),
             ensure_ascii=False,
         ),
         "total_volume_usd": total_volume_usd,

@@ -11,6 +11,7 @@ export type DashboardMetrics = {
   lastUpdatedAt?: string;
   last_channel_message_at?: string | null;
   last_channel_status?: string | null;
+  telegramChannelMemberCountLatest?: number | null;
   last_skip_reason?: string | null;
   candidate_signal_count?: number | null;
   candidate_transaction_count?: number | null;
@@ -21,6 +22,7 @@ export type DashboardMetrics = {
   latest_signal_age_hours?: number | null;
   watched_addresses_active_count?: number | null;
   signals_last_error?: string | null;
+  signals_last_warning?: string | null;
 };
 
 export type AdminObservabilityRatioSummary = {
@@ -37,6 +39,8 @@ export type AdminBriefObservability = {
   skippedBudget: AdminObservabilityRatioSummary;
   llmCallCount: number;
   latestGeneratedAt?: string;
+  latestLedgerAt?: string;
+  latestLedgerDecision?: string;
 };
 
 export type AdminBroadcastObservability = {
@@ -206,6 +210,7 @@ export type AdminIngestionObservability = {
   signals_last_run_at?: string;
   signals_last_status?: string;
   signals_last_error?: string;
+  signals_last_warning?: string;
 };
 
 export type RenderServiceKey = "pipeline" | "listener" | "bot";
@@ -452,6 +457,57 @@ export type BriefMarketMood = {
   asOf?: string;
 };
 
+export type BriefNoteMeta = {
+  mode?: string;
+  fallbackMode?: string;
+  signals?: number | null;
+  transactions?: number | null;
+  priced?: number | null;
+  unpriced?: number | null;
+  window_min?: number | null;
+  message?: string;
+  market_mood?: BriefMarketMood;
+  [key: string]: string | number | boolean | null | BriefMarketMood | undefined;
+};
+
+export type BriefQuality = {
+  isFallback: boolean;
+  fallbackMode?: string;
+  signals: number | null;
+  transactions: number | null;
+  priced: number | null;
+  unpriced: number | null;
+  windowMin: number | null;
+  pricedRatio: number | null;
+  hasSignals: boolean;
+  hasPrices: boolean;
+};
+
+export type DashboardBriefTopTransaction = {
+  symbol?: unknown;
+  amountUsd?: unknown;
+  amount_usd?: unknown;
+  chain?: unknown;
+  blockchain?: unknown;
+  amountToken?: unknown;
+  amount_token?: unknown;
+  amountUsdKnown?: unknown;
+  amount_usd_known?: unknown;
+  movementLabel?: unknown;
+  movement_label?: unknown;
+  interpretation?: unknown;
+};
+
+export type NormalizedBriefTopTransaction = {
+  symbol: string;
+  amountUsd: number;
+  chain: string;
+  amountToken?: number;
+  amountUsdKnown?: boolean;
+  movementLabel?: string;
+  interpretation?: string;
+};
+
 export type DashboardBrief = {
   date?: string;
   generatedAt?: string;
@@ -462,14 +518,10 @@ export type DashboardBrief = {
   signalThemes?: string[];
   note?: string;
   noteRaw?: string;
+  meta?: BriefNoteMeta;
+  quality?: BriefQuality;
   marketMood?: BriefMarketMood;
-  topTransactions?: Array<{
-    symbol?: unknown;
-    amountUsd?: unknown;
-    amount_usd?: unknown;
-    chain?: unknown;
-    blockchain?: unknown;
-  }>;
+  topTransactions?: DashboardBriefTopTransaction[];
 };
 
 export type DashboardData = {
@@ -513,12 +565,10 @@ export type NormalizedBrief = {
   signalThemes?: string[];
   note?: string;
   noteRaw?: string;
+  meta?: BriefNoteMeta;
+  quality?: BriefQuality;
   marketMood?: BriefMarketMood;
-  topTransactions?: Array<{
-    symbol: string;
-    amountUsd: number;
-    chain: string;
-  }>;
+  topTransactions?: NormalizedBriefTopTransaction[];
 };
 
 export type DisplayTransactionRow = {

@@ -61,9 +61,12 @@ import type {
   AdminTgMirrorObservability,
   AdminTelegramObservability,
   BriefMarketMood,
+  BriefNoteMeta,
+  BriefQuality,
   CuratedWalletEntry,
   CuratedWatchlistItem,
   DisplaySignalRow,
+  NormalizedBriefTopTransaction,
   OperatorCheck,
   OpsServiceHealth,
   OpsServiceName,
@@ -200,6 +203,7 @@ export interface DashboardMetrics {
   lastUpdatedAt?: string;
   last_channel_message_at: string | null;
   last_channel_status: string | null;
+  telegramChannelMemberCountLatest: number | null;
   last_skip_reason: string | null;
   candidate_signal_count: number | null;
   candidate_transaction_count: number | null;
@@ -210,6 +214,7 @@ export interface DashboardMetrics {
   latest_signal_age_hours: number | null;
   watched_addresses_active_count: number | null;
   signals_last_error: string | null;
+  signals_last_warning: string | null;
   rowCounts: RowCounts;
   latestStatus: string | null;
   errorCount: number;
@@ -237,12 +242,10 @@ export interface DashboardBrief {
   signalThemes: string[];
   note?: string;
   noteRaw?: string;
+  meta?: BriefNoteMeta;
+  quality?: BriefQuality;
   marketMood?: BriefMarketMood;
-  topTransactions: Array<{
-    symbol: string;
-    amountUsd: number;
-    chain: string;
-  }>;
+  topTransactions: NormalizedBriefTopTransaction[];
 }
 
 export interface DashboardData {
@@ -1196,6 +1199,81 @@ function errorCountForRun(row: SystemLogRow | null): number {
   return parsedCount ?? 1;
 }
 
+function parseBriefNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = compactString(value).replace(/,/g, "");
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseBriefBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = compactString(value).toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return undefined;
+}
+
+function recordText(record: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string") {
+      const text = compactString(value);
+      if (text) {
+        return text;
+      }
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(value);
+    }
+  }
+  return "";
+}
+
+function recordNumber(record: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const parsed = parseBriefNumber(record[key]);
+    if (parsed !== null) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function recordBoolean(record: Record<string, unknown>, keys: string[]): boolean | undefined {
+  for (const key of keys) {
+    const parsed = parseBriefBoolean(record[key]);
+    if (parsed !== undefined) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
 function normalizeTopTransactions(row: DailyBriefRow | null): DashboardBrief["topTransactions"] {
   if (!row) {
     return [];
@@ -1212,14 +1290,176 @@ function normalizeTopTransactions(row: DailyBriefRow | null): DashboardBrief["to
         return null;
       }
       const record = item as Record<string, unknown>;
-      const amountUsd = parseFloatSafe(String(record.amount_usd ?? record.amountUsd ?? ""));
-      return {
-        symbol: compactString(String(record.symbol ?? "")) || "UNKNOWN",
+      const amountUsd = recordNumber(record, ["amount_usd", "amountUsd"]);
+      const amountToken = recordNumber(record, [
+        "amount_token",
+        "amountToken",
+        "token_amount",
+        "quantity",
+        "amount",
+      ]);
+      const amountUsdKnown = recordBoolean(record, ["amount_usd_known", "amountUsdKnown"]);
+      const movementLabel = recordText(record, ["movement_label", "movementLabel"]);
+      const interpretation = recordText(record, ["interpretation"]);
+      const normalized: NormalizedBriefTopTransaction = {
+        symbol: recordText(record, ["symbol"]) || "UNKNOWN",
         amountUsd: amountUsd ?? 0,
-        chain: compactString(String(record.chain ?? record.blockchain ?? "")) || "Unknown",
+        chain: recordText(record, ["chain", "blockchain"]) || "Unknown",
       };
+
+      if (amountToken !== null) {
+        normalized.amountToken = amountToken;
+      }
+      if (amountUsdKnown !== undefined) {
+        normalized.amountUsdKnown = amountUsdKnown;
+      }
+      if (movementLabel) {
+        normalized.movementLabel = movementLabel;
+      }
+      if (interpretation) {
+        normalized.interpretation = interpretation;
+      }
+
+      return normalized;
     })
     .filter((item): item is DashboardBrief["topTransactions"][number] => item !== null);
+}
+
+function stripSerializedListItem(value: string): string {
+  const item = compactString(value);
+  if (item.length < 2) {
+    return item;
+  }
+
+  const first = item[0];
+  const last = item[item.length - 1];
+  if ((first === "'" && last === "'") || (first === '"' && last === '"')) {
+    return item
+      .slice(1, -1)
+      .replace(/\\'/g, "'")
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, "\\")
+      .trim();
+  }
+
+  return item;
+}
+
+function parseBracketedStringList(raw: string): string[] | null {
+  const text = compactString(raw);
+  if (!text.startsWith("[") || !text.endsWith("]")) {
+    return null;
+  }
+
+  const inner = text.slice(1, -1);
+  const items: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+
+  for (let index = 0; index < inner.length; index += 1) {
+    const char = inner[index];
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+
+    if (quote) {
+      if (char === "\\") {
+        current += char;
+        escaped = true;
+        continue;
+      }
+      if (char === quote) {
+        current += char;
+        quote = null;
+        continue;
+      }
+      current += char;
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      current += char;
+      quote = char;
+      continue;
+    }
+
+    if (char === "," && !isNumericComma(inner, index)) {
+      items.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current || inner.trim()) {
+    items.push(current);
+  }
+
+  return items
+    .map(stripSerializedListItem)
+    .filter(Boolean);
+}
+
+function isNumericComma(raw: string, index: number): boolean {
+  return /\d/.test(raw[index - 1] ?? "") && /\d/.test(raw[index + 1] ?? "");
+}
+
+function splitLooseStringList(raw: string): string[] {
+  const items: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+
+    if (quote) {
+      if (char === "\\") {
+        current += char;
+        escaped = true;
+        continue;
+      }
+      if (char === quote) {
+        current += char;
+        quote = null;
+        continue;
+      }
+      current += char;
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      current += char;
+      quote = char;
+      continue;
+    }
+
+    if (char === "\n" || char === "|" || (char === "," && !isNumericComma(raw, index))) {
+      items.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current) {
+    items.push(current);
+  }
+
+  return items
+    .map(stripSerializedListItem)
+    .filter(Boolean);
 }
 
 function normalizeStringList(value: string | undefined): string[] {
@@ -1235,10 +1475,7 @@ function normalizeStringList(value: string | undefined): string[] {
       .filter(Boolean);
   }
 
-  return raw
-    .split(/[,\n|]/)
-    .map((item) => compactString(item))
-    .filter(Boolean);
+  return parseBracketedStringList(raw) ?? splitLooseStringList(raw);
 }
 
 function normalizeDashboardSignal(row: SignalRow): DisplaySignalRow {
@@ -1344,9 +1581,149 @@ function normalizeBriefMarketMood(value: unknown): BriefMarketMood | undefined {
   };
 }
 
+function normalizeBriefMetaValue(
+  value: unknown,
+): string | number | boolean | null | BriefMarketMood | undefined {
+  if (value === null) {
+    return null;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const text = compactString(value);
+    if (!text) {
+      return undefined;
+    }
+    const numeric = parseBriefNumber(text);
+    if (numeric !== null && /^-?[\d,]+(?:\.\d+)?$/.test(text)) {
+      return numeric;
+    }
+    const boolean = parseBriefBoolean(text);
+    return boolean ?? text;
+  }
+  if (value && typeof value === "object") {
+    return safeStringifyBounded(value, 500);
+  }
+  return undefined;
+}
+
+function normalizedBriefMetaNumber(meta: BriefNoteMeta, key: string): number | null {
+  const value = meta[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function buildBriefQuality(meta: BriefNoteMeta): BriefQuality | undefined {
+  const signals = normalizedBriefMetaNumber(meta, "signals");
+  const transactions = normalizedBriefMetaNumber(meta, "transactions");
+  const priced = normalizedBriefMetaNumber(meta, "priced");
+  const unpriced = normalizedBriefMetaNumber(meta, "unpriced");
+  const windowMin = normalizedBriefMetaNumber(meta, "window_min");
+  const fallbackMode = compactString(String(meta.fallbackMode ?? ""));
+  const mode = compactString(String(meta.mode ?? ""));
+  const hasKnownQuality =
+    Boolean(mode) ||
+    Boolean(fallbackMode) ||
+    signals !== null ||
+    transactions !== null ||
+    priced !== null ||
+    unpriced !== null ||
+    windowMin !== null;
+
+  if (!hasKnownQuality) {
+    return undefined;
+  }
+
+  return {
+    isFallback: Boolean(fallbackMode || mode.includes("fallback")),
+    fallbackMode: fallbackMode || (mode.includes("fallback") ? mode : undefined),
+    signals,
+    transactions,
+    priced,
+    unpriced,
+    windowMin,
+    pricedRatio:
+      priced !== null && transactions !== null && transactions > 0
+        ? priced / transactions
+        : null,
+    hasSignals: (signals ?? 0) > 0,
+    hasPrices: (priced ?? 0) > 0,
+  };
+}
+
+function parsePipeBriefNote(notePart: string): { note?: string; meta: BriefNoteMeta } {
+  const messageMarker = "|message=";
+  const markerIndex = notePart.indexOf(messageMarker);
+  const metadataPart = markerIndex >= 0 ? notePart.slice(0, markerIndex) : notePart;
+  const message =
+    markerIndex >= 0
+      ? compactString(notePart.slice(markerIndex + messageMarker.length))
+      : undefined;
+  const hasStructuredTokens = metadataPart.includes("|") || metadataPart.includes("=");
+  const meta: BriefNoteMeta = {};
+  let noteCandidate = "";
+
+  metadataPart
+    .split("|")
+    .map((item) => compactString(item))
+    .filter(Boolean)
+    .forEach((token, index) => {
+      const delimiter = token.indexOf("=");
+      if (delimiter < 0) {
+        if (index === 0) {
+          if (hasStructuredTokens || token.includes("fallback") || token.includes("_")) {
+            meta.mode = token;
+          }
+          if (token.includes("fallback")) {
+            meta.fallbackMode = token;
+          } else if (!hasStructuredTokens) {
+            noteCandidate = token;
+          }
+        }
+        return;
+      }
+
+      const key = compactString(token.slice(0, delimiter));
+      if (!key) {
+        return;
+      }
+      const value = normalizeBriefMetaValue(token.slice(delimiter + 1));
+      if (value !== undefined) {
+        meta[key] = value;
+      }
+      if (key === "message" && typeof value === "string") {
+        noteCandidate = value;
+      }
+      if (
+        key === "fallback_source" ||
+        key === "fallbackMode" ||
+        key === "fallback_mode"
+      ) {
+        const fallbackValue = compactString(String(value ?? ""));
+        if (fallbackValue) {
+          meta.fallbackMode = fallbackValue;
+        }
+      }
+    });
+
+  if (message) {
+    meta.message = message;
+  }
+
+  return {
+    note: message || noteCandidate || undefined,
+    meta,
+  };
+}
+
 function parseBriefNote(value: string | undefined): {
   note?: string;
   noteRaw?: string;
+  meta?: BriefNoteMeta;
+  quality?: BriefQuality;
   marketMood?: BriefMarketMood;
 } {
   const noteRaw = compactString(value);
@@ -1355,19 +1732,36 @@ function parseBriefNote(value: string | undefined): {
   }
 
   const [notePart, metaPart] = noteRaw.split("||meta:", 2);
-  const messageMarker = "|message=";
-  const markerIndex = notePart.indexOf(messageMarker);
-  const note =
-    markerIndex >= 0
-      ? compactString(notePart.slice(markerIndex + messageMarker.length))
-      : compactString(notePart);
+  const parsedPipe = parsePipeBriefNote(notePart);
+  const meta: BriefNoteMeta = { ...parsedPipe.meta };
+  const jsonMeta = metaPart ? parseJsonSafe<Record<string, unknown>>(metaPart) : null;
+  const marketMood = normalizeBriefMarketMood(jsonMeta?.market_mood);
 
-  const meta = metaPart ? parseJsonSafe<Record<string, unknown>>(metaPart) : null;
+  if (jsonMeta) {
+    Object.entries(jsonMeta).forEach(([key, rawValue]) => {
+      if (key === "market_mood") {
+        if (marketMood) {
+          meta.market_mood = marketMood;
+        }
+        return;
+      }
+
+      const value = normalizeBriefMetaValue(rawValue);
+      if (value !== undefined) {
+        meta[key] = value;
+      }
+    });
+  }
+
+  const quality = buildBriefQuality(meta);
+  const hasMeta = Object.keys(meta).length > 0;
 
   return {
-    note: note || undefined,
+    note: parsedPipe.note,
     noteRaw,
-    marketMood: normalizeBriefMarketMood(meta?.market_mood),
+    meta: hasMeta ? meta : undefined,
+    quality,
+    marketMood,
   };
 }
 
@@ -1388,6 +1782,8 @@ function normalizeBrief(row: DailyBriefRow | null): DashboardBrief | null {
     signalThemes: normalizeStringList(row.signal_themes),
     note: parsedNote.note,
     noteRaw: parsedNote.noteRaw,
+    meta: parsedNote.meta,
+    quality: parsedNote.quality,
     marketMood: parsedNote.marketMood,
     topTransactions: normalizeTopTransactions(row),
   };
@@ -3106,6 +3502,68 @@ function systemLogHasMeaningfulError(row: SystemLogRow): boolean {
   );
 }
 
+function normalizeDiagnostics(value: string | undefined): string[] {
+  const text = compactString(value);
+  if (!text) {
+    return [];
+  }
+  const parsed = parseJsonSafe<unknown>(text);
+  if (Array.isArray(parsed)) {
+    return parsed
+      .map((item) => compactString(typeof item === "string" ? item : safeStringifyBounded(item, 240)))
+      .filter(Boolean);
+  }
+  if (parsed && typeof parsed === "object") {
+    return [safeStringifyBounded(parsed, 240)];
+  }
+  return [text];
+}
+
+function splitSignalRunDiagnostics(
+  row: SystemLogRow | null,
+): { error?: string; warning?: string } {
+  if (!row || !systemLogHasMeaningfulError(row)) {
+    return {};
+  }
+
+  const detailText = compactString(row.details);
+  const detailLower = detailText.toLowerCase();
+  const diagnostics = [...normalizeDiagnostics(row.errors)];
+  if (
+    detailLower.includes("failed") ||
+    detailLower.includes("error") ||
+    detailLower.includes("exception") ||
+    detailLower.includes("traceback")
+  ) {
+    diagnostics.push(...normalizeDiagnostics(detailText));
+  }
+  const warningItems: string[] = [];
+  const errorItems: string[] = [];
+
+  for (const item of diagnostics) {
+    const lower = item.toLowerCase();
+    if (lower.includes("unsupported_chains=")) {
+      warningItems.push(item);
+      continue;
+    }
+    errorItems.push(item);
+  }
+
+  const status = compactString(row.status).toLowerCase();
+  if (
+    errorItems.length === 0 &&
+    warningItems.length === 0 &&
+    (status.includes("error") || status.includes("fail"))
+  ) {
+    errorItems.push(row.status);
+  }
+
+  return {
+    error: boundedOptionalText(errorItems.join("; "), 220),
+    warning: boundedOptionalText(warningItems.join("; "), 220),
+  };
+}
+
 function buildIngestionObservability(args: {
   latestTransactionAt?: string;
   latestSignalAt?: string;
@@ -3115,12 +3573,7 @@ function buildIngestionObservability(args: {
   const latestSignalsRun = latestSystemLog(
     args.systemLogRows.filter((row) => compactString(row.run_type).toLowerCase() === "signals"),
   );
-  const latestError = boundedOptionalText(
-    latestSignalsRun && systemLogHasMeaningfulError(latestSignalsRun)
-      ? latestSignalsRun.errors || latestSignalsRun.details
-      : undefined,
-    220,
-  );
+  const signalDiagnostics = splitSignalRunDiagnostics(latestSignalsRun);
 
   return {
     latest_transaction_at: args.latestTransactionAt,
@@ -3136,7 +3589,8 @@ function buildIngestionObservability(args: {
     watched_addresses_active_count: args.watchedAddressRows.filter(watchedAddressIsActive).length,
     signals_last_run_at: latestSignalsRun?.finished_at || latestSignalsRun?.started_at || undefined,
     signals_last_status: latestSignalsRun?.status || undefined,
-    signals_last_error: latestError,
+    signals_last_error: signalDiagnostics.error,
+    signals_last_warning: signalDiagnostics.warning,
   };
 }
 
@@ -3172,6 +3626,7 @@ async function buildAdminObservabilitySummary(args: {
     tgWhaleEventRows: args.tgWhaleEventRows,
   });
   const briefRows24h = rowsWithinWindow(args.briefLedgerRows, ["ts", "created_at", "updated_at"], sinceMs);
+  const latestBriefLedgerRow = latestOptionalRow(args.briefLedgerRows, ["ts", "created_at", "updated_at"]);
   const briefTotalRuns = briefRows24h.length;
   const briefGeneratedCount = briefRows24h.filter((row) => briefDecisionKey(row) === "generated").length;
   const briefCachedCount = briefRows24h.filter((row) => briefDecisionKey(row) === "cached").length;
@@ -3245,6 +3700,8 @@ async function buildAdminObservabilitySummary(args: {
       skippedBudget: ratioSummary(briefSkippedBudgetCount, briefTotalRuns),
       llmCallCount: briefLlmCallCount,
       latestGeneratedAt: latestGeneratedBriefAt(args.briefLedgerRows, args.latestBrief),
+      latestLedgerAt: rowValue(latestBriefLedgerRow, ["ts", "created_at", "updated_at"]) || undefined,
+      latestLedgerDecision: latestBriefLedgerRow ? briefDecisionKey(latestBriefLedgerRow) : undefined,
     },
     periodic: {
       windowHours: ADMIN_OBSERVABILITY_WINDOW_HOURS,
@@ -3554,6 +4011,7 @@ export async function getDashboardData(options?: {
       lastUpdatedAt: sourceHealth.lastUpdatedAt ?? latestRunUpdatedAt,
       last_channel_message_at: telegramChannelMetrics.last_channel_message_at,
       last_channel_status: telegramChannelMetrics.last_channel_status,
+      telegramChannelMemberCountLatest: parseChannelMemberCount(latestChannelHealth),
       last_skip_reason: telegramChannelMetrics.last_skip_reason,
       candidate_signal_count: telegramChannelMetrics.candidate_signal_count,
       candidate_transaction_count: telegramChannelMetrics.candidate_transaction_count,
@@ -3567,6 +4025,7 @@ export async function getDashboardData(options?: {
       watched_addresses_active_count:
         adminObservability?.ingestion.watched_addresses_active_count ?? null,
       signals_last_error: adminObservability?.ingestion.signals_last_error ?? null,
+      signals_last_warning: adminObservability?.ingestion.signals_last_warning ?? null,
       rowCounts,
       latestStatus: currentLatestRun?.status ?? null,
       errorCount: latestRunErrorCount,

@@ -266,6 +266,46 @@ function freshnessStatus(observedAt: string | undefined, slaMinutes: number): st
   return "stale";
 }
 
+function signalJobTone(
+  ingestion: AdminObservabilitySummary["ingestion"] | undefined,
+): AdminTone {
+  if (ingestion?.signals_last_error) {
+    return "bad";
+  }
+  return freshnessTone(ingestion?.signals_last_run_at, 30);
+}
+
+function signalJobStatus(
+  ingestion: AdminObservabilitySummary["ingestion"] | undefined,
+): string {
+  if (ingestion?.signals_last_error) {
+    return "오류";
+  }
+  const runStatus = freshnessStatus(ingestion?.signals_last_run_at, 30);
+  if (runStatus === "정상" && !ingestion?.latest_signal_at) {
+    return "정상(미발생)";
+  }
+  if (runStatus === "정상" && (ingestion?.latest_signal_age_hours ?? 0) > 1) {
+    return "정상(미발생)";
+  }
+  return runStatus;
+}
+
+function signalJobDetail(
+  ingestion: AdminObservabilitySummary["ingestion"] | undefined,
+): string {
+  if (!ingestion) {
+    return "signals observability가 아직 없습니다.";
+  }
+  if (ingestion.signals_last_error) {
+    return `signals 최근 오류: ${clipText(ingestion.signals_last_error, 92)}`;
+  }
+  const warning = ingestion.signals_last_warning
+    ? ` · rollout 경고 ${clipText(ingestion.signals_last_warning, 72)}`
+    : "";
+  return `signals 최근 실행 ${formatObservedTime(ingestion.signals_last_run_at)} · ${ingestion.signals_last_status ?? "상태 기록 없음"} · 마지막 신호 ${formatAgeHours(ingestion.latest_signal_age_hours)}${warning}`;
+}
+
 function formatCount(value: number | null | undefined, suffix = "건"): string {
   if (value == null || !Number.isFinite(value)) {
     return "미제공";
@@ -589,8 +629,18 @@ function buildDataSection(data: NormalizedDashboard, rawData: DashboardData | nu
       count: rowCounts.signals != null ? `${formatCompactCount(rowCounts.signals)} rows` : "미제공",
       observedAt: formatObservedTime(signalFreshnessAt),
       detail: latestSignal
-        ? `${latestSignal.title} · freshness ${formatAgeHours(ingestion?.latest_signal_age_hours)}`
-        : "최근 시그널 레코드가 없습니다.",
+        ? `${latestSignal.title} · table freshness ${formatAgeHours(ingestion?.latest_signal_age_hours)}`
+        : "최근 조건 충족 signal row가 없습니다. job 실행 상태는 signals_job 카드에서 별도로 확인합니다.",
+    },
+    {
+      key: "signals-job",
+      label: "signals_job",
+      source: "Pipeline",
+      status: signalJobStatus(ingestion),
+      tone: signalJobTone(ingestion),
+      count: ingestion?.signals_last_status ?? "상태 기록 없음",
+      observedAt: formatObservedTime(ingestion?.signals_last_run_at),
+      detail: signalJobDetail(ingestion),
     },
     {
       key: "daily-brief",
@@ -600,7 +650,7 @@ function buildDataSection(data: NormalizedDashboard, rawData: DashboardData | nu
       tone: freshnessTone(data.latestBrief.generatedAt, 8 * 60),
       count: rowCounts.dailyBrief != null ? `${formatCompactCount(rowCounts.dailyBrief)} rows` : "미제공",
       observedAt: formatObservedTime(data.latestBrief.generatedAt),
-      detail: clipText(data.latestBrief.summary, 88),
+      detail: `${clipText(data.latestBrief.summary, 72)} · 생성 freshness 기준, Telegram 발송은 broadcast_log 기준`,
     },
     {
       key: "news-feed",
@@ -633,7 +683,7 @@ function buildDataSection(data: NormalizedDashboard, rawData: DashboardData | nu
     {
       key: "broadcast-log",
       label: "broadcast_log",
-      source: "Periodic",
+      source: "Telegram broadcast",
       status: freshnessStatus(summary?.periodic.latestPeriodicSendAt, 8 * 60),
       tone: freshnessTone(summary?.periodic.latestPeriodicSendAt, 8 * 60),
       count: summary ? `${formatCompactCount(summary.periodic.totalExecutions)}회 / 24h` : "미제공",
@@ -645,13 +695,15 @@ function buildDataSection(data: NormalizedDashboard, rawData: DashboardData | nu
     {
       key: "brief-cost-ledger",
       label: "brief_cost_ledger",
-      source: "Brief",
-      status: freshnessStatus(summary?.brief.latestGeneratedAt ?? briefSection?.lastUpdatedAt, 8 * 60),
-      tone: freshnessTone(summary?.brief.latestGeneratedAt ?? briefSection?.lastUpdatedAt, 8 * 60),
-      count: summary ? `${formatCompactCount(summary.brief.llmCallCount)}회 호출` : "미제공",
-      observedAt: formatObservedTime(summary?.brief.latestGeneratedAt ?? briefSection?.lastUpdatedAt),
+      source: "Brief ledger",
+      status: freshnessStatus(summary?.brief.latestLedgerAt ?? briefSection?.lastUpdatedAt, 8 * 60),
+      tone: freshnessTone(summary?.brief.latestLedgerAt ?? briefSection?.lastUpdatedAt, 8 * 60),
+      count: summary
+        ? `${formatCompactCount(summary.brief.totalRuns)}회 실행 · LLM ${formatCompactCount(summary.brief.llmCallCount)}회`
+        : "미제공",
+      observedAt: formatObservedTime(summary?.brief.latestLedgerAt ?? briefSection?.lastUpdatedAt),
       detail: summary
-        ? `generated ${summary.brief.generated.count} · cached ${summary.brief.cached.count}`
+        ? `latest ${summary.brief.latestLedgerDecision ?? "unknown"} · generated ${summary.brief.generated.count} · skipped_inactive ${summary.brief.skippedInactive.count}`
         : "brief_cost_ledger / llm_budget_log 요약이 아직 없습니다.",
     },
   ];
@@ -704,14 +756,10 @@ function buildDataSection(data: NormalizedDashboard, rawData: DashboardData | nu
       tone: freshnessTone(ingestion?.latest_transaction_at, 15),
     },
     {
-      label: "시그널 freshness",
+      label: "시그널 job",
       value: formatAgeHours(ingestion?.latest_signal_age_hours),
-      detail: ingestion?.signals_last_error
-        ? `signals 최근 오류: ${clipText(ingestion.signals_last_error, 92)}`
-        : `signals 최근 실행 ${formatObservedTime(ingestion?.signals_last_run_at)} · ${ingestion?.signals_last_status ?? "상태 기록 없음"}`,
-      tone: ingestion?.signals_last_error
-        ? "bad"
-        : freshnessTone(ingestion?.latest_signal_at, 30),
+      detail: signalJobDetail(ingestion),
+      tone: signalJobTone(ingestion),
     },
     {
       label: "활성 감시 주소",
@@ -858,9 +906,7 @@ function buildWorkerInsights(
     {
       key: "domain-ingestion",
       title: "온체인 수집 freshness",
-      tone: summary.ingestion.signals_last_error
-        ? "bad"
-        : freshnessTone(summary.ingestion.latest_signal_at, 30),
+      tone: signalJobTone(summary.ingestion),
       lines: [
         `transactions 최신 ${formatObservedTime(summary.ingestion.latest_transaction_at)} · age ${formatAgeHours(summary.ingestion.latest_transaction_age_hours)}`,
         `signals 최신 ${formatObservedTime(summary.ingestion.latest_signal_at)} · age ${formatAgeHours(summary.ingestion.latest_signal_age_hours)}`,
@@ -868,6 +914,8 @@ function buildWorkerInsights(
       ],
       hint: summary.ingestion.signals_last_error
         ? `signals 최근 오류: ${clipText(summary.ingestion.signals_last_error, 180)}`
+        : summary.ingestion.signals_last_warning
+          ? `rollout 경고: ${clipText(summary.ingestion.signals_last_warning, 180)}`
         : "Render cron 실행 상태와 실제 domain 데이터 freshness를 분리해서 봅니다.",
     },
     {
@@ -1045,6 +1093,8 @@ function buildWorkerJobRows(
       .join(" · ") ?? "";
   const briefTone = freshnessTone(summary?.brief.latestGeneratedAt, 8 * 60);
   const briefStatus = freshnessStatus(summary?.brief.latestGeneratedAt, 8 * 60);
+  const briefLedgerTone = freshnessTone(summary?.brief.latestLedgerAt, 8 * 60);
+  const briefLedgerStatus = freshnessStatus(summary?.brief.latestLedgerAt, 8 * 60);
   const periodicTone = freshnessTone(summary?.periodic.latestPeriodicSendAt, 30);
   const periodicStatus = freshnessStatus(summary?.periodic.latestPeriodicSendAt, 30);
   const liveUpdatesTone: AdminTone = summary
@@ -1073,6 +1123,8 @@ function buildWorkerJobRows(
         `active seeds ${formatCount(summary.ingestion.watched_addresses_active_count, "개")}`,
         summary.ingestion.signals_last_error
           ? `signals error ${clipText(summary.ingestion.signals_last_error, 80)}`
+          : summary.ingestion.signals_last_warning
+            ? `signals warning ${clipText(summary.ingestion.signals_last_warning, 80)}`
           : "",
       ]
         .filter(Boolean)
@@ -1106,13 +1158,29 @@ function buildWorkerJobRows(
       tone: briefTone,
       cadence: "8시간",
       observedAt: formatObservedTime(summary?.brief.latestGeneratedAt),
-      source: summary ? "brief_cost_ledger / daily_brief" : "관측 데이터 없음",
+      source: summary ? "daily_brief generated_at" : "관측 데이터 없음",
       detail: summary
         ? clipText(
-            `generated ${summary.brief.generated.count} · cached ${summary.brief.cached.count} · LLM ${summary.brief.llmCallCount}회`,
+            `생성 freshness 기준 · generated ${summary.brief.generated.count} · cached ${summary.brief.cached.count} · LLM ${summary.brief.llmCallCount}회`,
             140,
           )
         : "brief observability payload가 아직 없습니다.",
+    },
+    {
+      key: "pipeline-brief-ledger",
+      lane: "Pipeline",
+      job: "brief ledger",
+      status: briefLedgerStatus,
+      tone: briefLedgerTone,
+      cadence: "8시간",
+      observedAt: formatObservedTime(summary?.brief.latestLedgerAt),
+      source: summary ? "brief_cost_ledger" : "관측 데이터 없음",
+      detail: summary
+        ? clipText(
+            `latest ${summary.brief.latestLedgerDecision ?? "unknown"} · total ${summary.brief.totalRuns}회/24h · skipped_inactive ${summary.brief.skippedInactive.count}`,
+            140,
+          )
+        : "brief_cost_ledger payload가 아직 없습니다.",
     },
     {
       key: "listener-telethon",

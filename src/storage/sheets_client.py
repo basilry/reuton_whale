@@ -1,3 +1,4 @@
+import ast
 import hashlib
 import json
 import os
@@ -141,6 +142,36 @@ def _json_loads_safe(value: str) -> dict | list | None:
         return json.loads(raw)
     except json.JSONDecodeError:
         return None
+
+
+def _coerce_json_array(value: object) -> list:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            try:
+                parsed = ast.literal_eval(raw)
+            except (SyntaxError, ValueError):
+                return [raw]
+        if isinstance(parsed, list):
+            return parsed
+        if parsed in (None, ""):
+            return []
+        return [parsed]
+    return [value]
+
+
+def _json_array_text(value: object) -> str:
+    return json.dumps(_coerce_json_array(value), ensure_ascii=False, default=str)
 
 
 def _normalize_sheets_write_mode(value: object) -> str:
@@ -455,6 +486,7 @@ class SheetsClient:
                         normalized["signal_themes"] = normalized.pop("signalThemes")
                     if "input_fingerprint" not in normalized and "inputFingerprint" in normalized:
                         normalized["input_fingerprint"] = normalized.pop("inputFingerprint")
+                    normalized["highlights"] = _json_array_text(normalized.get("highlights"))
                     normalized["date"] = date
                     normalized.setdefault("created_at", now_iso())
                     rows.append(dict_to_row(normalized, DAILY_BRIEF_HEADERS))

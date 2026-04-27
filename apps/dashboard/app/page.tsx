@@ -18,6 +18,7 @@ import { getCurrentDashboardDictionary, getCurrentDashboardLanguage } from "@/li
 import { getDashboardData, type DashboardData } from "@/lib/metrics";
 import { getTelegramPublicConfig } from "@/lib/public-app-config";
 import { getFearGreedData } from "@/lib/fear-greed";
+import { getSignalRuleDoc } from "@/lib/signal-rule-docs";
 import styles from "./insights/insights.module.css";
 
 export const runtime = "nodejs";
@@ -47,6 +48,19 @@ type HomeSignal = ComponentProps<typeof SignalSection>["signals"][number];
 type FearGreedCopy = ComponentProps<typeof FearGreedGauge>["copy"];
 const BRIEF_SCHEDULE_HOURS_KST = getBriefScheduleHoursKst();
 const WATCHLIST_COLLAPSED_COUNT = 6;
+const RECENT_SIGNAL_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+type BriefRuntimeMeta = {
+  transactionCount?: number;
+  pricedCount?: number;
+  unpricedCount?: number;
+  signalCount?: number;
+};
+
+type RuntimeBrief = NonNullable<DashboardData["latestBrief"]> & {
+  meta?: unknown;
+  quality?: unknown;
+};
 
 function safeText(value: unknown, fallback = ""): string {
   if (typeof value === "string") {
@@ -87,6 +101,146 @@ function formatCompactNumber(value: number): string {
   }).format(value);
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return null;
+}
+
+function readMetaNumber(record: Record<string, unknown> | null, keys: string[]): number | undefined {
+  if (!record) {
+    return undefined;
+  }
+
+  for (const key of keys) {
+    const value = record[key];
+    const parsed = safeNumber(value, Number.NaN);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return undefined;
+}
+
+function parseBriefNoteKeyValues(noteRaw: string | undefined): Record<string, string | number> {
+  const raw = safeText(noteRaw, "");
+  if (!raw) {
+    return {};
+  }
+
+  const [notePart] = raw.split("||meta:", 1);
+  const [metaPart] = notePart.split("|message=", 1);
+  const result: Record<string, string | number> = {};
+
+  for (const part of metaPart.split("|")) {
+    const clean = part.trim();
+    if (!clean) {
+      continue;
+    }
+
+    const equalsIndex = clean.indexOf("=");
+    if (equalsIndex < 0) {
+      result.fallbackMode = clean;
+      continue;
+    }
+
+    const key = clean.slice(0, equalsIndex).trim();
+    const value = clean.slice(equalsIndex + 1).trim();
+    if (!key) {
+      continue;
+    }
+
+    const numericValue = Number(value);
+    result[key] = Number.isFinite(numericValue) && value !== "" ? numericValue : value;
+  }
+
+  return result;
+}
+
+function parseBriefEmbeddedMeta(noteRaw: string | undefined): Record<string, unknown> | null {
+  const raw = safeText(noteRaw, "");
+  const marker = "||meta:";
+  const markerIndex = raw.indexOf(marker);
+  if (markerIndex < 0) {
+    return null;
+  }
+
+  try {
+    return asRecord(JSON.parse(raw.slice(markerIndex + marker.length)));
+  } catch {
+    return null;
+  }
+}
+
+function getBriefRuntimeMeta(brief: DashboardData["latestBrief"] | null | undefined): BriefRuntimeMeta {
+  if (!brief) {
+    return {};
+  }
+
+  const runtimeBrief = brief as RuntimeBrief;
+  const explicitMeta = asRecord(runtimeBrief.meta);
+  const explicitQuality = asRecord(runtimeBrief.quality) ?? asRecord(explicitMeta?.quality);
+  const noteKeyValues = parseBriefNoteKeyValues(brief.noteRaw);
+  const embeddedMeta = parseBriefEmbeddedMeta(brief.noteRaw);
+  const embeddedQuality = asRecord(embeddedMeta?.quality);
+  const pricedCount =
+    readMetaNumber(explicitQuality, ["pricedCount", "priced_count", "priced"]) ??
+    readMetaNumber(explicitMeta, ["pricedCount", "priced_count", "priced"]) ??
+    readMetaNumber(embeddedQuality, ["pricedCount", "priced_count", "priced"]) ??
+    readMetaNumber(embeddedMeta, ["pricedCount", "priced_count", "priced"]) ??
+    readMetaNumber(noteKeyValues, ["pricedCount", "priced_count", "priced"]);
+  const unpricedCount =
+    readMetaNumber(explicitQuality, ["unpricedCount", "unpriced_count", "unpriced"]) ??
+    readMetaNumber(explicitMeta, ["unpricedCount", "unpriced_count", "unpriced"]) ??
+    readMetaNumber(embeddedQuality, ["unpricedCount", "unpriced_count", "unpriced"]) ??
+    readMetaNumber(embeddedMeta, ["unpricedCount", "unpriced_count", "unpriced"]) ??
+    readMetaNumber(noteKeyValues, ["unpricedCount", "unpriced_count", "unpriced"]);
+  const transactionCount =
+    readMetaNumber(explicitQuality, ["transactionCount", "transaction_count", "transactions"]) ??
+    readMetaNumber(explicitMeta, ["transactionCount", "transaction_count", "transactions"]) ??
+    readMetaNumber(embeddedQuality, ["transactionCount", "transaction_count", "transactions"]) ??
+    readMetaNumber(embeddedMeta, ["transactionCount", "transaction_count", "transactions"]) ??
+    readMetaNumber(noteKeyValues, ["transactionCount", "transaction_count", "transactions"]) ??
+    (typeof pricedCount === "number" && typeof unpricedCount === "number"
+      ? pricedCount + unpricedCount
+      : undefined);
+
+  return {
+    transactionCount,
+    pricedCount,
+    unpricedCount,
+    signalCount:
+      readMetaNumber(explicitQuality, ["signalCount", "signal_count", "signals"]) ??
+      readMetaNumber(explicitMeta, ["signalCount", "signal_count", "signals"]) ??
+      readMetaNumber(embeddedQuality, ["signalCount", "signal_count", "signals"]) ??
+      readMetaNumber(embeddedMeta, ["signalCount", "signal_count", "signals"]) ??
+      readMetaNumber(noteKeyValues, ["signalCount", "signal_count", "signals"]),
+  };
+}
+
+function cleanBriefHighlights(items: string[] | undefined): string[] {
+  const values = (items ?? []).map((item) => safeText(item, "")).filter(Boolean);
+  if (values.length === 0) {
+    return [];
+  }
+
+  const joined = values.join(",");
+  if (joined.trim().startsWith("[") && joined.includes("'")) {
+    const parsed = [...joined.matchAll(/'([^']+)'/g)]
+      .map((match) => safeText(match[1], ""))
+      .filter(Boolean);
+    if (parsed.length > 0) {
+      return parsed;
+    }
+  }
+
+  return values
+    .map((item) => item.replace(/^\[?['"]?/, "").replace(/['"]?\]?$/, "").trim())
+    .filter(Boolean);
+}
+
 function getSignalTone(severity: string, score: number): SignalTone {
   const normalized = severity.toLowerCase();
   if (normalized.includes("critical") || normalized.includes("high") || score >= 80) {
@@ -109,10 +263,32 @@ function buildBriefAnalysis(
 ): BriefAnalysisItem[] {
   const latestBrief = data?.latestBrief;
   const signalThemes = latestBrief?.signalThemes ?? [];
-  const highlights = latestBrief?.highlights ?? [];
+  const highlights = cleanBriefHighlights(latestBrief?.highlights);
+  const briefMeta = getBriefRuntimeMeta(latestBrief);
   const totalVolumeUsd = latestBrief?.totalVolumeUsd ?? 0;
-  const signalCount = data?.metrics.signalCount ?? 0;
-  const transactionCount = data?.metrics.transactionCount ?? 0;
+  const signalCount = briefMeta.signalCount ?? data?.metrics.signalCount ?? 0;
+  const transactionCount = briefMeta.transactionCount ?? data?.metrics.transactionCount ?? 0;
+  const isUsdPending = briefMeta.pricedCount === 0 && transactionCount > 0;
+  const volumeLabel = isUsdPending
+    ? dictionary.home.briefAnalysisScaleUsdPending
+    : formatCurrency(totalVolumeUsd);
+  const scaleDescription =
+    isUsdPending
+      ? formatDashboardMessage(dictionary.home.briefAnalysisScaleAllUnpriced, {
+          count: formatCompactNumber(briefMeta.unpricedCount ?? transactionCount),
+        })
+      : typeof briefMeta.unpricedCount === "number" && briefMeta.unpricedCount > 0
+        ? formatDashboardMessage(dictionary.home.briefAnalysisScalePartialUnpriced, {
+            priced: formatCompactNumber(briefMeta.pricedCount ?? 0),
+            unpriced: formatCompactNumber(briefMeta.unpricedCount),
+          })
+        : latestBrief?.alertCount && latestBrief.alertCount > 0
+          ? formatDashboardMessage(dictionary.home.briefAnalysisScaleWithAlerts, {
+              count: latestBrief.alertCount,
+            })
+          : formatDashboardMessage(dictionary.home.briefAnalysisScaleNoAlerts, {
+              count: formatCompactNumber(signalCount),
+            });
 
   return [
     {
@@ -138,17 +314,10 @@ function buildBriefAnalysis(
     {
       label: dictionary.home.briefAnalysisScale,
       value: formatDashboardMessage(dictionary.home.briefAnalysisScaleValue, {
-        volume: formatCurrency(totalVolumeUsd),
+        volume: volumeLabel,
         count: formatCompactNumber(transactionCount),
       }),
-      description:
-        latestBrief?.alertCount && latestBrief.alertCount > 0
-          ? formatDashboardMessage(dictionary.home.briefAnalysisScaleWithAlerts, {
-              count: latestBrief.alertCount,
-            })
-          : formatDashboardMessage(dictionary.home.briefAnalysisScaleNoAlerts, {
-              count: formatCompactNumber(signalCount),
-            }),
+      description: scaleDescription,
       tone: transactionCount > 0 ? "watch" : "neutral",
     },
   ];
@@ -163,26 +332,31 @@ function buildBriefCopy(data: DashboardData | null, dictionary: DashboardDiction
 } {
   const brief = data?.latestBrief;
   if (brief) {
+    const briefMeta = getBriefRuntimeMeta(brief);
+    const transactionCount = briefMeta.transactionCount ?? data?.metrics.transactionCount ?? 0;
+    const signalCount = briefMeta.signalCount ?? data?.metrics.signalCount ?? 0;
+    const highlights = cleanBriefHighlights(brief.highlights);
     return {
       title: dictionary.home.briefTitle,
       summary: brief.summary
         ? cleanGeneratedBrief(brief.summary)
         : dictionary.home.briefNoSummary,
       highlights:
-        (brief.highlights?.length ?? 0) > 0
-          ? brief.highlights
+        highlights.length > 0
+          ? highlights
           : [
               formatDashboardMessage(dictionary.home.briefFallbackSignals, {
-                count: formatCompactNumber(data?.metrics.signalCount ?? 0),
+                count: formatCompactNumber(signalCount),
               }),
               formatDashboardMessage(dictionary.home.briefFallbackTransactions, {
-                count: formatCompactNumber(data?.metrics.transactionCount ?? 0),
+                count: formatCompactNumber(transactionCount),
               }),
             ],
       note:
-        brief.alertCount > 0
+        brief.note ||
+        (brief.alertCount > 0
           ? formatDashboardMessage(dictionary.home.briefNoteWithAlerts, { count: brief.alertCount })
-          : dictionary.home.briefNoteNoAlerts,
+          : dictionary.home.briefNoteNoAlerts),
       isFallback: safeText(brief.noteRaw, "").includes("fallback_tx_based"),
     };
   }
@@ -385,6 +559,80 @@ function formatKstDateTimeWithoutSeconds(value?: string): string {
   return full.slice(0, 16);
 }
 
+function signalObservedAt(signal: HomeSignal): string | undefined {
+  return (
+    safeText(signal.createdAt, "") ||
+    safeText(signal.created_at, "") ||
+    safeText(signal.windowEnd, "") ||
+    safeText(signal.window_end, "") ||
+    safeText(signal.windowStart, "") ||
+    safeText(signal.window_start, "") ||
+    undefined
+  );
+}
+
+function isSignalWithinWindow(signal: HomeSignal, now: Date): boolean {
+  const observedAt = signalObservedAt(signal);
+  if (!observedAt) {
+    return false;
+  }
+
+  const observedMs = new Date(observedAt).getTime();
+  if (!Number.isFinite(observedMs)) {
+    return false;
+  }
+
+  return now.getTime() - observedMs <= RECENT_SIGNAL_WINDOW_MS;
+}
+
+function ArchivedSignalSection({
+  dictionary,
+  language,
+  signals,
+}: {
+  dictionary: DashboardDictionary;
+  language: "ko" | "en";
+  signals: HomeSignal[];
+}) {
+  return (
+    <div className={styles.signalSection} id="signals">
+      <h3 className={styles.signalSectionTitle}>{dictionary.home.signalsStaleTitle}</h3>
+      <div className={styles.signalGrid}>
+        {signals.length > 0 ? (
+          signals.slice(0, 3).map((signal, index) => {
+            const signalId = safeText(signal.id || signal.signal_id, String(index));
+            const docs = getSignalRuleDoc(safeText(signal.rule, "signal"), language);
+            const observedAt = formatKstDateTimeWithoutSeconds(signalObservedAt(signal));
+            const detectedAt = observedAt
+              ? formatDashboardMessage(dictionary.home.signalsStaleDetectedAt, { time: observedAt })
+              : dictionary.home.timePending;
+
+            return (
+              <article key={signalId} className={styles.signalCard} data-tone="neutral">
+                <div className={styles.signalCardTop}>
+                  <span className={styles.materialIcon} aria-hidden="true">
+                    inventory_2
+                  </span>
+                  <span className={styles.signalToneBadge}>{dictionary.home.signalsStaleBadge}</span>
+                </div>
+                <h4 className={styles.signalCardTitle}>{docs.label}</h4>
+                <p className={styles.signalCardDesc}>
+                  {dictionary.home.signalsStaleCardCopy} {detectedAt}
+                </p>
+              </article>
+            );
+          })
+        ) : (
+          <article className={styles.emptyCard}>
+            <h4>{dictionary.signals.emptyTitle}</h4>
+            <p>{dictionary.signals.emptyBody}</p>
+          </article>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function getNextBriefAt(now = new Date()): Date {
   const offsetMs = 9 * 60 * 60 * 1000;
   const kstNow = new Date(now.getTime() + offsetMs);
@@ -491,7 +739,10 @@ export default async function InsightsPage() {
   const telegramConfig = getTelegramPublicConfig();
   const watchlist = data?.watchlist ?? [];
   const stories = data?.whaleStories ?? [];
-  const recentSignals = ((data?.recentSignals ?? []) as HomeSignal[]).slice(0, 3);
+  const signals = (data?.recentSignals ?? []) as HomeSignal[];
+  const now = new Date();
+  const recentSignals = signals.filter((signal) => isSignalWithinWindow(signal, now)).slice(0, 3);
+  const archivedSignals = recentSignals.length > 0 ? [] : signals.slice(0, 3);
   const connectionMeta = data?.sourceHealth?.failureKind
     ? `${dictionary.home.sourceFailurePrefix}: ${
         language === "ko" ? humanizeSourceFailureKind(data.sourceHealth.failureKind) : data.sourceHealth.failureKind
@@ -499,7 +750,14 @@ export default async function InsightsPage() {
     : data?.sourceHealth?.lastUpdatedAt
       ? `${dictionary.home.sourceLastUpdatedPrefix}: ${formatKstDateTime(data.sourceHealth.lastUpdatedAt)}`
       : "";
-  const telegramSubscribers = data?.metrics.subscriberCount ?? 0;
+  const telegramChannelMemberCount = data?.metrics.telegramChannelMemberCountLatest;
+  const telegramAudienceCount = telegramChannelMemberCount ?? null;
+  const telegramAudienceText =
+    typeof telegramAudienceCount === "number"
+      ? formatDashboardMessage(dictionary.home.telegramAudienceChannelTemplate, {
+          count: telegramAudienceCount,
+        })
+      : dictionary.home.telegramAudiencePending;
   const pipelineSummary = buildPipelineSummary(data, dictionary);
   const briefRefreshLabel = data?.latestBrief?.generatedAt
     ? formatDashboardMessage(dictionary.home.briefRefreshLabel, {
@@ -664,10 +922,18 @@ export default async function InsightsPage() {
             </article>
 
             {/* ── 3. Key Signals ── */}
-            <SignalSection
-              initialLanguage={language}
-              signals={recentSignals}
-            />
+            {recentSignals.length > 0 ? (
+              <SignalSection
+                initialLanguage={language}
+                signals={recentSignals}
+              />
+            ) : (
+              <ArchivedSignalSection
+                dictionary={dictionary}
+                language={language}
+                signals={archivedSignals}
+              />
+            )}
 
             {/* ── 4. Watchlist + Whale Stories ── */}
             <div className={styles.watchStoryRow} style={{ gridColumn: "1 / -1" }}>
@@ -708,11 +974,7 @@ export default async function InsightsPage() {
                 </h2>
                 <p className={styles.telegramCtaDesc}>
                   {dictionary.home.telegramDescription}{" "}
-                  <strong>
-                    {formatDashboardMessage(dictionary.home.telegramAudienceTemplate, {
-                      count: telegramSubscribers,
-                    })}
-                  </strong>
+                  <strong>{telegramAudienceText}</strong>
                 </p>
               </div>
               <TelegramConnectModal
@@ -720,7 +982,7 @@ export default async function InsightsPage() {
                 channelUrl={telegramConfig.channelUrl}
                 channelUsername={telegramConfig.channelUsername}
                 className={styles.telegramCtaBtn}
-                subscriberCount={telegramSubscribers}
+                subscriberCount={telegramAudienceCount}
                 initialLanguage={language}
               />
             </div>

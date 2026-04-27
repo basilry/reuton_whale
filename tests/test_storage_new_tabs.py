@@ -38,6 +38,43 @@ def _make_client():
         return client, mock_ss
 
 
+class _RecordingCursor:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple | None]] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    def execute(self, sql: str, params: tuple | None = None) -> None:
+        self.calls.append((sql, params))
+
+
+class _RecordingConnection:
+    def __init__(self, cursor: _RecordingCursor) -> None:
+        self._cursor = cursor
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    def cursor(self) -> _RecordingCursor:
+        return self._cursor
+
+
+def _connect_with_cursor(cursor: _RecordingCursor):
+    connection = _RecordingConnection(cursor)
+
+    def connect_func(*args, **kwargs):
+        return connection
+
+    return connect_func
+
+
 # ---------------------------------------------------------------------------
 # watched_addresses
 # ---------------------------------------------------------------------------
@@ -371,6 +408,52 @@ class TestDailyBrief:
             "온체인·텔레그램 교차확인",
         ]
         assert row_written[DAILY_BRIEF_HEADERS.index("note")] == "온체인 3건, 텔레그램 1건 기반"
+
+    def test_save_daily_brief_normalizes_python_list_string_highlights(self):
+        client, mock_ss = _make_client()
+        mock_ws = MagicMock()
+        mock_ss.worksheet.return_value = mock_ws
+
+        client.save_daily_brief(
+            "2026-04-27",
+            [
+                {
+                    "summary": "brief",
+                    "highlights": "['TRIA · 210,592 TRIA · 지갑 간 이동']",
+                }
+            ],
+        )
+
+        row_written = mock_ws.append_rows.call_args[0][0][0]
+        highlights = row_written[DAILY_BRIEF_HEADERS.index("highlights")]
+        assert json.loads(highlights) == ["TRIA · 210,592 TRIA · 지갑 간 이동"]
+        assert highlights != "['TRIA · 210,592 TRIA · 지갑 간 이동']"
+
+    def test_postgres_save_daily_brief_serializes_highlights_as_json_array(self):
+        from src.storage.postgres_client import PostgresClient
+
+        cursor = _RecordingCursor()
+        client = PostgresClient(
+            "postgresql://user:pass@example.com/db",
+            connect_func=_connect_with_cursor(cursor),
+        )
+
+        client.save_daily_brief(
+            "2026-04-27",
+            [
+                {
+                    "summary": "brief",
+                    "highlights": "['TRIA · 210,592 TRIA · 지갑 간 이동']",
+                    "signal_themes": ["시그널 부족 fallback"],
+                }
+            ],
+        )
+
+        _, params = cursor.calls[-1]
+        assert params is not None
+        highlights = params[6]
+        assert json.loads(highlights) == ["TRIA · 210,592 TRIA · 지갑 간 이동"]
+        assert highlights != "['TRIA · 210,592 TRIA · 지갑 간 이동']"
 
 
 # ---------------------------------------------------------------------------

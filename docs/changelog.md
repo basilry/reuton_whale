@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-04-27 -- ONE_PAGER · README 비용 표현 정합성 수정
+
+### Why (문제)
+
+면접·심사 자료 사실 정합성 점검 중 `ONE_PAGER.md`와 `README.md`의 LLM 비용 문구가 운영 실태와 어긋난 부분을 발견했다.
+
+1. **"$21 → $9 감소"가 실측 절감처럼 표현됨**: 해당 수치는 `2026-04-19-08-WhaleScope-v6-개선완료보고서.md`에서 산출한 **하이브리드 브리핑 설계 효과 추정치**(매 cycle full × Sonnet 가정)이지 실측 절감 금액이 아니다.
+2. **"Anthropic Claude (preferred)" 단언이 현 운영 상태와 불일치**: 현 단계에서는 MVP 비용 통제 목적으로 Anthropic API key를 활성화하지 않았고, `LLMRouter`의 fallback 로직이 작동해 6개 task 모두 Gemini 2.5 Flash가 실 호출되고 있다. Groq Llama 3.3 70B가 백업 fallback으로 대기 중.
+3. **"fallback은 상위 provider 실패 시에만 호출됨" 표현이 정확하지 않음**: provider 키 미설정 시에도 `if provider is None: continue`로 자동 skip되어 fallback chain이 진행되므로, "키 미설정 또는 호출 실패 시"로 정확히 표현해야 한다.
+
+### What (변경)
+
+- **`ONE_PAGER.md`** (4곳)
+  - §4-6 KPI 표 "브리핑 비용 (Mar 2026)" 행: `$9.12` 옆에 "추정" 라벨 추가, Sonnet 추정 모델 기준임과 현 운영(Gemini Flash + Groq) 주력 사실을 주석으로 명시.
+  - §5 Day 8 v6 개선 사이클 항목: "Sonnet 기준 월 비용이 약 $21 → $9 수준으로 감소" → "Sonnet 기준 **추정** 월 비용이 약 $21 → $9 수준으로 감소하는 설계. 다만 현 운영은 Anthropic key 미활성 상태로 Gemini 2.5 Flash + Groq Llama 3.3 70B를 주력으로 사용 중이며, 실측 비용은 위 추정치보다 낮음".
+  - §6-2 런타임 AI 활용 절: provider 3개 단순 나열을 task별 라우팅 매트릭스 + 현 운영 상태 단락으로 재작성. Anthropic key 미활성과 라이브 fallback 동작을 사실 그대로 명시. "fallback은 상위 provider 실패 시에만 호출됨"을 "키 미설정·호출 실패·rate limit 도달 등 어느 경우에도 다음 candidate로 자동 진행"으로 수정.
+  - §7-1 누적 액션 아이템 체크리스트: "✅ 하이브리드 브리핑 ... 월 비용 약 $21 → $9" → "**Sonnet 기준 추정** 월 비용이 약 $21 → $9로 감소하는 설계. 현 운영은 Gemini 2.5 Flash + Groq Llama 3.3 70B 주력으로 실측 비용은 더 낮음".
+- **`README.md`** (1곳)
+  - 하이브리드 브리핑 설명 단락: "Sonnet 기준 월 비용이 약 $21에서 $9 수준으로 감소합니다" → "Sonnet 기준 **추정** 월 비용이 약 $21에서 $9 수준으로 감소하는 설계. 현 운영은 Anthropic API key 미활성으로 Gemini 2.5 Flash + Groq Llama 3.3 70B 주력. 실제 체감 비용은 위 추정치보다 낮음. `config/llm_routing.yaml` 외부 설정으로 키 추가만으로 Sonnet/Haiku 승격 가능".
+
+### How validated (검증)
+
+- **사실 근거 재확인**: `config/llm_routing.yaml` 6 task 매트릭스(Sonnet/Haiku · Gemini Flash · Groq Llama 3.3 70B), `src/llm/router.py` `if provider is None: continue` fallback 로직, `.env` `ANTHROPIC_API_KEY=` 미설정 상태 모두 코드 인스펙션으로 확인.
+- **추정치 출처 추적**: `2026-04-19-08-WhaleScope-v6-개선완료보고서.md` "기존 추정 매 사이클 full $0.03 × 24 × 30 ≈ $21/월 vs 하이브리드 일 3 full + 21 incremental ≈ $9/월" 산출 근거 확인.
+- **실측 KPI**: `brief_cost_ledger` Mar 2026 = $9.12 — 추정 모델과 거의 일치(추정 모델이 합리적이라는 정합성 증거).
+
+### Risks (남은 리스크)
+
+- **옵시디언 미러 스냅샷 (`docs/obsidian/2026-04-21-01-...-README-스냅샷.md`, `2026-04-21-02-...-ONE_PAGER-스냅샷.md`)** 은 의도적으로 4/21 시점을 박제한 문서이므로 갱신하지 않음. 면접에서 미러 스냅샷을 인용할 경우 4/27 본문과 표현이 다를 수 있다는 점에 유의.
+- **Anthropic key 활성화 시점**: 운영 본궤도(Postgres 전환 + 사용자 규모 확대) 진입 시 key를 추가하면 4 task가 즉시 Sonnet/Haiku로 승격되도록 설계. 활성화 후 brief_cost_ledger 실측 비용을 1주 이내 재측정해 ONE_PAGER §4-6 KPI 표에 반영해야 한다.
+- **API 키 노출 사고 회수**: 본 작업 과정에서 `.env` 평문 키가 컨텍스트에 노출되어 사용자가 Gemini·Groq 키를 회전(폐기 후 재발급) 처리. 향후 `.env`는 절대 컨텍스트에 들어오지 않도록 도구 호출 패턴(전체 파일 read 대신 키 부분만 mask grep) 주의.
+
+---
+
 ## 2026-04-17 -- 리스너 언블록 · 시스템 로그 UX · CEX 노이즈 분리
 
 ### Why (문제)

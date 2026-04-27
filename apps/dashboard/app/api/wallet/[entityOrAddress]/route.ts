@@ -23,6 +23,11 @@ import type { CuratedWalletEntry } from "@/lib/types";
 
 export const runtime = "nodejs";
 
+const WALLET_DETAIL_RATE_LIMIT = {
+  ...API_RATE_LIMIT,
+  maxRequests: 120,
+};
+
 type ResolvedWalletMatch = {
   wallet: CuratedWalletEntry;
   matchedOn: "entity_id" | "wallet_id" | "address" | "alias" | "label";
@@ -222,7 +227,7 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ entityOrAddress: string }> },
 ) {
-  const rl = rateLimit(clientKey(request), API_RATE_LIMIT);
+  const rl = rateLimit(clientKey(request), WALLET_DETAIL_RATE_LIMIT);
   if (!rl.allowed) {
     return rateLimitResponse(rl.retryAfter ?? 60);
   }
@@ -456,7 +461,7 @@ export async function GET(
       meta: {
         resolvedBy: resolved.matchedOn,
         availableSources: {
-          curatedWallets: matchingCuratedRows.length > 0,
+          curatedWallets: true,
           transactions: matchingTransactions.length > 0,
           signals: matchingSignals.length > 0,
           balances: matchingBalances.length > 0,

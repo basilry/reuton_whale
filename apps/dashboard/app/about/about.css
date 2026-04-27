@@ -1147,23 +1147,39 @@
 @media (min-width: 640px) { .about-page .ws-log-doc-header .title { font-size: 18px; } }
 [data-theme="dark"] .about-page .ws-log-doc-header .title { color: #f0f9ff; }
 
-/* ── Log panel body: fill the content pane ───────────────────────────
-   The .prose-editorial default clamps p/ul/ol/blockquote/table/hr to
-   max-width: 65ch (~820 px). That is tuned for One Pager / README as
-   standalone documents. In the log tab the same content is already
-   nested inside .panel-main (9/12 column span, ≈880 px usable), so
-   the 65ch cap wastes ~150 px on the right. panel-main's 40 px inline
-   padding already provides the breathing room the user wants, so we
-   only need to release the max-width clamp in this scope. Tables and
-   pre blocks gain full breathing room for wide log entries.
-*/
-.about-page .ws-log-content .md-content p,
-.about-page .ws-log-content .md-content ul,
-.about-page .ws-log-content .md-content ol,
-.about-page .ws-log-content .md-content blockquote,
-.about-page .ws-log-content .md-content table,
-.about-page .ws-log-content .md-content hr {
+/* ── MD 렌더 영역 — 컬럼을 꽉 채운다 ─────────────────────────────────
+   .prose-editorial 의 65ch (~820 px) 캡은 편집 디자인 기본값이지만
+   ONE_PAGER / README / 작업 로그는 이미 .panel-main (9/12 column
+   span, ≈880 px usable) 안에 중첩되어 있어 캡이 걸리면 오른쪽에
+   ~150 px 여백이 낭비된다. .panel-main 의 40 px 인라인 padding 이
+   충분한 숨쉴 공간을 주므로 .md-content 스코프 한정으로 클램프를
+   해제한다. JSX 로 직접 작성된 AI Notes · Metrics · Timeline 탭은
+   .md-content 를 쓰지 않으므로 영향 없음. */
+.about-page .md-content p,
+.about-page .md-content ul,
+.about-page .md-content ol,
+.about-page .md-content blockquote,
+.about-page .md-content table,
+.about-page .md-content hr {
   max-width: none;
+}
+
+/* 모바일에선 폭 넓은 표(예: README 의 메트릭 표)가 393 px 뷰포트를
+   넘치지 않도록 테이블 단독 가로 스크롤을 허용한다. display:block 으로
+   바꾼 뒤 width/max-width 를 뷰포트로 고정하지 않으면 자식 th/td 의
+   min-content 가 테이블 자체의 박스 너비를 밀어 페이지 전체 가로
+   스크롤을 만들어 버린다. */
+@media (max-width: 767px) {
+  .about-page .md-content {
+    min-width: 0;
+  }
+  .about-page .md-content table {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 /* ── Footer ─────────────────────────────────────────────────────────── */

@@ -287,6 +287,46 @@ def test_run_brief_pipeline_uses_transaction_fallback_when_signals_are_empty():
     assert sheets.brief_cost_ledger_rows[-1]["transaction_count"] == 2
 
 
+def test_run_brief_pipeline_unpriced_fallback_uses_quantity_wording_and_json_ready_items():
+    from src.pipeline.brief import run_brief_pipeline
+
+    sheets = _FakeSheets(
+        transaction_rows=[
+            _recent_tx_row(
+                symbol="TRIA",
+                amount="210,592",
+                amount_usd="",
+                hash_value="0xtria",
+                from_owner="wallet_a",
+                from_owner_type="wallet",
+                to_owner="wallet_b",
+                to_owner_type="wallet",
+            )
+        ]
+    )
+
+    with patch("src.pipeline.brief.load_pipeline_env", return_value=_fake_env()), patch(
+        "src.pipeline.brief.build_sheets_client", return_value=sheets
+    ), patch("src.pipeline.brief.PriceResolver.resolve", return_value=None):
+        result = run_brief_pipeline()
+
+    assert result["status"] == "completed"
+    brief = sheets.saved_briefs[0][1][0]
+    assert "가격 미확인 거래 fallback" in brief["summary"]
+    assert "가격 품질: USD 환산 0건 / 미확인 1건" in brief["summary"]
+    assert "TRIA 210,592 TRIA 수량" in brief["summary"]
+    assert "210,592건" not in brief["summary"]
+
+    assert brief["highlights"] == ["TRIA · 210,592 TRIA · 지갑 간 이동"]
+    assert json.loads(json.dumps(brief["highlights"], ensure_ascii=False)) == brief["highlights"]
+
+    top_transactions = json.loads(brief["top_transactions"])
+    assert top_transactions[0]["amount_token"] == 210592.0
+    assert top_transactions[0]["amount_usd_known"] is False
+    assert top_transactions[0]["movement_label"] == "지갑 간 이동"
+    assert "wallet_a" in top_transactions[0]["interpretation"]
+
+
 def test_run_brief_pipeline_skips_when_recent_activity_is_empty():
     from src.pipeline.brief import run_brief_pipeline
 

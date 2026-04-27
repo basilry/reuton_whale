@@ -16,6 +16,46 @@ test.beforeEach(async ({ page }) => {
   await page.evaluate(applyDashboardTestDocument, "ko");
 });
 
+test("stale signal stories do not override fresh transaction stories", () => {
+  const stories = buildWhaleStories({
+    recentTransactions: [
+      {
+        hash: "fresh-tx-1",
+        symbol: "ETH",
+        amount: "0.02",
+        amount_usd: "49",
+        timestamp: "2026-04-27T05:18:47.000Z",
+        created_at: "2026-04-27T05:18:59.000Z",
+        from_address: "0x1346a1",
+        from_owner: "Unknown",
+        to_address: "0xc02aaa",
+        to_owner: "WETH Contract",
+        blockchain: "ETH",
+      },
+    ],
+    recentSignals: [
+      {
+        signal_id: "stale-signal-1",
+        created_at: "2026-04-22T04:03:04.000Z",
+        rule: "cex_outflow_spike",
+        severity: "high",
+        score: "95",
+        evidence_tx_hashes: "[]",
+        summary: "오래된 거래소 유출 급증",
+        extra_json: "{}",
+      },
+    ],
+    generatedAt: "2026-04-27T05:45:37.000Z",
+    maxItems: 1,
+    curatedWallets: [],
+  });
+
+  expect(stories).toHaveLength(1);
+  expect(stories[0]?.kind).toBe("transaction");
+  expect(stories[0]?.title).toContain("ETH 이동");
+  expect(stories[0]?.supportingSignalIds).toEqual([]);
+});
+
 test("external-only DOGE story surfaces TG mirror lane, confidence, and partial-view badge", async ({
   mount,
   page,

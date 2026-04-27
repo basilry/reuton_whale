@@ -53,6 +53,9 @@ export const enDictionary = {
     briefAnalysisScaleWithAlerts: "{count} alert points were logged together.",
     briefAnalysisScaleNoAlerts: "{count} recent signals were observed.",
     briefAnalysisScaleValue: "{volume} · {count} tx",
+    briefAnalysisScaleUsdPending: "USD conversion pending",
+    briefAnalysisScaleAllUnpriced: "{count} transactions are still unpriced, so USD scale is not emphasized yet.",
+    briefAnalysisScalePartialUnpriced: "{priced} priced transactions and {unpriced} unpriced transactions are included.",
     briefAnalysisMoodWaiting: "Data is not connected yet.",
     briefAnalysisMoodCaution: "Exchange inflow and short-term volatility risk are appearing together.",
     briefAnalysisMoodWatch: "This looks more like a flow-checking phase than a directional reversal.",
@@ -84,7 +87,11 @@ export const enDictionary = {
       "Current market fear and greed index {value}, {classification}. Versus yesterday {delta_yesterday}, versus one week ago {delta_week}.",
     fearGreedDisclaimer:
       "Do not rely on this indicator alone. Read it together with whale flows, volume, and news context.",
-    signalsTitle: "Key detected signals",
+    signalsTitle: "Recently detected key signals",
+    signalsStaleTitle: "No key signals detected in the last 24h",
+    signalsStaleBadge: "Archived",
+    signalsStaleDetectedAt: "Last detected {time} KST",
+    signalsStaleCardCopy: "No fresh re-detection appeared within 24h, so treat this as archived context only.",
     watchlistTitle: "Curated watchlist wallets",
     watchlistLead:
       "Only the wallets that matter for interpretation, such as exchanges, custodians, and major participants, are surfaced here.",
@@ -92,7 +99,7 @@ export const enDictionary = {
     telegramTitle: "Get real-time briefings\nfrom the WhaleScope public channel.",
     telegramDescription:
       "Jump into the channel with the QR code or direct link to follow core briefs and shared signal updates quickly.",
-    telegramAudience: "Current subscribers",
+    telegramAudience: "Public channel members",
     explainTitle: "How WhaleScope intelligence works",
     explainRawData: "Raw data",
     explainSignalExtraction: "Signal extraction",
@@ -115,6 +122,8 @@ export const enDictionary = {
     footerCompanyName: "Bukhae",
     footerCopyright: "© {year} Wrtn Technologies. All rights to this work are reserved by Wrtn Technologies.",
     telegramAudienceTemplate: "Current subscribers: {count}.",
+    telegramAudienceChannelTemplate: "Public channel members: {count}.",
+    telegramAudiencePending: "Public channel member count is pending.",
   },
   languageSelector: {
     label: "Language",
@@ -154,7 +163,8 @@ export const enDictionary = {
       "The QR code will appear once the public channel URL is configured in the deployment.",
     qrImageAltReady: "QR code for the Telegram channel {channelHandle}",
     qrImageAltFallback: "QR code for the Telegram channel",
-    audienceLabel: "Current audience",
+    audienceLabel: "Public channel members",
+    audiencePending: "Pending",
     audienceUnit: "",
     copySuccess: "Copied the Telegram channel link.",
     copyError: "Could not copy the link. Open the channel directly instead.",
@@ -176,9 +186,9 @@ export const enDictionary = {
   },
   signals: {
     cardCtaOpenDetail: "Open detail",
-    emptyTitle: "No signals have been detected yet.",
+    emptyTitle: "No signals were detected in the last 24h.",
     emptyBody:
-      "Once the collection worker runs, readable alerts and watch signals will appear in this section.",
+      "Until a fresh signal appears, do not read archived examples as current market activity.",
     modalEyebrow: "Signal detail",
     modalCloseLabel: "Close signal detail",
     modalRuleTitle: "Rule explanation",

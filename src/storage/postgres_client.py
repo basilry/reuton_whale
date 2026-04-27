@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import os
 from datetime import datetime, timezone
@@ -358,6 +359,37 @@ def _json_param(value: object) -> str | None:
         except json.JSONDecodeError:
             return json.dumps(raw, ensure_ascii=False)
     return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+
+
+def _coerce_json_array(value: object) -> list:
+    value = _none_if_blank(value)
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            try:
+                parsed = ast.literal_eval(raw)
+            except (SyntaxError, ValueError):
+                return [raw]
+        if isinstance(parsed, list):
+            return parsed
+        if parsed in (None, ""):
+            return []
+        return [parsed]
+    return [value]
+
+
+def _json_array_param(value: object) -> str:
+    return json.dumps(_coerce_json_array(value), ensure_ascii=False, default=str)
 
 
 def _format_value(value: object) -> object:
@@ -746,7 +778,7 @@ class PostgresClient:
                                 _numeric(normalized.get("total_volume_usd")),
                                 _int(normalized.get("alert_count")),
                                 _timestamp(normalized.get("created_at")),
-                                _text(normalized.get("highlights")),
+                                _json_array_param(normalized.get("highlights")),
                                 _json_param(normalized.get("signal_themes")),
                                 _text(normalized.get("note")),
                                 _text(normalized.get("input_fingerprint")),

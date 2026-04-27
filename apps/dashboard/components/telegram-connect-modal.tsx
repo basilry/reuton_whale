@@ -13,7 +13,7 @@ type TelegramConnectModalProps = {
   channelUrl: string | null;
   channelUsername: string | null;
   className?: string;
-  subscriberCount?: number;
+  subscriberCount?: number | null;
   initialLanguage?: DashboardLanguage;
 };
 
@@ -24,7 +24,7 @@ export function TelegramConnectModal({
   channelUrl,
   channelUsername,
   className,
-  subscriberCount = 0,
+  subscriberCount = null,
   initialLanguage,
 }: TelegramConnectModalProps) {
   const { dictionary, language } = useDashboardI18n(initialLanguage);
@@ -44,9 +44,10 @@ export function TelegramConnectModal({
   ).trim();
   const triggerClassName = [styles.trigger, className].filter(Boolean).join(" ");
   const channelHandle = channelUsername ? `@${channelUsername}` : "Telegram";
-  const formattedSubscriberCount = subscriberCount.toLocaleString(
-    language === "ko" ? "ko-KR" : "en-US",
-  );
+  const formattedSubscriberCount =
+    typeof subscriberCount === "number"
+      ? subscriberCount.toLocaleString(language === "ko" ? "ko-KR" : "en-US")
+      : dictionary.telegram.audiencePending;
 
   useEffect(() => {
     setIsMounted(true);
@@ -240,7 +241,7 @@ export function TelegramConnectModal({
                   </p>
                   <p className={styles.qrText}>
                     {dictionary.telegram.audienceLabel}: <strong>{formattedSubscriberCount}</strong>
-                    {dictionary.telegram.audienceUnit}
+                    {typeof subscriberCount === "number" ? dictionary.telegram.audienceUnit : ""}
                   </p>
                   <p className={styles.qrText}>{dictionary.telegram.qrCaption}</p>
                 </div>

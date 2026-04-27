@@ -645,6 +645,16 @@ function buildBriefFallbackStory(brief: BriefLike | null): WhaleStory | null {
   };
 }
 
+const STORY_SIGNAL_FRESHNESS_MS = 24 * 60 * 60 * 1000;
+
+function isFreshStorySignal(signal: SignalLike, referenceMs: number): boolean {
+  const signalMs = parseDateTimeSafe(signal.created_at);
+  if (signalMs == null) {
+    return false;
+  }
+  return referenceMs - signalMs <= STORY_SIGNAL_FRESHNESS_MS;
+}
+
 export function buildWhaleStories(options?: {
   recentTransactions?: readonly TransactionLike[];
   recentSignals?: readonly SignalLike[];
@@ -663,10 +673,12 @@ export function buildWhaleStories(options?: {
     (signal) => parseDateTimeSafe(signal.created_at),
   );
   const generatedAt = compactString(options?.generatedAt) || new Date().toISOString();
+  const referenceMs = parseDateTimeSafe(generatedAt) ?? Date.now();
+  const freshSignals = signals.filter((signal) => isFreshStorySignal(signal, referenceMs));
   const maxItems = options?.maxItems ?? 4;
   const curatedWallets = options?.curatedWallets ?? listCuratedWalletEntries();
 
-  const signalsByHash = relatedSignalsByHash(signals);
+  const signalsByHash = relatedSignalsByHash(freshSignals);
   const transactionStories = transactions.map((transaction) =>
     buildTransactionStory(
       transaction,
@@ -680,7 +692,7 @@ export function buildWhaleStories(options?: {
       .map((story) => normalizeText(story.hash))
       .filter(Boolean),
   );
-  const standaloneSignalStories = signals
+  const standaloneSignalStories = freshSignals
     .filter((signal) => {
       const rule = normalizeText(signal.rule);
       if (rule === "external_only_observation") {
@@ -702,8 +714,8 @@ export function buildWhaleStories(options?: {
     return mergedStories;
   }
 
-  if (signals.length > 0) {
-    return signals.slice(0, maxItems).map(buildSignalStory);
+  if (freshSignals.length > 0) {
+    return freshSignals.slice(0, maxItems).map(buildSignalStory);
   }
 
   const briefStory = buildBriefFallbackStory(options?.latestBrief ?? null);

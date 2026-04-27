@@ -4,6 +4,8 @@ import { cleanGeneratedBrief } from "./format";
 import { toArray, toNumber, toText } from "./humanize";
 import {
   FALLBACK_SOURCE,
+  type BriefNoteMeta,
+  type BriefQuality,
   type CuratedWalletCategory,
   type CuratedWalletEntry,
   type CuratedWalletMatch,
@@ -13,6 +15,7 @@ import {
   type DisplaySignalRow,
   type DisplaySystemLogRow,
   type DisplayTransactionRow,
+  type NormalizedBriefTopTransaction,
   type NormalizedDashboard,
   type OperatorCheck,
   type OpsServiceHealth,
@@ -30,10 +33,439 @@ function toNullableNumber(value: unknown): number | null {
     return value;
   }
   if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value.trim());
+    const parsed = Number(value.trim().replace(/,/g, ""));
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function toNullableBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  const text = toText(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(text)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(text)) {
+    return false;
+  }
+  return undefined;
+}
+
+function stripSerializedListItem(value: string): string {
+  const item = value.trim();
+  if (item.length < 2) {
+    return item;
+  }
+
+  const first = item[0];
+  const last = item[item.length - 1];
+  if ((first === "'" && last === "'") || (first === '"' && last === '"')) {
+    return item
+      .slice(1, -1)
+      .replace(/\\'/g, "'")
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, "\\")
+      .trim();
+  }
+
+  return item;
+}
+
+function isNumericComma(raw: string, index: number): boolean {
+  return /\d/.test(raw[index - 1] ?? "") && /\d/.test(raw[index + 1] ?? "");
+}
+
+function parseBracketedStringList(raw: string): string[] | null {
+  const text = raw.trim();
+  if (!text.startsWith("[") || !text.endsWith("]")) {
+    return null;
+  }
+
+  const inner = text.slice(1, -1);
+  const items: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+
+  for (let index = 0; index < inner.length; index += 1) {
+    const char = inner[index];
+
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+
+    if (quote) {
+      if (char === "\\") {
+        current += char;
+        escaped = true;
+        continue;
+      }
+      if (char === quote) {
+        current += char;
+        quote = null;
+        continue;
+      }
+      current += char;
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      current += char;
+      quote = char;
+      continue;
+    }
+
+    if (char === "," && !isNumericComma(inner, index)) {
+      items.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current || inner.trim()) {
+    items.push(current);
+  }
+
+  return items
+    .map(stripSerializedListItem)
+    .filter(Boolean);
+}
+
+function splitLooseStringList(raw: string): string[] {
+  const items: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+
+    if (quote) {
+      if (char === "\\") {
+        current += char;
+        escaped = true;
+        continue;
+      }
+      if (char === quote) {
+        current += char;
+        quote = null;
+        continue;
+      }
+      current += char;
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      current += char;
+      quote = char;
+      continue;
+    }
+
+    if (char === "\n" || char === "|" || (char === "," && !isNumericComma(raw, index))) {
+      items.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current) {
+    items.push(current);
+  }
+
+  return items
+    .map(stripSerializedListItem)
+    .filter(Boolean);
+}
+
+function normalizeBriefStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => toText(item).trim())
+      .filter(Boolean);
+  }
+
+  const raw = toText(value).trim();
+  if (!raw) {
+    return [];
+  }
+
+  if (raw.startsWith("[") && raw.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((item) => toText(item).trim())
+          .filter(Boolean);
+      }
+    } catch {
+      // Python-style lists use single quotes; recover below without eval.
+    }
+  }
+
+  return parseBracketedStringList(raw) ?? splitLooseStringList(raw);
+}
+
+function normalizeBriefMetaValue(
+  value: unknown,
+): string | number | boolean | null | undefined {
+  if (value === null) {
+    return null;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (!text) {
+      return undefined;
+    }
+    const numeric = toNullableNumber(text);
+    if (numeric !== null && /^-?[\d,]+(?:\.\d+)?$/.test(text)) {
+      return numeric;
+    }
+    const boolean = toNullableBoolean(text);
+    return boolean ?? text;
+  }
+  return undefined;
+}
+
+function normalizeBriefMeta(value: unknown): BriefNoteMeta | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const meta: BriefNoteMeta = {};
+  Object.entries(value as Record<string, unknown>).forEach(([key, rawValue]) => {
+    const normalized = normalizeBriefMetaValue(rawValue);
+    if (normalized !== undefined) {
+      meta[key] = normalized;
+    }
+  });
+
+  return Object.keys(meta).length > 0 ? meta : undefined;
+}
+
+function briefMetaNumber(meta: BriefNoteMeta | undefined, key: string): number | null {
+  const value = meta?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function buildBriefQuality(meta: BriefNoteMeta | undefined): BriefQuality | undefined {
+  if (!meta) {
+    return undefined;
+  }
+
+  const signals = briefMetaNumber(meta, "signals");
+  const transactions = briefMetaNumber(meta, "transactions");
+  const priced = briefMetaNumber(meta, "priced");
+  const unpriced = briefMetaNumber(meta, "unpriced");
+  const windowMin = briefMetaNumber(meta, "window_min");
+  const fallbackMode = toText(meta.fallbackMode).trim();
+  const mode = toText(meta.mode).trim();
+  const hasKnownQuality =
+    Boolean(mode) ||
+    Boolean(fallbackMode) ||
+    signals !== null ||
+    transactions !== null ||
+    priced !== null ||
+    unpriced !== null ||
+    windowMin !== null;
+
+  if (!hasKnownQuality) {
+    return undefined;
+  }
+
+  return {
+    isFallback: Boolean(fallbackMode || mode.includes("fallback")),
+    fallbackMode: fallbackMode || (mode.includes("fallback") ? mode : undefined),
+    signals,
+    transactions,
+    priced,
+    unpriced,
+    windowMin,
+    pricedRatio:
+      priced !== null && transactions !== null && transactions > 0
+        ? priced / transactions
+        : null,
+    hasSignals: (signals ?? 0) > 0,
+    hasPrices: (priced ?? 0) > 0,
+  };
+}
+
+function parseBriefNoteRaw(value: unknown): {
+  note?: string;
+  noteRaw?: string;
+  meta?: BriefNoteMeta;
+  quality?: BriefQuality;
+} {
+  const noteRaw = toText(value).trim();
+  if (!noteRaw) {
+    return {};
+  }
+
+  const [notePart, metaPart] = noteRaw.split("||meta:", 2);
+  const messageMarker = "|message=";
+  const markerIndex = notePart.indexOf(messageMarker);
+  const metadataPart = markerIndex >= 0 ? notePart.slice(0, markerIndex) : notePart;
+  const message =
+    markerIndex >= 0 ? notePart.slice(markerIndex + messageMarker.length).trim() : "";
+  const hasStructuredTokens = metadataPart.includes("|") || metadataPart.includes("=");
+  const meta: BriefNoteMeta = {};
+  let note = message;
+
+  metadataPart
+    .split("|")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .forEach((token, index) => {
+      const delimiter = token.indexOf("=");
+      if (delimiter < 0) {
+        if (index === 0) {
+          if (hasStructuredTokens || token.includes("fallback") || token.includes("_")) {
+            meta.mode = token;
+          }
+          if (token.includes("fallback")) {
+            meta.fallbackMode = token;
+          } else if (!hasStructuredTokens && !note) {
+            note = token;
+          }
+        }
+        return;
+      }
+
+      const key = token.slice(0, delimiter).trim();
+      const normalized = normalizeBriefMetaValue(token.slice(delimiter + 1));
+      if (key && normalized !== undefined) {
+        meta[key] = normalized;
+      }
+      if (key === "message" && typeof normalized === "string" && !note) {
+        note = normalized;
+      }
+    });
+
+  if (message) {
+    meta.message = message;
+  }
+
+  if (metaPart) {
+    try {
+      const parsedMeta = JSON.parse(metaPart) as Record<string, unknown>;
+      Object.entries(parsedMeta).forEach(([key, rawValue]) => {
+        const normalized = normalizeBriefMetaValue(rawValue);
+        if (normalized !== undefined) {
+          meta[key] = normalized;
+        }
+      });
+    } catch {
+      // Keep pipe-delimited metadata even if the optional JSON block is malformed.
+    }
+  }
+
+  const normalizedMeta = Object.keys(meta).length > 0 ? meta : undefined;
+  return {
+    note: note || undefined,
+    noteRaw,
+    meta: normalizedMeta,
+    quality: buildBriefQuality(normalizedMeta),
+  };
+}
+
+function recordText(row: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const text = toText(row[key]).trim();
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+}
+
+function recordNumber(row: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const parsed = toNullableNumber(row[key]);
+    if (parsed !== null) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function recordBoolean(row: Record<string, unknown>, keys: string[]): boolean | undefined {
+  for (const key of keys) {
+    const parsed = toNullableBoolean(row[key]);
+    if (parsed !== undefined) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function normalizeBriefTopTransactions(value: unknown): NormalizedBriefTopTransaction[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const row = item as Record<string, unknown>;
+      const amountUsd = recordNumber(row, ["amountUsd", "amount_usd"]);
+      const amountToken = recordNumber(row, [
+        "amountToken",
+        "amount_token",
+        "token_amount",
+        "quantity",
+        "amount",
+      ]);
+      const amountUsdKnown = recordBoolean(row, ["amountUsdKnown", "amount_usd_known"]);
+      const movementLabel = recordText(row, ["movementLabel", "movement_label"]);
+      const interpretation = recordText(row, ["interpretation"]);
+      const normalized: NormalizedBriefTopTransaction = {
+        symbol: recordText(row, ["symbol"]) || "UNKNOWN",
+        amountUsd: amountUsd ?? 0,
+        chain: recordText(row, ["chain", "blockchain"]) || "Unknown",
+      };
+
+      if (amountToken !== null) {
+        normalized.amountToken = amountToken;
+      }
+      if (amountUsdKnown !== undefined) {
+        normalized.amountUsdKnown = amountUsdKnown;
+      }
+      if (movementLabel) {
+        normalized.movementLabel = movementLabel;
+      }
+      if (interpretation) {
+        normalized.interpretation = interpretation;
+      }
+
+      return normalized;
+    })
+    .filter((item): item is NormalizedBriefTopTransaction => item !== null);
 }
 
 function normalizeSourceFailureKind(value: unknown): SourceFailureKind | null {
@@ -468,6 +900,14 @@ export function normalizeDashboardData(input: DashboardData | null): NormalizedD
   const operatorChecks = normalizeOperatorChecks(input?.operatorChecks);
   const opsSummary = normalizeOpsSummary(input?.opsSummary, serviceHealth, latestRun.updatedAt);
 
+  const parsedBriefNote = parseBriefNoteRaw(
+    toText(input?.latestBrief?.noteRaw) || toText(input?.latestBrief?.note),
+  );
+  const explicitBriefMeta = normalizeBriefMeta(input?.latestBrief?.meta);
+  const briefMeta = explicitBriefMeta ?? parsedBriefNote.meta;
+  const briefQuality =
+    input?.latestBrief?.quality ?? buildBriefQuality(briefMeta) ?? parsedBriefNote.quality;
+
   const latestBrief: NormalizedDashboard["latestBrief"] = {
     date: toText(input?.latestBrief?.date) || undefined,
     generatedAt:
@@ -479,26 +919,14 @@ export function normalizeDashboardData(input: DashboardData | null): NormalizedD
       "오늘 생성된 브리핑이 없습니다. 파이프라인 실행 후 최신 요약이 이곳에 표시됩니다.",
     alertCount: toNumber(input?.latestBrief?.alertCount),
     totalVolumeUsd: toNumber(input?.latestBrief?.totalVolumeUsd),
-    highlights: toArray(input?.latestBrief?.highlights),
-    signalThemes: toArray(input?.latestBrief?.signalThemes),
-    topTransactions: Array.isArray(input?.latestBrief?.topTransactions)
-      ? input.latestBrief?.topTransactions
-          .map((item) => {
-            if (!item || typeof item !== "object") {
-              return null;
-            }
-            const row = item as Record<string, unknown>;
-            return {
-              symbol: toText(row.symbol) || "UNKNOWN",
-              amountUsd: toNumber(row.amountUsd || row.amount_usd),
-              chain: toText(row.chain) || "Unknown",
-            };
-          })
-          .filter(
-            (item): item is { symbol: string; amountUsd: number; chain: string } =>
-              Boolean(item),
-          )
-      : [],
+    highlights: normalizeBriefStringList(input?.latestBrief?.highlights),
+    signalThemes: normalizeBriefStringList(input?.latestBrief?.signalThemes),
+    note: toText(input?.latestBrief?.note) || parsedBriefNote.note,
+    noteRaw: toText(input?.latestBrief?.noteRaw) || parsedBriefNote.noteRaw,
+    meta: briefMeta,
+    quality: briefQuality,
+    marketMood: input?.latestBrief?.marketMood,
+    topTransactions: normalizeBriefTopTransactions(input?.latestBrief?.topTransactions),
   };
 
   const recentTransactions = normalizeTransactions(input?.recentTransactions ?? []);

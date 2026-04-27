@@ -147,10 +147,11 @@ async function existingColumns(table: string): Promise<Set<string>> {
   if (!cached) {
     cached = getPool().then(async (pool) => {
       const result = await pool.query<{ column_name: string }>(
-        `SELECT column_name
-           FROM information_schema.columns
-          WHERE table_name = $1
-            AND table_schema NOT IN ('pg_catalog', 'information_schema')`,
+        `SELECT attname AS column_name
+           FROM pg_attribute
+          WHERE attrelid = to_regclass($1)::oid
+            AND attnum > 0
+            AND NOT attisdropped`,
         [table],
       );
       return new Set(result.rows.map((row) => row.column_name));
