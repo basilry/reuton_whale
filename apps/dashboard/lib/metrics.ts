@@ -1040,6 +1040,11 @@ function detailsPayload(row: SystemLogRow | null): Record<string, unknown> {
   return parsed;
 }
 
+function listenerChannelLooksMisconfigured(channel: string): boolean {
+  const normalized = channel.trim().toLowerCase().replace(/^@/, "");
+  return Boolean(normalized && normalized.endsWith("bot"));
+}
+
 function normalizeListenerHealth(
   systemLogs: SystemLogRow[],
   tgEvents: TgWhaleEventRow[],
@@ -1085,6 +1090,7 @@ function normalizeListenerHealth(
   const payload = detailsPayload(latest);
   const event = compactString(payload.event);
   const reason = compactString(payload.reason);
+  const channel = compactString(payload.channel || payload.tg_channel);
 
   if (latest.status === "error" && (event === "auth_error" || reason.includes("auth"))) {
     return {
@@ -1111,6 +1117,16 @@ function normalizeListenerHealth(
       status: "attention",
       label: "확인 필요",
       message: `최근 ${LISTENER_STALE_MINUTES}분 이내 listener heartbeat가 없습니다.`,
+      updatedAt,
+      event,
+    };
+  }
+
+  if (listenerChannelLooksMisconfigured(channel)) {
+    return {
+      status: "attention",
+      label: "채널 확인 필요",
+      message: `${channel}은 bot username처럼 보입니다. listener TG_CHANNEL은 수신할 공개 채널 username이어야 합니다.`,
       updatedAt,
       event,
     };
