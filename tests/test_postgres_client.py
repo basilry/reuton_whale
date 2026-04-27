@@ -18,7 +18,10 @@ from src.utils.errors import StorageError
 
 
 class RecordingCursor:
-    def __init__(self, fetchone_result: dict | None = {"id": 1}) -> None:
+    def __init__(
+        self,
+        fetchone_result: dict | None | list[dict | None] = {"id": 1},
+    ) -> None:
         self.calls: list[tuple[str, tuple | None]] = []
         self.fetchone_result = fetchone_result
 
@@ -32,6 +35,10 @@ class RecordingCursor:
         self.calls.append((sql, params))
 
     def fetchone(self):
+        if isinstance(self.fetchone_result, list):
+            if not self.fetchone_result:
+                return None
+            return self.fetchone_result.pop(0)
         return self.fetchone_result
 
     def fetchall(self):
@@ -244,6 +251,68 @@ def test_list_watched_addresses_orders_by_address_not_id() -> None:
     assert "ORDER BY COALESCE(added_at, now()) ASC, address ASC" in sql
     assert " id " not in f" {sql} "
     assert params == ()
+
+
+def test_append_missing_watched_addresses_uses_postgres_upsert_contract() -> None:
+    cursor = RecordingCursor(fetchone_result=[{"address": "0xabc"}, None])
+    client = PostgresClient(
+        "postgresql://user:pass@example.com/db",
+        connect_func=_connect_with_cursor(cursor),
+    )
+
+    result = client.append_missing_watched_addresses(
+        [
+            {
+                "address": "0xabc",
+                "chain": "ETH",
+                "category": "cex",
+                "label": "Binance",
+                "source": "arkham",
+                "confidence": "high",
+                "enabled": "true",
+                "added_at": "2026-04-20",
+                "notes": "seed",
+            },
+            {
+                "address": "0xdef",
+                "chain": "ETH",
+                "confidence": "medium",
+                "enabled": "true",
+            },
+            {"address": ""},
+        ]
+    )
+
+    assert result == {"inserted": 1, "skipped": 1, "invalid": 1}
+    insert_sql, params = cursor.calls[0]
+    assert "INSERT INTO watched_addresses" in insert_sql
+    assert "ON CONFLICT (address) DO NOTHING" in insert_sql
+    assert params is not None
+    assert params[0] == "0xabc"
+    assert params[5] == "0.9"
+
+
+def test_upsert_watched_address_updates_existing_natural_key() -> None:
+    cursor = RecordingCursor(fetchone_result=None)
+    client = PostgresClient(
+        "postgresql://user:pass@example.com/db",
+        connect_func=_connect_with_cursor(cursor),
+    )
+
+    client.upsert_watched_address(
+        {
+            "address": "0xabc",
+            "chain": "ETH",
+            "label": "Updated",
+            "confidence": "low",
+        }
+    )
+
+    sql, params = cursor.calls[-1]
+    assert "ON CONFLICT (address) DO UPDATE SET" in sql
+    assert params is not None
+    assert params[0] == "0xabc"
+    assert params[5] == "0.3"
 
 
 def test_list_subscribers_orders_by_chat_id_not_id() -> None:

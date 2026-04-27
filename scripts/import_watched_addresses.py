@@ -5,6 +5,7 @@ Usage:
     python scripts/import_watched_addresses.py
     python scripts/import_watched_addresses.py --csv config/watched_addresses.csv
     python scripts/import_watched_addresses.py --dry-run
+    python scripts/import_watched_addresses.py --backend postgres
 """
 from __future__ import annotations
 
@@ -17,6 +18,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from dotenv import load_dotenv
+
+from src.storage.factory import build_storage_client, normalize_storage_backend
 from src.storage.schema import WATCHED_ADDRESSES_HEADERS
 from src.utils.chains import canonical_chain, is_evm_chain
 from src.utils.logger import get_logger
@@ -226,9 +230,15 @@ def _print_messages(title: str, messages: list[ValidationMessage]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Import watched addresses from CSV into Sheets")
+    parser = argparse.ArgumentParser(description="Import watched addresses from CSV into storage")
     parser.add_argument("--csv", default=str(_DEFAULT_CSV), help="Path to CSV file")
     parser.add_argument("--dry-run", action="store_true", help="Print rows without writing")
+    parser.add_argument(
+        "--backend",
+        choices=("sheets", "postgres"),
+        default=None,
+        help="Storage backend to write to. Defaults to STORAGE_BACKEND.",
+    )
     args = parser.parse_args(argv)
 
     csv_path = Path(args.csv)
@@ -258,18 +268,17 @@ def main(argv: list[str] | None = None) -> int:
         print("validation failed; import aborted", file=sys.stderr)
         return 1
 
-    from src.config import load_config
-    from src.storage.sheets_client import SheetsClient
-
-    config = load_config()
-    sheets = SheetsClient(config.sheet_id, config.google_credentials)
+    load_dotenv()
+    backend = normalize_storage_backend(args.backend)
+    storage = build_storage_client(backend=backend)
 
     try:
-        result = sheets.append_missing_watched_addresses(report.normalized_rows)
+        result = storage.append_missing_watched_addresses(report.normalized_rows)
     except Exception as e:
         logger.error("Failed to import watched addresses: %s", e)
         return 1
 
+    print(f"Storage backend: {backend}")
     print(
         "Imported {inserted} new addresses, skipped {skipped} existing, "
         "{invalid} invalid".format(**result)

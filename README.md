@@ -521,10 +521,11 @@ SHEET_ID="$GOOGLE_SHEET_ID" python scripts/migrate_sheets.py
 python scripts/import_watched_addresses.py --dry-run
 ```
 
-문제가 없으면 Sheets에 upsert합니다.
+문제가 없으면 현재 storage backend에 upsert합니다. `STORAGE_BACKEND=postgres` 환경에서는 Render PostgreSQL의 `watched_addresses` 테이블에 쓰고, 기본값 또는 `--backend sheets`는 Google Sheets에 씁니다.
 
 ```bash
 python scripts/import_watched_addresses.py
+python scripts/import_watched_addresses.py --backend postgres
 ```
 
 다른 CSV를 쓰려면 헤더를 `config/watched_addresses.csv`와 맞춘 뒤 `--csv`를 지정합니다.

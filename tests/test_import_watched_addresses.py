@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import sys
 
+import scripts.import_watched_addresses as import_script
 from scripts.import_watched_addresses import load_csv, main, validate_rows
 
 
@@ -193,3 +194,47 @@ def test_main_import_mode_aborts_on_validation_errors(
     assert exit_code == 1
     assert "unsupported chain enum: UNKNOWN" in captured.out
     assert "validation failed; import aborted" in captured.err
+
+
+def test_main_import_uses_selected_storage_backend(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    csv_path = tmp_path / "watched_addresses.csv"
+    csv_path.write_text(
+        "\n".join(
+            [
+                "address,chain,category,label,source,confidence,enabled,added_at,notes",
+                "0xABCDEF,eth,cex,Good Row,manual,high,true,2026-04-20,ok",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    class _RecordingStorage:
+        def __init__(self) -> None:
+            self.rows: list[dict] = []
+
+        def append_missing_watched_addresses(self, rows: list[dict]) -> dict[str, int]:
+            self.rows = rows
+            return {"inserted": len(rows), "skipped": 0, "invalid": 0}
+
+    storage = _RecordingStorage()
+    called: dict[str, str | None] = {}
+
+    def fake_build_storage_client(*, backend=None, environ=None):
+        called["backend"] = backend
+        return storage
+
+    monkeypatch.setattr(import_script, "build_storage_client", fake_build_storage_client)
+
+    exit_code = main(["--csv", str(csv_path), "--backend", "postgres"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert called == {"backend": "postgres"}
+    assert storage.rows[0]["address"] == "0xabcdef"
+    assert storage.rows[0]["chain"] == "ETH"
+    assert "Storage backend: postgres" in captured.out
+    assert "Imported 1 new addresses" in captured.out

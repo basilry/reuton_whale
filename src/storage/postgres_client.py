@@ -66,6 +66,30 @@ INSERT_ADDRESS_ACTIVITY_SQL = """
     RETURNING id
 """
 
+INSERT_WATCHED_ADDRESS_SQL = """
+    INSERT INTO watched_addresses (
+      address, chain, category, label, source, confidence, enabled, added_at, notes
+    )
+    VALUES (%s, %s, %s, %s, %s, %s, %s, COALESCE(%s, now()), %s)
+    ON CONFLICT (address) DO NOTHING
+    RETURNING address
+"""
+
+UPSERT_WATCHED_ADDRESS_SQL = """
+    INSERT INTO watched_addresses (
+      address, chain, category, label, source, confidence, enabled, added_at, notes
+    )
+    VALUES (%s, %s, %s, %s, %s, %s, %s, COALESCE(%s, now()), %s)
+    ON CONFLICT (address) DO UPDATE SET
+      chain = COALESCE(EXCLUDED.chain, watched_addresses.chain),
+      category = COALESCE(EXCLUDED.category, watched_addresses.category),
+      label = COALESCE(NULLIF(EXCLUDED.label, ''), watched_addresses.label),
+      source = COALESCE(NULLIF(EXCLUDED.source, ''), watched_addresses.source),
+      confidence = COALESCE(EXCLUDED.confidence, watched_addresses.confidence),
+      enabled = COALESCE(NULLIF(EXCLUDED.enabled, ''), watched_addresses.enabled),
+      notes = COALESCE(NULLIF(EXCLUDED.notes, ''), watched_addresses.notes)
+"""
+
 INSERT_SYSTEM_LOG_SQL = """
     INSERT INTO system_log (
       run_id, run_type, status, started_at, finished_at, transactions_count,
@@ -287,6 +311,20 @@ def _timestamp(value: object) -> object | None:
 
 def _numeric(value: object) -> object | None:
     return _none_if_blank(value)
+
+
+def _watched_confidence(value: object) -> object | None:
+    value = _none_if_blank(value)
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if text == "high":
+        return "0.9"
+    if text == "medium":
+        return "0.6"
+    if text == "low":
+        return "0.3"
+    return value
 
 
 def _int(value: object) -> int | None:
@@ -944,6 +982,66 @@ class PostgresClient:
             if str(row.get("address", "")).strip()
             and str(row.get("enabled", "true")).strip().lower() not in {"false", "0", "no"}
         }
+
+    def upsert_watched_address(self, addr: dict) -> None:
+        target = str(addr.get("address", "")).strip()
+        if not target:
+            raise StorageError("Failed to upsert watched address: address is required")
+        try:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        UPSERT_WATCHED_ADDRESS_SQL,
+                        (
+                            target,
+                            _text(addr.get("chain")),
+                            _text(addr.get("category")),
+                            _text(addr.get("label")),
+                            _text(addr.get("source")),
+                            _watched_confidence(addr.get("confidence")),
+                            _text(addr.get("enabled")),
+                            _timestamp(addr.get("added_at")),
+                            _text(addr.get("notes")),
+                        ),
+                    )
+        except StorageError:
+            raise
+        except Exception as exc:
+            raise StorageError(f"Failed to upsert watched address: {exc}") from exc
+
+    def append_missing_watched_addresses(self, addresses: list[dict]) -> dict[str, int]:
+        counts = {"inserted": 0, "skipped": 0, "invalid": 0}
+        try:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    for addr in addresses:
+                        target = str(addr.get("address", "")).strip()
+                        if not target:
+                            counts["invalid"] += 1
+                            continue
+                        cur.execute(
+                            INSERT_WATCHED_ADDRESS_SQL,
+                            (
+                                target,
+                                _text(addr.get("chain")),
+                                _text(addr.get("category")),
+                                _text(addr.get("label")),
+                                _text(addr.get("source")),
+                                _watched_confidence(addr.get("confidence")),
+                                _text(addr.get("enabled")),
+                                _timestamp(addr.get("added_at")),
+                                _text(addr.get("notes")),
+                            ),
+                        )
+                        if cur.fetchone() is None:
+                            counts["skipped"] += 1
+                        else:
+                            counts["inserted"] += 1
+            return counts
+        except StorageError:
+            raise
+        except Exception as exc:
+            raise StorageError(f"Failed to append missing watched addresses: {exc}") from exc
 
     def list_curated_wallets(self, active_only: bool = True) -> list[dict]:
         filters: list[str] = []
