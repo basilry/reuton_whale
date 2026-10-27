@@ -1,7 +1,7 @@
 import csv
 import json
 from argparse import Namespace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -223,9 +223,12 @@ def test_delete_range_helpers_are_contiguous_and_descending_batch_safe():
 
 
 def test_run_writes_dryrun_summary_to_output_path(tmp_path, monkeypatch):
+    now = datetime.now(timezone.utc)
+    old_ts = (now - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    recent_ts = (now - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
     worksheet = FakeWorksheet(
         "service_health",
-        [["ts"], ["2026-01-01T00:00:00Z"], ["2026-04-24T00:00:00Z"]],
+        [["ts"], [old_ts], [recent_ts]],
     )
     spreadsheet = FakeSpreadsheet([worksheet])
     manifest_path = tmp_path / "manifest.json"

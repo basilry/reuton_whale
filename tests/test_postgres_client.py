@@ -91,6 +91,7 @@ def test_schema_contains_required_tables_and_idempotent_ddl() -> None:
         "subscribers",
         "wallet_aliases",
         "watchlist_overrides",
+        "wallet_detail_profiles",
     }
     assert all("CREATE TABLE IF NOT EXISTS" in sql for sql in CREATE_TABLE_STATEMENTS)
     transaction_sql = next(sql for sql in CREATE_TABLE_STATEMENTS if "transactions" in sql)
